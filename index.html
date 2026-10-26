@@ -3,35 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Phim AI</title>
+<title>Phim Cổ Trang AI</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Nền tảng xem phim do AI tạo.">
-<meta name="theme-color" content="#0E0D0C">
+<meta name="description" content="Kho phim cổ trang do AI tạo: hành động, tu tiên, kiếm hiệp, tâm lý.">
+<meta name="theme-color" content="#0E0C0A">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Noto+Serif+Display:wght@700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap&text=%E6%AD%A6%E4%BB%99%E4%BE%A0%E5%BF%83%E5%AE%AB%E5%B9%BB%E5%8F%B2%E6%83%85%E5%9D%8A%E5%BA%93%E9%86%89%E5%A5%BD%E8%BF%B7%E5%BD%B1%E6%A6%9C">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <div class="preview-bar" id="preview-bar" hidden>
   <div class="wrap">
     <span class="label">Xem thử giao diện</span>
-    <div id="pv-pills" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div class="pv-pills" id="pv-pills"></div>
   </div>
 </div>
 
 <header class="site-header">
   <div class="wrap">
-    <a href="./" class="logo" id="logo">Phim<span class="tld">.ai</span></a>
+    <a href="./" class="logo" id="logo"><span class="name">Phim<span class="tld">.ai</span></span></a>
     <nav class="nav" aria-label="Danh mục">
       <button type="button" data-nav="home" aria-current="true">Trang chủ</button>
-      <button type="button" data-nav="le">Phim lẻ</button>
+      <button type="button" data-nav="kho">Kho phim</button>
       <button type="button" data-nav="bo">Phim bộ</button>
+      <button type="button" data-nav="le">Phim lẻ</button>
       <button type="button" data-nav="ngan">Phim ngắn</button>
     </nav>
     <form class="search" id="search-form" role="search">
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Zm5.3-2.2L21 21"/></svg>
-      <label for="q" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Tìm phim</label>
+      <label for="q" class="sr-only">Tìm phim</label>
       <input id="q" type="search" placeholder="Tìm tên phim, thể loại…" autocomplete="off">
     </form>
   </div>
@@ -42,9 +44,9 @@
 
 <footer class="site-footer">
   <div class="wrap">
-    <div class="network-label">Cùng hệ thống phim AI</div>
+    <div class="network-label">Cùng hệ thống phim cổ trang AI</div>
     <div class="network" id="network"></div>
-    <p class="fineprint"><span id="tagline"></span>. Toàn bộ phim trên hệ thống được sản xuất bằng công cụ trí tuệ nhân tạo. Phim đang hiển thị là nội dung mẫu.</p>
+    <p class="fineprint"><span id="tagline"></span>. Toàn bộ phim, hình ảnh và nhân vật trên hệ thống được tạo bằng công cụ trí tuệ nhân tạo. Phim đang hiển thị là nội dung mẫu.</p>
   </div>
 </footer>
 
@@ -55,6 +57,7 @@
 
 <script src="assets/sites.js"></script>
 <script src="assets/films.js"></script>
+<script src="assets/art.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

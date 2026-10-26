@@ -1,109 +1,152 @@
 /*
- * DANH SÁCH PHIM (dùng chung cho cả 5 website)
- * Đây là phim MẪU để xem giao diện. Thay bằng phim của bạn:
+ * KHO PHIM (dùng chung cho cả 5 website)
+ * Đây là phim MẪU để xem giao diện. Thay bằng phim AI của bạn.
+ *
  *   id        – mã không dấu, không trùng
- *   type      – "le" (phim lẻ), "bo" (phim bộ), "ngan" (phim ngắn)
- *   episodes  – số tập (chỉ cho phim bộ)
- *   hue       – 2 số từ 0–360, tạo màu poster khi chưa có ảnh
- *   poster    – (tuỳ chọn) đường dẫn ảnh poster, ví dụ "posters/abc.jpg"
- *   video     – (tuỳ chọn) đường dẫn file .mp4 hoặc link video của bạn
- *   sites     – (tuỳ chọn) chỉ hiện trên các site này, ví dụ ["khophim","phimhay"]
+ *   type      – "bo" (phim bộ), "le" (phim lẻ), "ngan" (phim ngắn)
+ *   episodes  – tổng số tập (phim bộ); aired – số tập đã ra (bỏ trống nếu đã đủ)
+ *   genres    – lấy trong danh sách GENRES bên dưới
+ *   views     – lượt xem (dùng để xếp hạng)
+ *   art       – tranh vẽ tự động khi chưa có poster:
+ *                 motif: "tien" (núi tiên lơ lửng), "truc" (rừng trúc, kiếm khách),
+ *                        "kiem" (vết chém mực đỏ), "dinh" (đình bên hồ),
+ *                        "cung" (mái cung điện), "den" (đèn lồng)
+ *                 paper: true = nền giấy dó sáng, false = nền mực tối
+ *                 hue:   màu trời (0–360)
+ *   poster    – (tuỳ chọn) ảnh poster thật, ví dụ "posters/abc.jpg"
+ *   video     – (tuỳ chọn) link video .mp4 hoặc link phát của bạn
+ *   sites     – (tuỳ chọn) chỉ hiện trên một số site, ví dụ ["khophim","phimhay"]
  */
+window.GENRES = [
+  { name: "Hành động", char: "武" },
+  { name: "Tu tiên", char: "仙" },
+  { name: "Kiếm hiệp", char: "侠" },
+  { name: "Tâm lý", char: "心" },
+  { name: "Cung đấu", char: "宫" },
+  { name: "Huyền huyễn", char: "幻" },
+  { name: "Lịch sử", char: "史" },
+  { name: "Tình cảm", char: "情" }
+];
+
 window.FILMS = [
   {
-    id: "thanh-pho-khong-ngu", title: "Thành Phố Không Ngủ", year: 2026, type: "le",
-    duration: "1g 38p", genres: ["Viễn tưởng", "Bí ẩn"], age: "T13", quality: "4K", ratio: "2.39:1",
-    trending: true, hue: [28, 200],
-    synopsis: "Năm 2087, một thành phố ven biển không bao giờ tắt đèn. Khi điện lưới chập chờn đúng một đêm, cô kỹ sư trực ca phát hiện cả thành phố đang được vận hành bởi một ký ức chứ không phải cỗ máy."
+    id: "van-co-tien-do", title: "Vạn Cổ Tiên Đồ", year: 2026, type: "bo", episodes: 40, aired: 18,
+    duration: "45p/tập", genres: ["Tu tiên", "Huyền huyễn"], age: "T13", quality: "4K", views: 2840000,
+    art: { motif: "tien", paper: false, hue: 205 },
+    synopsis: "Thiếu niên gánh củi dưới chân núi nhặt được một mảnh ngọc vỡ. Mảnh ngọc ấy là chìa khoá duy nhất mở lại con đường lên tiên giới đã đóng suốt vạn năm."
   },
   {
-    id: "ma-nguon-linh-hon", title: "Mã Nguồn Linh Hồn", year: 2026, type: "bo", episodes: 8,
-    duration: "8 tập · 45p/tập", genres: ["Viễn tưởng", "Tâm lý"], age: "T16", quality: "4K", ratio: "2.39:1",
-    trending: true, hue: [180, 260],
-    synopsis: "Một lập trình viên trẻ nhận nhiệm vụ sao lưu trí nhớ của người đã khuất. Bản sao thứ bảy bắt đầu nhớ những điều mà người thật chưa từng kể với ai."
+    id: "kiem-khach-vo-danh", title: "Kiếm Khách Vô Danh", year: 2026, type: "le",
+    duration: "1g 52p", genres: ["Kiếm hiệp", "Hành động"], age: "T16", quality: "4K", views: 1960000,
+    art: { motif: "truc", paper: true, hue: 30 },
+    synopsis: "Một kiếm khách không tên đi qua mười hai trấn để trả lại mười hai thanh kiếm cho những người đã chết. Thanh cuối cùng thuộc về chính hắn."
   },
   {
-    id: "duong-dua-neon", title: "Đường Đua Neon", year: 2026, type: "le",
-    duration: "1g 52p", genres: ["Hành động", "Viễn tưởng"], age: "T16", quality: "4K", ratio: "2.39:1",
-    trending: true, hue: [330, 190],
-    synopsis: "Giải đua xe tự lái ngầm chạy xuyên khu phố cổ lúc nửa đêm. Một tay đua bị loại tìm cách quay lại bằng chiếc xe không có trí tuệ nhân tạo nào."
+    id: "phuong-te-cung", title: "Phượng Tê Cung", year: 2026, type: "bo", episodes: 36,
+    duration: "45p/tập", genres: ["Cung đấu", "Tâm lý"], age: "T13", quality: "4K", views: 2310000,
+    art: { motif: "cung", paper: false, hue: 350 },
+    synopsis: "Cung nữ giữ đèn ở cung Phượng Tê thuộc lòng tiếng bước chân của từng phi tần. Một đêm, có tiếng bước chân lạ đi vào nơi không ai được phép vào."
   },
   {
-    id: "nguoi-gac-hai-dang", title: "Người Gác Hải Đăng Cuối Cùng", year: 2025, type: "le",
-    duration: "1g 41p", genres: ["Tâm lý", "Gia đình"], age: "P", quality: "4K", ratio: "1.85:1",
-    trending: true, hue: [205, 40],
-    synopsis: "Ngọn hải đăng sắp được tự động hoá. Người gác cuối cùng có ba mươi ngày để dạy cỗ máy thay thế anh hiểu vì sao ánh đèn phải bật sớm hơn giờ quy định."
+    id: "huyet-nguyet-thanh", title: "Huyết Nguyệt Thành", year: 2025, type: "le",
+    duration: "2g 06p", genres: ["Hành động", "Lịch sử"], age: "T18", quality: "4K", views: 1520000,
+    art: { motif: "kiem", paper: false, hue: 8 },
+    synopsis: "Toà thành biên ải bị vây bảy ngày dưới trăng máu. Ba trăm binh sĩ, một vị tướng trẻ và lời hứa giữ cổng thành đến giọt máu cuối cùng."
   },
   {
-    id: "meo-mun-tham-tu", title: "Mèo Mun Thám Tử", year: 2026, type: "bo", episodes: 12,
-    duration: "12 tập · 22p/tập", genres: ["Hoạt hình", "Bí ẩn"], age: "P", quality: "HD", ratio: "16:9",
-    trending: true, hue: [265, 45],
-    synopsis: "Mỗi tập một vụ án nhỏ trong khu chung cư: chiếc dép biến mất, bình hoa bị đổ, và một bí ẩn lớn dần qua từng tập về người hàng xóm tầng thượng."
+    id: "tam-ma", title: "Tâm Ma", year: 2026, type: "le",
+    duration: "1g 44p", genres: ["Tâm lý", "Huyền huyễn"], age: "T16", quality: "4K", views: 1180000,
+    art: { motif: "dinh", paper: true, hue: 200 },
+    synopsis: "Vị đại sư tu thiền trên đảo giữa hồ bắt đầu nhìn thấy bóng mình dưới nước cử động trước khi mình kịp cử động."
   },
   {
-    id: "dem-trang-lang-gom", title: "Đêm Rằm Ở Làng Gốm", year: 2025, type: "le",
-    duration: "1g 29p", genres: ["Kinh dị", "Bí ẩn"], age: "T18", quality: "4K", ratio: "2.39:1",
-    hue: [12, 300],
-    synopsis: "Lò gốm trăm năm chỉ đỏ lửa vào đêm rằm. Nhóm sinh viên về làng làm phim tốt nghiệp và nhận ra trong mỗi chiếc bình đều có tiếng người gọi."
+    id: "dao-tam-bat-diet", title: "Đạo Tâm Bất Diệt", year: 2026, type: "bo", episodes: 30,
+    duration: "40p/tập", genres: ["Tu tiên", "Hành động"], age: "T13", quality: "4K", views: 1740000,
+    art: { motif: "tien", paper: false, hue: 265 },
+    synopsis: "Bị phế toàn bộ tu vi trong ngày đại điển, đệ tử chân truyền bắt đầu tu lại từ đầu bằng một tâm pháp mà cả tông môn coi là tà đạo."
   },
   {
-    id: "robot-ban-kem", title: "Chú Robot Bán Kem", year: 2026, type: "ngan",
-    duration: "12p", genres: ["Hoạt hình", "Gia đình"], age: "P", quality: "HD", ratio: "16:9",
-    hue: [190, 330],
-    synopsis: "Một chú robot cũ đẩy xe kem qua những con phố mùa hè, cố nhớ món kem mà cô bé đầu tiên từng mua của mình."
+    id: "thien-son-mo-tuyet", title: "Thiên Sơn Mộ Tuyết", year: 2025, type: "bo", episodes: 24,
+    duration: "45p/tập", genres: ["Kiếm hiệp", "Tình cảm"], age: "T13", quality: "4K", views: 1390000,
+    art: { motif: "truc", paper: false, hue: 215 },
+    synopsis: "Hai đệ tử của hai phái kiếm thù địch hẹn gặp nhau mỗi mùa tuyết đầu tiên trên đỉnh Thiên Sơn, cho đến năm tuyết rơi màu đỏ."
   },
   {
-    id: "sao-hoa-2099", title: "Sao Hỏa 2099", year: 2025, type: "le",
-    duration: "2g 04p", genres: ["Viễn tưởng", "Phiêu lưu"], age: "T13", quality: "4K", ratio: "2.39:1",
-    hue: [15, 35],
-    synopsis: "Chuyến tàu chở người Việt đầu tiên hạ cánh xuống Sao Hỏa. Thứ họ tìm thấy dưới lớp bụi đỏ là một bàn thờ nhỏ còn nguyên nén nhang."
+    id: "bach-dang-giang", title: "Bạch Đằng Giang", year: 2026, type: "le",
+    duration: "2g 14p", genres: ["Lịch sử", "Hành động"], age: "T13", quality: "4K", views: 2050000,
+    art: { motif: "kiem", paper: true, hue: 25 },
+    synopsis: "Những cọc gỗ cắm dưới lòng sông, một con nước triều và một đêm chờ đợi quyết định vận mệnh của cả một dân tộc."
   },
   {
-    id: "vo-su-may-trang", title: "Võ Sư Mây Trắng", year: 2026, type: "bo", episodes: 10,
-    duration: "10 tập · 40p/tập", genres: ["Hành động", "Phiêu lưu"], age: "T13", quality: "4K", ratio: "2.39:1",
-    trending: true, hue: [210, 0],
-    synopsis: "Một võ đường trên núi nhận người học trò kỳ lạ: biết mọi thế võ trên đời nhưng chưa từng đánh thắng ai."
+    id: "truc-lam-song-kiem", title: "Trúc Lâm Song Kiếm", year: 2025, type: "le",
+    duration: "1g 38p", genres: ["Kiếm hiệp"], age: "T13", quality: "4K", views: 880000,
+    art: { motif: "truc", paper: true, hue: 110 },
+    synopsis: "Hai anh em sinh đôi học hai nửa của một bộ kiếm pháp. Chỉ khi đứng cạnh nhau, bộ kiếm pháp mới trọn vẹn."
   },
   {
-    id: "can-phong-so-7", title: "Căn Phòng Số 7", year: 2026, type: "ngan",
-    duration: "18p", genres: ["Kinh dị"], age: "T16", quality: "4K", ratio: "1.85:1",
-    hue: [350, 160],
-    synopsis: "Khách sạn chỉ có sáu phòng. Mỗi đêm, người lễ tân vẫn nhận một cuộc gọi đặt phòng số 7."
+    id: "ho-ly-nui-tuyet", title: "Hồ Ly Núi Tuyết", year: 2026, type: "bo", episodes: 20, aired: 9,
+    duration: "40p/tập", genres: ["Huyền huyễn", "Tình cảm"], age: "T13", quality: "4K", views: 1610000,
+    art: { motif: "den", paper: false, hue: 330 },
+    synopsis: "Hồ ly chín đuôi cuối cùng hoá thành người để trả ơn một thầy thuốc nghèo, nhưng mỗi ngày làm người, nàng quên đi một ký ức của mình."
   },
   {
-    id: "la-thu-tu-tuong-lai", title: "Lá Thư Từ Tương Lai", year: 2025, type: "le",
-    duration: "1g 47p", genres: ["Tình cảm", "Viễn tưởng"], age: "T13", quality: "4K", ratio: "1.85:1",
-    hue: [340, 30],
-    synopsis: "Cô giáo dạy văn nhận được những lá thư viết tay đề ngày mười năm sau, ký tên một người cô chưa từng gặp."
+    id: "cuu-thien-loi-kiep", title: "Cửu Thiên Lôi Kiếp", year: 2026, type: "ngan",
+    duration: "15p", genres: ["Tu tiên"], age: "P", quality: "4K", views: 640000,
+    art: { motif: "tien", paper: false, hue: 230 },
+    synopsis: "Mười lăm phút một người đứng dưới chín tầng sấm sét để vượt kiếp hoá thần."
   },
   {
-    id: "khu-vuon-cua-ba", title: "Khu Vườn Của Bà", year: 2026, type: "ngan",
-    duration: "9p", genres: ["Gia đình", "Hoạt hình"], age: "P", quality: "HD", ratio: "16:9",
-    hue: [110, 50],
-    synopsis: "Cậu bé thành phố về quê nghỉ hè và học cách tưới một khu vườn biết lắng nghe."
+    id: "lac-hoa-dinh", title: "Lạc Hoa Đình", year: 2025, type: "bo", episodes: 12,
+    duration: "35p/tập", genres: ["Tâm lý", "Tình cảm"], age: "T13", quality: "HD", views: 720000,
+    art: { motif: "dinh", paper: false, hue: 320 },
+    synopsis: "Đình hoa rụng bên hồ là nơi một nữ thi sĩ viết thư cho người chồng đi lính. Mười hai lá thư, mười hai mùa hoa."
   },
   {
-    id: "tin-hieu-day-bien", title: "Tín Hiệu Từ Đáy Biển", year: 2026, type: "bo", episodes: 6,
-    duration: "6 tập · 50p/tập", genres: ["Bí ẩn", "Viễn tưởng"], age: "T16", quality: "4K", ratio: "2.39:1",
-    hue: [195, 230],
-    synopsis: "Trạm nghiên cứu ngoài khơi bắt được một tín hiệu lặp lại mỗi 47 phút. Nó đang đếm ngược."
+    id: "sat-thu-den-long", title: "Sát Thủ Đèn Lồng", year: 2026, type: "ngan",
+    duration: "18p", genres: ["Hành động", "Huyền huyễn"], age: "T16", quality: "4K", views: 930000,
+    art: { motif: "den", paper: false, hue: 12 },
+    synopsis: "Đêm hội hoa đăng, mỗi chiếc đèn lồng tắt là một mạng người. Người bán đèn biết trước chiếc nào sẽ tắt."
   },
   {
-    id: "anh-den-san-khau", title: "Ánh Đèn Sân Khấu", year: 2025, type: "le",
-    duration: "1g 55p", genres: ["Âm nhạc", "Tình cảm"], age: "P", quality: "4K", ratio: "1.85:1",
-    hue: [45, 320],
-    synopsis: "Ban nhạc phòng trà sắp giải tán có một đêm diễn cuối, và một ca sĩ ảo được thuê để hát thay người đã rời đi."
+    id: "mong-hoi-duong-trieu", title: "Mộng Hồi Đường Triều", year: 2026, type: "bo", episodes: 28, aired: 22,
+    duration: "45p/tập", genres: ["Tình cảm", "Cung đấu"], age: "T13", quality: "4K", views: 1870000,
+    art: { motif: "cung", paper: true, hue: 40 },
+    synopsis: "Cô thợ phục chế tranh cổ ngủ quên trong bảo tàng và tỉnh dậy giữa kinh thành Trường An, đúng đêm trước một cuộc chính biến."
   },
   {
-    id: "hat-cat-phieu-luu", title: "Hành Trình Hạt Cát", year: 2026, type: "ngan",
-    duration: "14p", genres: ["Hoạt hình", "Phiêu lưu"], age: "P", quality: "4K", ratio: "16:9",
-    hue: [38, 190],
-    synopsis: "Một hạt cát bị gió cuốn từ sa mạc ra biển, đi qua bốn mùa và mười nghìn cây số."
+    id: "kiem-y-co-thanh", title: "Kiếm Ý Cô Thành", year: 2025, type: "le",
+    duration: "1g 47p", genres: ["Kiếm hiệp", "Tâm lý"], age: "T16", quality: "4K", views: 810000,
+    art: { motif: "kiem", paper: false, hue: 190 },
+    synopsis: "Lão kiếm sư mù sống một mình trong toà thành bỏ hoang, ngày ngày luyện một chiêu kiếm chưa ai từng thấy."
   },
   {
-    id: "nha-tro-tang-3", title: "Nhà Trọ Tầng 3", year: 2026, type: "bo", episodes: 16,
-    duration: "16 tập · 30p/tập", genres: ["Tình cảm", "Gia đình"], age: "T13", quality: "HD", ratio: "16:9",
-    hue: [20, 260],
-    synopsis: "Năm người thuê trọ chung một tầng, chung một cái bếp và chung một chủ nhà có thói quen kể chuyện lúc nửa đêm."
+    id: "linh-son-dao-si", title: "Linh Sơn Đạo Sĩ", year: 2025, type: "le",
+    duration: "1g 35p", genres: ["Tu tiên", "Huyền huyễn"], age: "P", quality: "4K", views: 690000,
+    art: { motif: "tien", paper: true, hue: 160 },
+    synopsis: "Đạo sĩ trẻ trên Linh Sơn chỉ có một đệ tử: con khỉ trộm đào của sư phụ năm xưa."
+  },
+  {
+    id: "that-hiep-giang-nam", title: "Thất Hiệp Giang Nam", year: 2026, type: "bo", episodes: 16,
+    duration: "45p/tập", genres: ["Kiếm hiệp", "Hành động"], age: "T13", quality: "4K", views: 1450000,
+    art: { motif: "truc", paper: false, hue: 140 },
+    synopsis: "Bảy người lạ, bảy món nợ cũ và một chuyến hộ tiêu xuyên Giang Nam mà không ai muốn nhận."
+  },
+  {
+    id: "an-ngoc-truyen-quoc", title: "Ấn Ngọc Truyền Quốc", year: 2025, type: "bo", episodes: 20,
+    duration: "45p/tập", genres: ["Lịch sử", "Tâm lý"], age: "T13", quality: "4K", views: 990000,
+    art: { motif: "cung", paper: false, hue: 45 },
+    synopsis: "Ngọc tỷ truyền quốc biến mất trong đêm tân vương đăng cơ. Vị quan nhỏ giữ kho có ba ngày để tìm ra nó."
+  },
+  {
+    id: "chen-tra-lac-duong", title: "Một Chén Trà Ở Lạc Dương", year: 2026, type: "ngan",
+    duration: "22p", genres: ["Tâm lý"], age: "P", quality: "HD", views: 410000,
+    art: { motif: "dinh", paper: true, hue: 90 },
+    synopsis: "Hai người bạn cũ gặp lại ở quán trà ven đường, nói chuyện trời mưa, và không ai nhắc đến chuyện năm xưa."
+  },
+  {
+    id: "nu-tuong-me-linh", title: "Nữ Tướng Mê Linh", year: 2026, type: "le",
+    duration: "2g 01p", genres: ["Lịch sử", "Hành động"], age: "T13", quality: "4K", views: 1330000,
+    art: { motif: "kiem", paper: false, hue: 30 },
+    synopsis: "Từ đất Mê Linh, hai chị em gái dựng cờ khởi nghĩa, đánh đuổi quân xâm lược và giành lại sáu mươi lăm thành trì."
   }
 ];
