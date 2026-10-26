@@ -2,13 +2,15 @@
 
 Một mã nguồn dùng chung cho cả 5 website:
 
-| Tên miền | Thương hiệu | Màu nhấn |
+| Tên miền | Thương hiệu | Phong cách |
 |---|---|---|
-| xuongphim.ai | Xưởng Phim | Vàng hổ phách |
-| khophim.ai | Kho Phim | Xanh ngọc |
-| phephim.ai | Phê Phim | Hồng |
-| phimhay.ai | Phim Hay | Đỏ cam |
-| ghienphim.ai | Ghiền Phim | Tím nhạt |
+| xuongphim.ai | Xưởng Phim | Tương lai (viễn tưởng, neon xanh) |
+| khophim.ai | Kho Phim | Cổ trang (ngọc bích) |
+| phephim.ai | Phê Phim | Tương lai (hành động, neon hồng) |
+| phimhay.ai | Phim Hay | Cổ trang (son cam) |
+| ghienphim.ai | Ghiền Phim | Cổ trang (tím) |
+
+Đổi phong cách một site: sửa dòng `world` trong `assets/sites.js` (`"co-trang"` hoặc `"tuong-lai"`).
 
 Trang tự nhận tên miền đang mở và đổi tên, màu, phim nổi bật, các hàng phim.
 Sửa giao diện **một lần**, cả 5 site cập nhật cùng lúc.
@@ -20,7 +22,9 @@ index.html          Khung trang (dùng chung)
 assets/style.css    Giao diện (dùng chung)
 assets/app.js       Xử lý trang (dùng chung)
 assets/sites.js     Cấu hình riêng từng thương hiệu
-assets/films.js     Danh sách phim
+assets/films.js     Phim cổ trang
+assets/films-tuong-lai.js  Phim tương lai
+assets/art.js       Tranh vẽ tự động khi chưa có poster
 ```
 
 ## Thêm phim của bạn

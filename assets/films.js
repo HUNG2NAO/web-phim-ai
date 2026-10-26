@@ -17,7 +17,8 @@
  *   video     – (tuỳ chọn) link video .mp4 hoặc link phát của bạn
  *   sites     – (tuỳ chọn) chỉ hiện trên một số site, ví dụ ["khophim","phimhay"]
  */
-window.GENRES = [
+window.GENRES = window.GENRES || {};
+window.GENRES["co-trang"] = [
   { name: "Hành động", char: "武" },
   { name: "Tu tiên", char: "仙" },
   { name: "Kiếm hiệp", char: "侠" },

@@ -90,8 +90,8 @@ button, select, input { font: inherit; color: inherit; }
 .hero-art::after {
   content: ""; position: absolute; inset: 0;
   background:
-    linear-gradient(90deg, var(--bg) 8%, rgb(14 12 10 / .72) 42%, rgb(14 12 10 / .1) 78%),
-    linear-gradient(0deg, var(--bg) 0%, rgb(14 12 10 / 0) 40%);
+    linear-gradient(90deg, var(--bg) 8%, color-mix(in srgb, var(--bg) 72%, transparent) 42%, color-mix(in srgb, var(--bg) 10%, transparent) 78%),
+    linear-gradient(0deg, var(--bg) 0%, transparent 40%);
 }
 .mist {
   position: absolute; inset: auto -20% 18% -20%; height: 30%; pointer-events: none;
@@ -257,7 +257,7 @@ dialog.film::backdrop { background: rgb(6 5 4 / .8); }
 .network-label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .network { display: flex; flex-wrap: wrap; gap: 12px 28px; }
 .network a { text-decoration: none; display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
-.network a .seal { font-size: 14px; background: var(--c); color: #120E09; }
+.network a .seal { font-size: 14px; background: var(--c); color: #120E09; width: auto; min-width: 1.9em; padding-inline: .3em; }
 .network a .n { font-family: var(--font-display); font-weight: 700; font-size: 19px; }
 .network a:hover, .network a[aria-current="true"] { color: var(--fg); }
 .fineprint { color: var(--muted); font-size: 13px; max-width: 72ch; margin: 0; }
@@ -268,7 +268,7 @@ dialog.film::backdrop { background: rgb(6 5 4 / .8); }
   .nav { order: 3; width: 100%; overflow-x: auto; }
   .search { flex: 1 1 150px; }
   .logo .name { font-size: 19px; }
-  .hero-art::after { background: linear-gradient(0deg, var(--bg) 10%, rgb(14 12 10 / .6) 55%, rgb(14 12 10 / .2) 100%); }
+  .hero-art::after { background: linear-gradient(0deg, var(--bg) 10%, color-mix(in srgb, var(--bg) 60%, transparent) 55%, color-mix(in srgb, var(--bg) 20%, transparent) 100%); }
   .hero .watermark { top: 26%; opacity: .1; }
   .filter-row .f-label { width: 100%; }
   .film-body { padding: 18px 16px 22px; }
@@ -276,3 +276,83 @@ dialog.film::backdrop { background: rgb(6 5 4 / .8); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* =========================================================
+   PHONG CÁCH TƯƠNG LAI (site có world: "tuong-lai")
+   Nền xanh than, chữ kỹ thuật, khung góc kiểu màn hình điều khiển.
+   ========================================================= */
+:root[data-world="tuong-lai"] {
+  --bg: #070A10;
+  --surface: #0D121B;
+  --surface-2: #141B27;
+  --line: #243044;
+  --fg: #E6EDF7;
+  --muted: #8B97AC;
+  --seal: var(--accent);
+  --font-display: "Chakra Petch", "Bahnschrift", "DIN Alternate", system-ui, sans-serif;
+  --font-brush: "Chakra Petch", "Bahnschrift", ui-monospace, monospace;
+  --radius: 2px;
+}
+:root[data-world="tuong-lai"] body {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    var(--bg);
+}
+[data-world="tuong-lai"] .seal {
+  width: auto; min-width: 1.9em; padding-inline: .4em;
+  font-weight: 700; letter-spacing: .04em; color: var(--on-accent); box-shadow: none; border-radius: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 68%, 76% 100%, 0 100%);
+}
+[data-world="tuong-lai"] .poster .seal { font-size: 10.5px; height: 20px; background: color-mix(in srgb, var(--bg) 70%, transparent); color: var(--accent); }
+[data-world="tuong-lai"] .logo .seal { font-size: 15px; height: 32px; }
+[data-world="tuong-lai"] .kicker .seal { font-size: 12px; height: 24px; }
+[data-world="tuong-lai"] .network a .seal { font-size: 11px; height: 24px; color: #0A0D12; }
+[data-world="tuong-lai"] .hero h1,
+[data-world="tuong-lai"] .row-head h2,
+[data-world="tuong-lai"] .film-body h3 { text-transform: uppercase; letter-spacing: .01em; font-weight: 700; }
+[data-world="tuong-lai"] .hero h1 { line-height: .98; }
+[data-world="tuong-lai"] .logo .name { font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+[data-world="tuong-lai"] .row-head h2 .cn {
+  font-size: .5em; font-weight: 700; letter-spacing: .1em; padding: 2px 6px; align-self: center;
+  border: 1px solid var(--accent); color: var(--accent);
+}
+[data-world="tuong-lai"] .hero .watermark {
+  font-weight: 700; font-size: clamp(120px, 20vw, 300px); letter-spacing: -.02em;
+  color: transparent; -webkit-text-stroke: 1.5px var(--accent); opacity: .35;
+}
+[data-world="tuong-lai"] .mist {
+  inset: 0; height: auto; filter: none; opacity: .6;
+  background: linear-gradient(transparent 0 48%, color-mix(in srgb, var(--accent) 22%, transparent) 50%, transparent 52% 100%);
+  background-size: 100% 220%; animation: scan 7s linear infinite;
+}
+@keyframes scan { from { background-position: 0 100%; } to { background-position: 0 -120%; } }
+[data-world="tuong-lai"] .kicker b { letter-spacing: .04em; text-transform: uppercase; font-family: var(--font-display); }
+[data-world="tuong-lai"] .btn { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); font-family: var(--font-display); letter-spacing: .04em; text-transform: uppercase; }
+[data-world="tuong-lai"] .btn.ghost { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: transparent; }
+[data-world="tuong-lai"] .tag { border-radius: 0; font-family: var(--font-display); letter-spacing: .03em; }
+[data-world="tuong-lai"] .poster::after {
+  box-shadow: none;
+  background:
+    linear-gradient(var(--accent), var(--accent)) top left / 12px 2px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top left / 2px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 12px 2px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 2px 12px no-repeat;
+  opacity: .8;
+}
+[data-world="tuong-lai"] .badge { border-radius: 0; font-family: var(--font-display); letter-spacing: .05em; }
+[data-world="tuong-lai"] .genre { background: linear-gradient(160deg, var(--surface-2), var(--surface)); }
+[data-world="tuong-lai"] .genre .big {
+  font-weight: 700; font-size: 64px; top: -4px; right: 6px; letter-spacing: -.02em;
+  color: transparent; -webkit-text-stroke: 1px var(--fg); opacity: .25;
+}
+[data-world="tuong-lai"] .genre:hover .big,
+[data-world="tuong-lai"] .genre[aria-pressed="true"] .big { color: transparent; -webkit-text-stroke-color: var(--accent); opacity: .9; }
+[data-world="tuong-lai"] .genre .g-name { font-weight: 700; text-transform: uppercase; letter-spacing: .02em; font-size: 17px; }
+[data-world="tuong-lai"] .chip { border-radius: 0; }
+[data-world="tuong-lai"] .chip .cn { font-weight: 700; font-size: 11px; letter-spacing: .06em; }
+[data-world="tuong-lai"] .rank .num { font-weight: 700; -webkit-text-stroke-width: 1.5px; }
+[data-world="tuong-lai"] .search input { border-radius: 0; }
+[data-world="tuong-lai"] .nav button[aria-current="true"] { background: transparent; box-shadow: inset 0 -2px 0 var(--accent); border-radius: 0; }
+[data-world="tuong-lai"] .network-label,
+[data-world="tuong-lai"] .ep-head,
+[data-world="tuong-lai"] .specs dt { font-family: var(--font-display); }

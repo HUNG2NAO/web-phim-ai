@@ -2,7 +2,7 @@
   "use strict";
   var SITES = window.SITES || [];
   var ALL_FILMS = window.FILMS || [];
-  var GENRES = window.GENRES || [];
+  var GENRES = [];
   var TYPE_LABEL = { bo: "Phim bộ", le: "Phim lẻ", ngan: "Phim ngắn" };
   var SORTS = { moi: "Mới cập nhật", xem: "Xem nhiều", ten: "Tên A–Z" };
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -25,7 +25,8 @@
   var view = { kind: "home" };
 
   function byId(id) { return films.find(function (f) { return f.id === id; }); }
-  function genreChar(name) { var g = GENRES.find(function (x) { return x.name === name; }); return g ? g.char : "影"; }
+  function genreChar(name) { var g = GENRES.find(function (x) { return x.name === name; }); return g ? g.char : (isFuture() ? "SF" : "影"); }
+  function isFuture() { return site.world === "tuong-lai"; }
   function esc(t) {
     return String(t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
@@ -60,7 +61,10 @@
 
   /* ---------- 2. Áp thương hiệu ---------- */
   function applyBrand() {
-    films = ALL_FILMS.filter(function (f) { return !f.sites || f.sites.indexOf(site.id) !== -1; });
+    var world = site.world || "co-trang";
+    document.documentElement.setAttribute("data-world", world);
+    GENRES = (window.GENRES || {})[world] || [];
+    films = ALL_FILMS.filter(function (f) { return (f.world || "co-trang") === world && (!f.sites || f.sites.indexOf(site.id) !== -1); });
     var root = document.documentElement.style;
     root.setProperty("--accent", site.accent);
     root.setProperty("--on-accent", site.onAccent);
@@ -143,7 +147,7 @@
 
   function rankingHTML() {
     var top = query({ sort: "xem" }).slice(0, 10);
-    return '<section>' + headHTML("Bảng xếp hạng", "榜", '<span class="count">Theo lượt xem</span>') +
+    return '<section>' + headHTML("Bảng xếp hạng", isFuture() ? "TOP" : "榜", '<span class="count">Theo lượt xem</span>') +
       '<div class="rank-list">' + top.map(function (f, i) {
         return '<button class="rank" type="button" data-film="' + f.id + '" aria-label="Hạng ' + (i + 1) + ': ' + esc(f.title) + '">' +
           '<span class="num" aria-hidden="true">' + (i + 1) + '</span>' + posterHTML(f) + '</button>';
@@ -155,7 +159,7 @@
     var years = films.map(function (f) { return f.year; }).filter(function (y, i, a) { return a.indexOf(y) === i; }).sort().reverse();
     var title = v.q ? "Kết quả cho “" + v.q + "”" : v.genre || (v.type ? TYPE_LABEL[v.type] : v.airing ? "Phim bộ đang chiếu" : "Kho phim");
     function opt(val, label, cur) { return '<option value="' + val + '"' + (String(cur || "") === String(val) ? " selected" : "") + '>' + esc(label) + '</option>'; }
-    return '<section>' + headHTML(title, v.genre ? genreChar(v.genre) : "库", '<span class="count">' + list.length + ' phim</span>') +
+    return '<section>' + headHTML(title, v.genre ? genreChar(v.genre) : (isFuture() ? "ALL" : "库"), '<span class="count">' + list.length + ' phim</span>') +
       '<div class="filters" role="group" aria-label="Bộ lọc kho phim">' +
       '<div class="filter-row"><span class="f-label">Thể loại</span>' +
       '<button class="chip" type="button" data-f-genre="" aria-pressed="' + !v.genre + '">Tất cả</button>' +

@@ -1,5 +1,7 @@
 /*
  * CẤU HÌNH 5 THƯƠNG HIỆU
+ * world: "co-trang" (mặc định, phim cổ trang) hoặc "tuong-lai" (phim viễn tưởng, giao diện neon).
+ *        Đổi phong cách một site chỉ cần sửa dòng này.
  * Cả 5 tên miền dùng chung một mã nguồn. Trang tự nhận tên miền đang mở
  * và lấy đúng tên, ấn triện, màu nhấn, phim nổi bật và các hàng phim.
  *
@@ -12,15 +14,15 @@
  */
 window.SITES = [
   {
-    id: "xuongphim", domain: "xuongphim.ai",
-    name: "Xưởng Phim", seal: "坊",
-    tagline: "Xưởng phim cổ trang AI",
-    accent: "#D9A441", onAccent: "#1C1204",
-    featured: "van-co-tien-do",
+    id: "xuongphim", domain: "xuongphim.ai", world: "tuong-lai",
+    name: "Xưởng Phim", seal: "XP",
+    tagline: "Xưởng phim khoa học viễn tưởng AI",
+    accent: "#3FD0F5", onAccent: "#03161D",
+    featured: "thanh-pho-khong-ngu",
     rows: [
       { title: "Mới ra lò", filter: { newest: true } },
-      { title: "Tu tiên", filter: { genre: "Tu tiên" } },
-      { title: "Kiếm hiệp", filter: { genre: "Kiếm hiệp" } },
+      { title: "Cyberpunk", filter: { genre: "Cyberpunk" } },
+      { title: "Không gian", filter: { genre: "Không gian" } },
       { title: "Phim ngắn", filter: { type: "ngan" } }
     ]
   },
@@ -38,16 +40,16 @@ window.SITES = [
     ]
   },
   {
-    id: "phephim", domain: "phephim.ai",
-    name: "Phê Phim", seal: "醉",
-    tagline: "Phim võ hiệp AI xem là phê",
-    accent: "#E0566B", onAccent: "#2A0610",
-    featured: "huyet-nguyet-thanh",
+    id: "phephim", domain: "phephim.ai", world: "tuong-lai",
+    name: "Phê Phim", seal: "PP",
+    tagline: "Phim hành động tương lai AI xem là phê",
+    accent: "#FF4F7B", onAccent: "#2B0410",
+    featured: "duong-dua-neon",
     rows: [
       { title: "Hành động", filter: { genre: "Hành động" } },
-      { title: "Kiếm hiệp", filter: { genre: "Kiếm hiệp" } },
-      { title: "Huyền huyễn", filter: { genre: "Huyền huyễn" } },
-      { title: "Phim ngắn", filter: { type: "ngan" } }
+      { title: "Phim bộ đang chiếu", filter: { airing: true } },
+      { title: "AI & Robot", filter: { genre: "AI & Robot" } },
+      { title: "Hậu tận thế", filter: { genre: "Hậu tận thế" } }
     ]
   },
   {

@@ -113,6 +113,10 @@ window.InkArt = (function () {
     var r = rng(hash(film.id + w));
     var c = document.createElement("canvas"); c.width = w; c.height = h;
     var ctx = c.getContext("2d");
+    if (FUTURE[art.motif]) {
+      paintFuture(ctx, w, h, art, r);
+      return (cache[key] = toURL(c));
+    }
     var hue = art.hue, paper = !!art.paper, motif = art.motif;
     var ink = paper ? "rgba(24,19,14,A)" : "hsla(" + hue + ",30%,5%,A)";
     var inkSolid = ink.replace("A", paper ? 0.92 : 0.96);
@@ -309,6 +313,210 @@ window.InkArt = (function () {
     return url;
   }
   function side2(r) { return r() < 0.5; }
+  function toURL(c) { try { return c.toDataURL("image/jpeg", 0.86); } catch (e) { return ""; } }
+
+  /* ===== PHONG CÁCH TƯƠNG LAI ===== */
+  var FUTURE = { pho: 1, sao: 1, luoi: 1, may: 1, hoang: 1, song: 1 };
+
+  function neon(hue, l, a) { return "hsla(" + hue + ",95%," + l + "%," + a + ")"; }
+
+  function paintFuture(ctx, w, h, art, r) {
+    var hue = art.hue, hue2 = (hue + 160) % 360, m = art.motif, unit = Math.min(w, h);
+    var warm = m === "hoang";
+
+    /* Bầu trời */
+    var sky = ctx.createLinearGradient(0, 0, 0, h);
+    if (warm) {
+      sky.addColorStop(0, "hsl(" + hue + ",45%,10%)"); sky.addColorStop(0.55, "hsl(" + hue + ",70%,34%)"); sky.addColorStop(1, "hsl(" + hue + ",55%,16%)");
+    } else {
+      sky.addColorStop(0, "hsl(" + hue + ",55%,5%)"); sky.addColorStop(0.6, "hsl(" + hue + ",65%,15%)"); sky.addColorStop(1, "hsl(" + hue + ",50%,5%)");
+    }
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+
+    /* Sao */
+    if (!warm) {
+      for (var s = 0; s < 120; s++) {
+        ctx.fillStyle = "rgba(230,240,255," + (0.15 + r() * 0.6) + ")";
+        var ss = r() < 0.92 ? 1 : 2;
+        ctx.fillRect(r() * w, r() * h * 0.6, ss, ss);
+      }
+    }
+
+    if (m === "pho") {
+      glow(ctx, w * (0.3 + r() * 0.4), h * 0.62, unit * 0.9, "hsla(" + hue + ",90%,55%,A)", 0.22);
+      var layersP = 3;
+      for (var L = 0; L < layersP; L++) {
+        var t = L / (layersP - 1), x = -unit * 0.05;
+        var shade = "hsl(" + hue + ",40%," + (16 - t * 12) + "%)";
+        while (x < w) {
+          var bw = unit * (0.07 + r() * 0.12) * (1 + t * 0.4);
+          var bh = h * (0.25 + r() * 0.4) * (1.05 - t * 0.25);
+          var top = h - bh;
+          ctx.fillStyle = shade; ctx.fillRect(x, top, bw - 2, bh);
+          if (r() < 0.35) { ctx.fillRect(x + bw * 0.45, top - unit * 0.06, 2, unit * 0.06); }
+          for (var wy = top + unit * 0.02; wy < h; wy += unit * 0.022) {
+            for (var wx = x + unit * 0.012; wx < x + bw - unit * 0.02; wx += unit * 0.018) {
+              if (r() < 0.3) {
+                ctx.fillStyle = r() < 0.7 ? neon(hue, 70, 0.35 + t * 0.4) : neon(hue2, 65, 0.4 + t * 0.4);
+                ctx.fillRect(wx, wy, unit * 0.008, unit * 0.01);
+              }
+            }
+          }
+          if (t > 0.4 && r() < 0.3) {
+            var sx = x + bw * 0.2, sh = bh * 0.25;
+            glow(ctx, sx + unit * 0.01, top + unit * 0.05 + sh / 2, unit * 0.1, r() < 0.5 ? "hsla(" + hue2 + ",95%,60%,A)" : "hsla(" + hue + ",95%,60%,A)", 0.4);
+            ctx.fillStyle = r() < 0.5 ? neon(hue2, 62, 0.95) : neon(hue, 62, 0.95);
+            ctx.fillRect(sx, top + unit * 0.05, unit * 0.02, sh);
+          }
+          x += bw;
+        }
+      }
+      ctx.strokeStyle = "rgba(200,225,255,0.12)"; ctx.lineWidth = 1;
+      for (var rn = 0; rn < 90; rn++) {
+        var rx = r() * w, ry = r() * h, rl = unit * (0.03 + r() * 0.05);
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - rl * 0.25, ry + rl); ctx.stroke();
+      }
+    }
+
+    if (m === "sao") {
+      var px = w * (0.25 + r() * 0.5), py = h * (0.3 + r() * 0.15), pr = unit * (0.24 + r() * 0.1), tilt = -0.35 + r() * 0.2;
+      glow(ctx, px, py, pr * 2.2, "hsla(" + hue + ",90%,55%,A)", 0.25);
+      ctx.strokeStyle = neon(hue2, 75, 0.55); ctx.lineWidth = Math.max(2, unit * 0.012);
+      ctx.beginPath(); ctx.ellipse(px, py, pr * 1.75, pr * 0.42, tilt, Math.PI, Math.PI * 2); ctx.stroke();
+      var pg = ctx.createRadialGradient(px - pr * 0.4, py - pr * 0.4, pr * 0.1, px, py, pr);
+      pg.addColorStop(0, "hsl(" + hue + ",70%,62%)"); pg.addColorStop(0.7, "hsl(" + hue + ",60%,30%)"); pg.addColorStop(1, "hsl(" + hue + ",60%,10%)");
+      ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = "rgba(0,0,0,0.12)";
+      for (var bd = 0; bd < 6; bd++) ctx.fillRect(px - pr, py - pr + (bd / 6) * pr * 2 + r() * pr * 0.1, pr * 2, pr * 0.08);
+      ctx.restore();
+      ctx.beginPath(); ctx.ellipse(px, py, pr * 1.75, pr * 0.42, tilt, 0, Math.PI); ctx.stroke();
+      var gy = h * 0.82;
+      ctx.fillStyle = "hsl(" + hue + ",30%,6%)";
+      ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, gy);
+      for (var gx = 0; gx <= w; gx += w / 16) ctx.lineTo(gx, gy - Math.sin(gx / w * Math.PI) * h * 0.06 + (r() - 0.5) * h * 0.02);
+      ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+      var fx = w * (0.3 + r() * 0.4), fs = unit * 0.12;
+      ctx.fillStyle = "hsl(" + hue + ",30%,4%)";
+      ctx.beginPath(); ctx.arc(fx, gy - h * 0.05 - fs * 0.85, fs * 0.16, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(fx - fs * 0.18, gy - h * 0.05 - fs * 0.7, fs * 0.36, fs * 0.55);
+      ctx.fillRect(fx - fs * 0.16, gy - h * 0.05 - fs * 0.15, fs * 0.12, fs * 0.2);
+      ctx.fillRect(fx + fs * 0.04, gy - h * 0.05 - fs * 0.15, fs * 0.12, fs * 0.2);
+    }
+
+    if (m === "luoi") {
+      var hz = h * 0.6, cx = w / 2;
+      var sr = unit * 0.24, sy = hz - sr * 0.45;
+      glow(ctx, cx, sy, sr * 2.4, "hsla(" + hue + ",95%,60%,A)", 0.35);
+      var sg = ctx.createLinearGradient(0, sy - sr, 0, sy + sr);
+      sg.addColorStop(0, neon((hue + 40) % 360, 65, 1)); sg.addColorStop(1, neon(hue, 55, 1));
+      ctx.save(); ctx.beginPath(); ctx.arc(cx, sy, sr, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = sg; ctx.fillRect(cx - sr, sy - sr, sr * 2, sr * 2);
+      ctx.fillStyle = "hsl(" + hue + ",55%,10%)";
+      for (var k = 0; k < 6; k++) { var yy = sy + k * sr * 0.17; ctx.fillRect(cx - sr, yy, sr * 2, sr * 0.03 + k * sr * 0.012); }
+      ctx.restore();
+      ctx.fillStyle = "hsl(" + hue + ",45%,6%)";
+      ctx.beginPath(); ctx.moveTo(0, hz);
+      for (var mx = 0; mx <= w; mx += w / 12) ctx.lineTo(mx, hz - (Math.abs(mx - cx) / w) * h * 0.18 * (0.5 + r()));
+      ctx.lineTo(w, hz); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "hsl(" + hue + ",50%,4%)"; ctx.fillRect(0, hz, w, h - hz);
+      ctx.strokeStyle = neon(hue2, 60, 0.7); ctx.lineWidth = Math.max(1, unit * 0.003);
+      for (var v = -14; v <= 14; v++) { ctx.beginPath(); ctx.moveTo(cx, hz); ctx.lineTo(cx + v * w * 0.18, h); ctx.stroke(); }
+      for (var hl = 1; hl < 14; hl++) {
+        var ly = hz + (h - hz) * Math.pow(hl / 13, 2.2);
+        ctx.globalAlpha = 0.3 + hl / 20; ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = neon(hue, 70, 0.9); ctx.lineWidth = Math.max(1.5, unit * 0.006);
+      ctx.beginPath(); ctx.moveTo(0, hz); ctx.lineTo(w, hz); ctx.stroke();
+    }
+
+    if (m === "may") {
+      var gstep = unit * 0.06;
+      ctx.strokeStyle = neon(hue, 60, 0.08); ctx.lineWidth = 1;
+      for (var gxx = 0; gxx < w; gxx += gstep) { ctx.beginPath(); ctx.moveTo(gxx, 0); ctx.lineTo(gxx, h); ctx.stroke(); }
+      for (var gyy = 0; gyy < h; gyy += gstep) { ctx.beginPath(); ctx.moveTo(0, gyy); ctx.lineTo(w, gyy); ctx.stroke(); }
+      var hx = w * 0.58, hy = h * 0.46, hs = unit * 0.44;
+      glow(ctx, hx, hy, hs * 1.3, "hsla(" + hue + ",90%,55%,A)", 0.25);
+      ctx.fillStyle = "hsl(" + hue + ",25%,7%)";
+      ctx.beginPath();
+      ctx.moveTo(hx - hs * 0.15, hy - hs * 0.62);
+      ctx.bezierCurveTo(hx + hs * 0.45, hy - hs * 0.7, hx + hs * 0.62, hy - hs * 0.2, hx + hs * 0.5, hy + hs * 0.15);
+      ctx.lineTo(hx + hs * 0.58, hy + hs * 0.28); ctx.lineTo(hx + hs * 0.46, hy + hs * 0.34);
+      ctx.bezierCurveTo(hx + hs * 0.4, hy + hs * 0.55, hx + hs * 0.15, hy + hs * 0.6, hx, hy + hs * 0.55);
+      ctx.lineTo(hx + hs * 0.02, hy + hs * 1.2); ctx.lineTo(hx - hs * 0.55, hy + hs * 1.2);
+      ctx.lineTo(hx - hs * 0.35, hy + hs * 0.45);
+      ctx.bezierCurveTo(hx - hs * 0.6, hy + hs * 0.1, hx - hs * 0.55, hy - hs * 0.55, hx - hs * 0.15, hy - hs * 0.62);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = neon(hue, 65, 0.55); ctx.lineWidth = Math.max(1, unit * 0.004);
+      ctx.stroke();
+      glow(ctx, hx + hs * 0.38, hy - hs * 0.08, hs * 0.35, "hsla(" + hue2 + ",95%,60%,A)", 0.6);
+      ctx.fillStyle = neon(hue2, 70, 1);
+      ctx.fillRect(hx + hs * 0.12, hy - hs * 0.12, hs * 0.42, hs * 0.06);
+      ctx.strokeStyle = neon(hue, 65, 0.6);
+      for (var ci = 0; ci < 7; ci++) {
+        var cy0 = hy - hs * 0.4 + ci * hs * 0.13, cx0 = hx - hs * 0.4;
+        ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(cx0 + hs * (0.1 + r() * 0.25), cy0);
+        ctx.lineTo(cx0 + hs * (0.2 + r() * 0.2), cy0 + hs * 0.06); ctx.stroke();
+        ctx.fillStyle = neon(hue, 70, 0.9); ctx.fillRect(cx0 - 2, cy0 - 2, 4, 4);
+      }
+    }
+
+    if (m === "hoang") {
+      var sunx = w * (0.3 + r() * 0.4), suny = h * 0.38;
+      glow(ctx, sunx, suny, unit * 0.7, "hsla(" + (hue + 15) + ",95%,65%,A)", 0.45);
+      ctx.fillStyle = "hsla(" + (hue + 20) + ",95%,80%,0.9)"; ctx.beginPath(); ctx.arc(sunx, suny, unit * 0.1, 0, Math.PI * 2); ctx.fill();
+      for (var rb = 0; rb < 6; rb++) {
+        var bx = w * r(), bwid = unit * (0.05 + r() * 0.08), bht = h * (0.2 + r() * 0.3), ang = (r() - 0.5) * 0.25;
+        ctx.save(); ctx.translate(bx, h * 0.72); ctx.rotate(ang);
+        ctx.fillStyle = "hsla(" + hue + ",35%," + (14 + r() * 6) + "%,0.85)";
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -bht); ctx.lineTo(bwid * 0.6, -bht * 0.9); ctx.lineTo(bwid * 0.8, -bht * 1.02); ctx.lineTo(bwid, -bht * 0.8); ctx.lineTo(bwid, 0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "hsla(" + (hue + 20) + ",80%,70%,0.25)";
+        for (var bwy = -bht * 0.75; bwy < -10; bwy += bht * 0.1) if (r() < 0.5) ctx.fillRect(bwid * 0.2, bwy, bwid * 0.15, bht * 0.04);
+        ctx.restore();
+      }
+      for (var dn = 0; dn < 3; dn++) {
+        var dy = h * (0.68 + dn * 0.1);
+        ctx.fillStyle = "hsl(" + hue + "," + (55 - dn * 10) + "%," + (26 - dn * 8) + "%)";
+        ctx.beginPath(); ctx.moveTo(0, h);
+        for (var dx2 = 0; dx2 <= w; dx2 += w / 24) ctx.lineTo(dx2, dy + Math.sin(dx2 / w * Math.PI * (1.5 + dn) + r()) * h * 0.035);
+        ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+      }
+      ctx.fillStyle = "hsla(" + (hue + 20) + ",60%,80%,0.06)";
+      for (var du = 0; du < 160; du++) ctx.fillRect(r() * w, h * 0.3 + r() * h * 0.5, unit * 0.04 * r(), 1);
+    }
+
+    if (m === "song") {
+      var ox = w * 0.5, oy = h * 0.45;
+      glow(ctx, ox, oy, unit * 0.7, "hsla(" + hue + ",90%,55%,A)", 0.25);
+      ctx.lineWidth = Math.max(1, unit * 0.004);
+      for (var ring = 1; ring <= 6; ring++) {
+        var rr = unit * 0.07 * ring;
+        ctx.strokeStyle = neon(ring % 2 ? hue : hue2, 65, 0.65 - ring * 0.07);
+        ctx.setLineDash(ring % 2 ? [] : [unit * 0.02, unit * 0.015]);
+        var st = r() * Math.PI * 2;
+        ctx.beginPath(); ctx.arc(ox, oy, rr, st, st + Math.PI * (1.1 + r() * 0.8)); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      for (var wv = 0; wv < 9; wv++) {
+        var base = h * (0.66 + wv * 0.035), amp = h * (0.02 + r() * 0.035), freq = 2 + r() * 3, ph = r() * 6;
+        ctx.strokeStyle = neon(wv % 3 ? hue : hue2, 60 + wv * 2, 0.25 + wv * 0.06);
+        ctx.beginPath();
+        for (var xx = 0; xx <= w; xx += w / 80) ctx.lineTo(xx, base + Math.sin(xx / w * Math.PI * freq + ph) * amp);
+        ctx.stroke();
+      }
+      ctx.fillStyle = neon(hue, 75, 1); ctx.beginPath(); ctx.arc(ox, oy, unit * 0.02, 0, Math.PI * 2); ctx.fill();
+    }
+
+    /* Quét ngang kiểu màn hình + hạt */
+    ctx.fillStyle = "rgba(0,0,0,0.16)";
+    for (var sl = 0; sl < h; sl += 3) ctx.fillRect(0, sl, w, 1);
+    ctx.fillStyle = "rgba(220,235,255,0.03)";
+    for (var gd = 0; gd < w * h / 300; gd++) ctx.fillRect(r() * w, r() * h, 1, 1);
+    var vg = ctx.createRadialGradient(w / 2, h / 2, unit * 0.3, w / 2, h / 2, Math.hypot(w, h) * 0.62);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+  }
 
   /* Vẽ dần các ô có data-art để trang không bị khựng */
   var queue = [];
