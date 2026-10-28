@@ -2,7 +2,7 @@
 
 ## Current state
 
-This branch adds a responsive account dialog on every brand, without changing the existing film catalog or domain routing. **The auth client is deliberately disabled** in \`assets/auth-config.js\` until a NEW Supabase project is created. This is not a live registration feature yet.
+This branch adds a responsive account dialog on every brand, without changing the existing film catalog or domain routing. **Email Auth is activated only in the development preview branch**. A dedicated Supabase project `ai-film-network` exists. This is not yet released to the five production domains. Google sign-in stays disabled until OAuth is configured.
 
 - One Supabase project and shared \`auth.users\` identity across five brands.
 - Independent browser sessions per site origin via localStorage (the browser enforces domain isolation).
@@ -19,9 +19,18 @@ This branch adds a responsive account dialog on every brand, without changing th
    - Same 3 paths on www.khophim.ai, www.phephim.ai, www.phimhay.ai, www.ghienphim.ai.
    - Allow Preview host URLs separately for staging tests (do not globally whitelist \`*.pages.dev\`).
 3. If Google sign-in is desired, configure **Authentication → Providers → Google** and follow Supabase's provider-specific OAuth callback instructions in Google Cloud Console. Never put provider secret in the site.
-4. Review and run \`db/auth_v1.sql\` only on the new project. Run security advisors after setup.
-5. Retrieve only **Project URL** and **publishable key** from the new project dashboard. In \`assets/auth-config.js\`, set \`enabled: true\`, \`url\`, and \`publishableKey\`; do NOT put service_role/secret keys here.
+4. \`db/auth_v1.sql\` was applied to the new project (`afn_auth_profiles_site_memberships_v1`), and security/performance advisors returned no warnings at that moment.
+5. Retrieve only **Project URL** and **publishable key** from the new project dashboard. The preview branch already has `enabled: true`, a public project URL and a publishable key. Do NOT put service_role/secret keys here. Keep `googleEnabled: false` until the provider is configured.
 6. Deploy first to a Cloudflare Preview branch; test registration, recovery, Google login, logout and site-separated sessions. **Do not merge into main until verified on real domains**.
+
+## Pilot test requirements
+
+- Open the Cloudflare Preview URL configured in Supabase redirect allowlist.
+- Use an email belonging to an authorized Supabase organization team member for built-in SMTP testing; other addresses need custom SMTP first.
+- Test signup, email verification, reload, login, local logout and reset password. Record results before rollout.
+- Hosted Supabase projects normally require email confirmation by default; this still needs runtime verification.
+- Preview-origin sessions do not prove five-production-domain session isolation because preview variants share one origin.
+- Google OAuth has been intentionally hidden/disabled for this pilot.
 
 ## Caveats
 
