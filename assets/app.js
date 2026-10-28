@@ -15,8 +15,9 @@
     var host = location.hostname.toLowerCase().replace(/^www\./, "");
     var byHost = SITES.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); });
     if (byHost) return { site: byHost, preview: false };
-    var wanted = new URLSearchParams(location.search).get("site") || location.hash.slice(1) || store("pv-site");
-    return { site: SITES.find(function (s) { return s.id === wanted; }) || SITES[0], preview: true };
+    var candidates = [new URLSearchParams(location.search).get("site"), location.hash.slice(1), store("pv-site")];
+    var chosen = candidates.map(function (id) { return SITES.find(function (s) { return s.id === id; }); }).find(Boolean);
+    return { site: chosen || SITES[0], preview: true };
   }
 
   var state = detectSite();
@@ -36,18 +37,32 @@
     if (n >= 1e3) return Math.round(n / 1e3) + " nghìn";
     return String(n);
   }
+  // Missing aired means complete by the film data contract; malformed counts are unknown.
+  function seriesProgress(f) {
+    if (f.type !== "bo" || !Number.isSafeInteger(f.episodes) || f.episodes <= 0) return null;
+    var aired = f.aired === undefined ? f.episodes : f.aired;
+    if (!Number.isSafeInteger(aired) || aired < 0 || aired > f.episodes) return null;
+    return { total: f.episodes, aired: aired, completed: aired === f.episodes };
+  }
+  function isAiring(f) { var p = seriesProgress(f); return !!p && !p.completed; }
+  function isCompleted(f) { var p = seriesProgress(f); return !!p && p.completed; }
   function status(f) {
-    if (f.type === "bo") return f.aired && f.aired < f.episodes ? "Tập " + f.aired + "/" + f.episodes : "Trọn bộ " + f.episodes + " tập";
+    if (f.type === "bo") {
+      var p = seriesProgress(f);
+      if (!p) return "Chưa rõ tiến độ";
+      return p.completed ? "Trọn bộ " + p.total + " tập" : p.aired === 0 ? "Chưa có tập phát hành" : "Tập " + p.aired + "/" + p.total;
+    }
     return f.type === "ngan" ? "Phim ngắn" : "Phim lẻ";
   }
-  function newestScore(f) { return f.year * 1000 + (f.aired && f.aired < (f.episodes || 0) ? 500 : 0) + (f.views / 1e5); }
+  function newestScore(f) { return f.year * 1000 + (isAiring(f) ? 500 : 0) + (f.views / 1e5); }
 
   function query(filter) {
     var list = films.slice();
     if (filter.genre) list = list.filter(function (f) { return f.genres.indexOf(filter.genre) !== -1; });
     if (filter.type) list = list.filter(function (f) { return f.type === filter.type; });
     if (filter.year) list = list.filter(function (f) { return String(f.year) === String(filter.year); });
-    if (filter.airing) list = list.filter(function (f) { return f.type === "bo" && f.aired && f.aired < f.episodes; });
+    if (filter.airing) list = list.filter(isAiring);
+    if (filter.completed) list = list.filter(isCompleted);
     if (filter.q) {
       var q = norm(filter.q);
       list = list.filter(function (f) { return norm(f.title + " " + f.genres.join(" ")).indexOf(q) !== -1; });
@@ -91,7 +106,8 @@
   /* ---------- 3. Thành phần ---------- */
   function posterHTML(f) {
     var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="360x540"';
-    var right = f.type === "bo" ? (f.aired && f.aired < f.episodes ? '<span class="badge accent">Tập ' + f.aired + '</span>' : '<span class="badge">' + f.episodes + ' tập</span>') :
+    var progress = seriesProgress(f);
+    var right = f.type === "bo" ? (!progress ? '<span class="badge">Phim bộ</span>' : !progress.completed ? '<span class="badge accent">' + (progress.aired ? "Tập " + progress.aired : "Sắp chiếu") + '</span>' : '<span class="badge">' + progress.total + ' tập</span>') :
       f.type === "ngan" ? '<span class="badge">' + esc(f.duration) + '</span>' : "";
     return '<div class="poster"' + bg + '><div class="p-badges"><span class="badge">' + esc(f.quality) + '</span>' + right + '</div>' +
       '<span class="seal" aria-hidden="true">' + genreChar(f.genres[0]) + '</span></div>';
@@ -155,9 +171,10 @@
   }
 
   function catalogHTML(v) {
-    var list = query(v);
+    var sort = v.sort || (v.trending ? "xem" : "moi");
+    var list = query(Object.assign({}, v, { sort: sort }));
     var years = films.map(function (f) { return f.year; }).filter(function (y, i, a) { return a.indexOf(y) === i; }).sort().reverse();
-    var title = v.q ? "Kết quả cho “" + v.q + "”" : v.genre || (v.type ? TYPE_LABEL[v.type] : v.airing ? "Phim bộ đang chiếu" : "Kho phim");
+    var title = v.q ? "Kết quả cho “" + v.q + "”" : v.genre || (v.completed ? "Phim bộ trọn bộ" : v.type ? TYPE_LABEL[v.type] : v.airing ? "Phim bộ đang chiếu" : "Kho phim");
     function opt(val, label, cur) { return '<option value="' + val + '"' + (String(cur || "") === String(val) ? " selected" : "") + '>' + esc(label) + '</option>'; }
     return '<section>' + headHTML(title, v.genre ? genreChar(v.genre) : (isFuture() ? "ALL" : "库"), '<span class="count">' + list.length + ' phim</span>') +
       '<div class="filters" role="group" aria-label="Bộ lọc kho phim">' +
@@ -169,7 +186,7 @@
       '<div class="selects">' +
       '<label for="f-type">Loại phim<select id="f-type">' + opt("", "Tất cả", v.type) + opt("bo", "Phim bộ", v.type) + opt("le", "Phim lẻ", v.type) + opt("ngan", "Phim ngắn", v.type) + '</select></label>' +
       '<label for="f-year">Năm<select id="f-year">' + opt("", "Tất cả", v.year) + years.map(function (y) { return opt(y, y, v.year); }).join("") + '</select></label>' +
-      '<label for="f-sort">Sắp xếp<select id="f-sort">' + Object.keys(SORTS).map(function (k) { return opt(k, SORTS[k], v.sort || "moi"); }).join("") + '</select></label>' +
+      '<label for="f-sort">Sắp xếp<select id="f-sort">' + Object.keys(SORTS).map(function (k) { return opt(k, SORTS[k], sort); }).join("") + '</select></label>' +
       '</div></div></section>' +
       '<section>' + (list.length ? '<div class="grid">' + list.map(cardHTML).join("") + '</div>' :
         '<p class="empty">Chưa có phim phù hợp. Bỏ bớt bộ lọc hoặc thử từ khoá khác.</p>') + '</section>';
@@ -219,12 +236,12 @@
       ["Thời lượng", f.duration], ["Chất lượng", f.quality], ["Độ tuổi", f.age], ["Lượt xem", fmtViews(f.views)]];
     var eps = "";
     if (f.type === "bo") {
-      var aired = f.aired || f.episodes;
-      eps = '<div class="ep-head">Danh sách tập</div><div class="episodes" role="group" aria-label="Chọn tập">' +
-        Array.from({ length: f.episodes }, function (_, i) {
-          var n = i + 1, off = n > aired;
-          return '<button type="button" data-ep="' + n + '" aria-pressed="' + (n === 1) + '"' + (off ? ' disabled title="Sắp chiếu"' : "") + '>Tập ' + String(n).padStart(2, "0") + '</button>';
-        }).join("") + '</div>';
+      var progress = seriesProgress(f);
+      eps = progress ? '<div class="ep-head">Danh sách tập</div><div class="episodes" role="group" aria-label="Chọn tập">' +
+        Array.from({ length: progress.total }, function (_, i) {
+          var n = i + 1, off = n > progress.aired;
+          return '<button type="button" data-ep="' + n + '" aria-pressed="' + (n === 1 && !off) + '"' + (off ? ' disabled title="Sắp chiếu"' : "") + '>Tập ' + String(n).padStart(2, "0") + '</button>';
+        }).join("") + '</div>' : '<p class="ep-head">Chưa có thông tin số tập hợp lệ.</p>';
     }
     var art = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="960x540"';
     $("#film-content").innerHTML =
@@ -239,6 +256,15 @@
   }
   function play() {
     var p = $("#player"), f = current; if (!p || !f) return;
+    var progress = seriesProgress(f);
+    if (f.type === "bo" && (!progress || progress.aired === 0)) {
+      if (!p.querySelector(".note")) {
+        var pending = document.createElement("p"); pending.className = "note";
+        pending.textContent = progress ? "Chưa có tập phát hành." : "Chưa có thông tin số tập hợp lệ.";
+        p.appendChild(pending);
+      }
+      return;
+    }
     var ep = $(".episodes [aria-pressed='true']");
     var src = Array.isArray(f.video) ? f.video[(ep ? +ep.dataset.ep : 1) - 1] : f.video;
     if (src) {
@@ -258,9 +284,17 @@
   document.addEventListener("click", function (e) {
     var t = e.target.closest("button, a"); if (!t) return;
     var d = t.dataset;
-    if (d.site) {
+    if (d.site && state.preview) {
       site = SITES.find(function (s) { return s.id === d.site; }) || site;
-      store("pv-site", site.id); applyBrand(); go({ kind: "home" }); return;
+      store("pv-site", site.id);
+      $("#q").value = "";
+      if (state.preview) {
+        var previewUrl = new URL(location.href);
+        previewUrl.searchParams.set("site", site.id);
+        previewUrl.hash = "";
+        history.replaceState(history.state, "", previewUrl.href);
+      }
+      applyBrand(); go({ kind: "home" }); return;
     }
     if (d.film) { openFilm(d.film, !!d.play); return; }
     if (d.nav) {
@@ -283,7 +317,7 @@
     if (t.id === "close-film") closeFilm();
   });
   document.addEventListener("change", function (e) {
-    if (e.target.id === "f-type") catalog({ type: e.target.value, airing: null });
+    if (e.target.id === "f-type") catalog({ type: e.target.value, airing: null, completed: null });
     if (e.target.id === "f-year") catalog({ year: e.target.value });
     if (e.target.id === "f-sort") catalog({ sort: e.target.value });
   });

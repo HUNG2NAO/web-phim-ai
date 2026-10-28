@@ -268,7 +268,9 @@ dialog.film::backdrop { background: rgb(6 5 4 / .8); }
   .nav { order: 3; width: 100%; overflow-x: auto; }
   .search { flex: 1 1 150px; }
   .logo .name { font-size: 19px; }
-  .hero-art::after { background: linear-gradient(0deg, var(--bg) 10%, color-mix(in srgb, var(--bg) 60%, transparent) 55%, color-mix(in srgb, var(--bg) 20%, transparent) 100%); }
+  .hero-art::after { background: linear-gradient(0deg, var(--bg) 10%, color-mix(in srgb, var(--bg) 80%, transparent) 55%, color-mix(in srgb, var(--bg) 85%, transparent) 100%); }
+  .hero .kicker { color: var(--fg); }
+  .hero .kicker b { color: color-mix(in srgb, var(--accent) 80%, var(--fg)); }
   .hero .watermark { top: 26%; opacity: .1; }
   .filter-row .f-label { width: 100%; }
   .film-body { padding: 18px 16px 22px; }
