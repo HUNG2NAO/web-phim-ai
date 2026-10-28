@@ -5,14 +5,19 @@
   "use strict";
   const $=(s,root=document)=>root.querySelector(s);
   const $$=(s,root=document)=>Array.from(root.querySelectorAll(s));
-  const SITE="xuongphim";
   const ALL=Array.isArray(window.FILMS)?window.FILMS:[];
-  const FILMS=ALL.filter(f=>f.world==="tuong-lai");
-  const byId=new Map(ALL.map(f=>[f.id,f]));
+  const BRANDS=Array.isArray(window.SITES)?window.SITES:[];
   const params=new URL(window.location.href).searchParams;
   const hostname=window.location.hostname.replace(/^www\./,"");
   const preview=hostname.endsWith(".pages.dev");
-  const isPilot=(preview ? (!params.has("site")||params.get("site")===SITE) : hostname==="xuongphim.ai");
+  const brand=preview
+    ? (BRANDS.find(b=>b.id===params.get("site"))||BRANDS[0])
+    : BRANDS.find(b=>b.domain===hostname);
+  const SITE=brand?.id||"unknown";
+  const flags=window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"];
+  const isPilot=flags.includes(SITE);
+  const FILMS=ALL.filter(f=>f.world===(brand?.world||"co-trang"));
+  const byId=new Map(ALL.map(f=>[f.id,f]));
   const cfg=window.AFN_AUTH_CONFIG||{};
   const configured=cfg.enabled===true&&/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(cfg.url||"")
     &&/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||"")
@@ -23,6 +28,17 @@
   $("#home-link").href=home.href;
   $("#account-link").href=account.href;
   $("#security-link").href=account.href;
+  if(brand) {
+    document.title="Trung tâm thành viên — "+brand.name;
+    $(".brand-mark").textContent=brand.seal;
+    $(".brand>span:nth-child(2)").textContent=brand.name.toUpperCase()+".AI";
+    document.documentElement.style.setProperty("--cyan",brand.accent);
+    document.documentElement.style.setProperty("--cyan-txt",brand.onAccent);
+    $(".member-hero .eyebrow").textContent="KHÔNG GIAN "+brand.name.toUpperCase();
+    $("#pilot-notice").textContent="Bản thử nghiệm: phim hiện vẫn là nội dung mẫu, chưa có video phát. Không tạo giả tiến độ xem.";
+    $("#tab-discover h2").textContent="Khám phá phim "+(brand.world==="tuong-lai"?"viễn tưởng":"cổ trang");
+    $(".foot span:first-child").textContent=brand.name.toUpperCase()+".AI · MEMBER HUB";
+  }
   const state={user:null,profiles:[],profile:null,prefs:null,library:[],progress:[],reviews:[],inbox:[],tab:"overview",collection:"favorite",genre:"",busy:false};
   let client=null;
   function announce(message,error){
@@ -39,7 +55,7 @@
   }
   if(!isPilot){
     show("guest");
-    $("#hub-guest h1").textContent="Trung tâm thành viên đang thử nghiệm tại Xưởng Phim";
+    $("#hub-guest h1").textContent="Trung tâm thành viên đang thử nghiệm theo từng website";
     $("#hub-guest p").textContent="Bốn thương hiệu còn lại sẽ được cập nhật sau khi nghiệm thu website mẫu.";
     return;
   }
