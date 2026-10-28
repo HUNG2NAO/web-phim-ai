@@ -46,12 +46,15 @@
   }
   accountMenu.querySelector("#afn-menu-profile").href = accountURL.href;
   const memberURL = new URL("./member.html", window.location.href);
-  if (window.location.hostname.endsWith(".pages.dev") && previewBrand === "xuongphim") {
-    memberURL.searchParams.set("site","xuongphim");
+  if (window.location.hostname.endsWith(".pages.dev")) {
+    memberURL.searchParams.set("site",previewBrand||"xuongphim");
   }
   const hostBrand = window.location.hostname.replace(/^www\./,"");
-  const isXuongPilot = hostBrand === "xuongphim.ai" ||
-    (window.location.hostname.endsWith(".pages.dev") && (!previewBrand || previewBrand === "xuongphim"));
+  const activeBrand = window.location.hostname.endsWith(".pages.dev")
+    ? (window.SITES||[]).find(s=>s.id===(previewBrand||"xuongphim"))
+    : (window.SITES||[]).find(s=>s.domain===hostBrand);
+  const siteId = activeBrand?.id;
+  const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId);
   const memberLink = accountMenu.querySelector("#afn-menu-member");
   memberLink.href = memberURL.href;
   memberLink.classList.toggle("afn-auth-hidden",!isXuongPilot);
