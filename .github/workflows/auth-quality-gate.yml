@@ -6,6 +6,8 @@ on:
       - 'feature/auth-first-pilot-*'
     paths:
       - 'assets/auth.js'
+      - 'assets/account.js'
+      - 'account.html'
       - 'assets/auth.css'
       - 'assets/auth-config.js'
       - 'index.html'
@@ -32,8 +34,13 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check assets/auth.js
+          node --check assets/account.js
           node --check assets/auth-config.js
           node --check assets/app.js
           node --check assets/sites.js
-      - name: Verify auth-only logic contracts (no jsdom dependency)
+      - name: Verify auth contracts
         run: node --test tests/auth-contract.test.cjs tests/auth-account-menu.test.cjs
+      - name: Install DOM test harness
+        run: npm install --no-save --no-package-lock jsdom@26.1.0
+      - name: Simulate viewer interactions on home and account pages
+        run: node --test tests/auth-browser.test.cjs
