@@ -48,6 +48,29 @@
     storageKey:cfg.storageKey || "afn-film-auth-v1"
   }});
   var current = null;
+  // Auth owns identity and sessions; public.profiles stores the shared member profile.
+  // All operations use the user's JWT and are subject to the existing RLS policies.
+  async function syncMemberRecords(user) {
+    if (!user || !user.id) return;
+    var metadata = user.user_metadata || {};
+    var raw = String(metadata.display_name || metadata.full_name || "Thành viên").trim();
+    var name = raw.length >= 2 && raw.length <= 60 ? raw : "Thành viên";
+    var existing = await supabase.from("profiles").select("id,display_name").eq("id",user.id).maybeSingle();
+    if (existing.error) throw existing.error;
+    if (!existing.data) {
+      var created = await supabase.from("profiles").insert({id:user.id,display_name:name});
+      if (created.error && created.error.code !== "23505") throw created.error;
+    }
+    if (brand && ["xuongphim","khophim","phephim","phimhay","ghienphim"].includes(brand.id)) {
+      var found = await supabase.from("site_memberships").select("site_id")
+        .eq("user_id",user.id).eq("site_id",brand.id).maybeSingle();
+      if (found.error) throw found.error;
+      if (!found.data) {
+        var joined = await supabase.from("site_memberships").insert({user_id:user.id,site_id:brand.id});
+        if (joined.error && joined.error.code !== "23505") throw joined.error;
+      }
+    }
+  }
   function present(user) {
     if (!user) { current = null; setView("signedout"); return; }
     current = user;
@@ -77,7 +100,16 @@
   });
   var response = await supabase.auth.getUser();
   if (response.error) { setView("signedout"); signedout.querySelector("p").textContent = "Chưa thể xác nhận phiên đăng nhập. Hãy về trang chủ và thử lại."; }
-  else present(response.data && response.data.user);
+  else {
+    var user = response.data && response.data.user;
+    present(user);
+    if (user) {
+      try { await syncMemberRecords(user); }
+      catch (error) {
+        showStatus("Hồ sơ hiển thị bình thường nhưng chưa thể đồng bộ dữ liệu thành viên. Vui lòng tải lại trang.",true);
+      }
+    }
+  }
   document.getElementById("afn-profile-form").addEventListener("submit",async function(event) {
     event.preventDefault();
     if (!current) return;
@@ -93,7 +125,12 @@
       var updated = await supabase.auth.updateUser({data:{display_name:name}});
       if (updated.error) throw updated.error;
       present(updated.data.user);
-      showStatus("Đã cập nhật tên hiển thị.",false);
+      var synced = await supabase.from("profiles").upsert({
+        id:current.id,display_name:name,updated_at:new Date().toISOString()
+      },{onConflict:"id"});
+      if (synced.error) {
+        showStatus("Tên hiển thị đã đổi nhưng chưa đồng bộ vào hồ sơ chung. Vui lòng nhấn Lưu thay đổi lần nữa.",true);
+      } else showStatus("Đã cập nhật tên hiển thị.",false);
     } catch(e) {
       showStatus("Không thể lưu tên hiển thị. Vui lòng thử lại.",true);
     } finally { btn.disabled = false; }
