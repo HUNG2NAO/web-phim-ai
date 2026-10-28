@@ -26,6 +26,20 @@
   trigger.textContent = "Đăng nhập";
   trigger.setAttribute("aria-haspopup", "dialog");
   slot.appendChild(trigger);
+  var accountMenu = document.createElement("div");
+  accountMenu.className = "afn-account-menu afn-auth-hidden";
+  accountMenu.id = "afn-account-menu";
+  accountMenu.innerHTML = [
+    '<div class="afn-menu-identity">',
+      '<strong id="afn-menu-name"></strong>',
+      '<span id="afn-menu-email"></span>',
+    '</div>',
+    '<button type="button" id="afn-menu-profile">Hồ sơ cá nhân</button>',
+    '<button type="button" id="afn-menu-signout">Đăng xuất</button>'
+  ].join("");
+  accountMenu.setAttribute("aria-label", "Tùy chọn tài khoản");
+  slot.appendChild(accountMenu);
+  trigger.setAttribute("aria-expanded", "false");
   var header = document.querySelector(".site-header .wrap");
   if (!header) return;
   header.appendChild(slot);
@@ -55,8 +69,7 @@
       '<div class="afn-auth-profile afn-auth-hidden" id="afn-profile">',
         '<div><div class="afn-auth-hint">Đang đăng nhập</div>',
         '<div class="afn-auth-profile-name" id="afn-profile-name"></div></div>',
-        '<button type="button" class="afn-auth-primary" id="afn-profile-continue">Quay lại website</button>',
-        '<button type="button" class="afn-auth-google" id="afn-edit">Đổi tên hiển thị</button>',
+        '<button type="button" class="afn-auth-primary" id="afn-edit">Đổi tên hiển thị</button>',
         '<button type="button" class="afn-auth-google" id="afn-signout">Đăng xuất website này</button>',
       '</div>',
       '<section class="afn-auth-success afn-auth-hidden" id="afn-reset-success" role="status" aria-live="polite">',
@@ -110,6 +123,20 @@
   // Keep the reset-password form above the normal account view until the user finishes.
   var recovering = new URL(window.location.href).searchParams.get("auth") === "recovery";
 
+  function closeAccountMenu() {
+    accountMenu.classList.add("afn-auth-hidden");
+    trigger.setAttribute("aria-expanded", "false");
+  }
+  function openAccountMenu() {
+    if (!currentUser) return;
+    var meta = currentUser.user_metadata || {};
+    var display = meta.display_name || meta.full_name || "Thành viên";
+    accountMenu.querySelector("#afn-menu-name").textContent = display;
+    accountMenu.querySelector("#afn-menu-email").textContent = currentUser.email || "";
+    accountMenu.classList.remove("afn-auth-hidden");
+    trigger.setAttribute("aria-expanded", "true");
+    accountMenu.querySelector("#afn-menu-profile").focus();
+  }
   function message(text, isError) {
     msg.textContent = text || "";
     msg.dataset.kind = isError ? "error" : "info";
@@ -168,6 +195,8 @@
       || user.email || "Thành viên";
     nameEl.value = (user.user_metadata && user.user_metadata.display_name) || "";
     trigger.textContent = "Tài khoản";
+    trigger.setAttribute("aria-haspopup", "true");
+    trigger.setAttribute("aria-controls", "afn-account-menu");
   }
   async function refreshUser() {
     if (!client) return;
@@ -176,6 +205,7 @@
       currentUser = result.data && result.data.user;
       if (currentUser) {
         trigger.textContent = "Tài khoản";
+        trigger.setAttribute("aria-controls", "afn-account-menu");
         if (postResetSuccess) showResetSuccess();
         else if (recovering || passwordUpdatePending) {
           if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
@@ -183,6 +213,8 @@
         } else showProfile(currentUser);
       } else {
         trigger.textContent = "Đăng nhập";
+        trigger.removeAttribute("aria-controls");
+        closeAccountMenu();
         if (recovering) {
           // A recovery URL without an established session must not display a working reset form.
           setMode("login");
@@ -210,7 +242,28 @@
     else if (currentUser) showProfile(currentUser);
     else setMode("login");
   }
-  trigger.addEventListener("click", reveal);
+  trigger.addEventListener("click", function () {
+    if (ready && currentUser && !recovering && !postResetSuccess) {
+      if (accountMenu.classList.contains("afn-auth-hidden")) openAccountMenu();
+      else closeAccountMenu();
+    } else {
+      closeAccountMenu();
+      reveal();
+    }
+  });
+  accountMenu.querySelector("#afn-menu-profile").addEventListener("click", function () {
+    closeAccountMenu();
+    reveal();
+  });
+  document.addEventListener("pointerdown", function (event) {
+    if (!slot.contains(event.target)) closeAccountMenu();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !accountMenu.classList.contains("afn-auth-hidden")) {
+      closeAccountMenu();
+      trigger.focus();
+    }
+  });
   dialog.querySelector(".afn-auth-close").addEventListener("click", function () { dialog.close(); });
   dialog.addEventListener("click", function (event) {
     if (event.target === dialog) dialog.close();
@@ -220,11 +273,7 @@
     if (b && !busy) setMode(b.dataset.mode);
   });
   forgot.addEventListener("click", function () { if (!busy) setMode("recover"); });
-  dialog.querySelector("#afn-profile-continue").addEventListener("click", function () {
-    message("", false);
-    dialog.close();
-  });
-  dialog.querySelector("#afn-success-continue").addEventListener("click", function () {
+   dialog.querySelector("#afn-success-continue").addEventListener("click", function () {
     postResetSuccess = false;
     message("", false);
     dialog.close();
@@ -236,14 +285,28 @@
     else setMode("login");
   });
   dialog.querySelector("#afn-edit").addEventListener("click", function () { if (!busy) setMode("edit"); });
-  dialog.querySelector("#afn-signout").addEventListener("click", async function () {
+  async function signOutSite() {
     if (!client || busy) return;
+    closeAccountMenu();
     setBusy(true);
-    var result = await client.auth.signOut({scope:"local"});
-    setBusy(false);
-    if (result.error) message("Không thể đăng xuất: " + result.error.message, true);
-    else { currentUser = null; trigger.textContent = "Đăng nhập"; setMode("login"); message("Đã đăng xuất tại website này.", false); }
-  });
+    try {
+      var result = await client.auth.signOut({scope:"local"});
+      if (result.error) throw result.error;
+      currentUser = null;
+      trigger.textContent = "Đăng nhập";
+      trigger.removeAttribute("aria-controls");
+      setMode("login");
+      if (dialog.open) message("Đã đăng xuất tại website này.", false);
+    } catch (error) {
+      if (dialog.open) message("Không thể đăng xuất. Vui lòng thử lại.", true);
+      else {
+        reveal();
+        message("Không thể đăng xuất. Vui lòng thử lại.", true);
+      }
+    } finally { setBusy(false); }
+  }
+  dialog.querySelector("#afn-signout").addEventListener("click", signOutSite);
+  accountMenu.querySelector("#afn-menu-signout").addEventListener("click", signOutSite);
   google.addEventListener("click", async function () {
     if (!client || busy) return;
     setBusy(true);
@@ -309,7 +372,13 @@
         showResetSuccess();
       }
       else if (mode === "edit") { await refreshUser(); message("Tên hiển thị đã được cập nhật.", false); }
-      else { await refreshUser(); message("Đăng nhập thành công.", false); }
+      else if (mode === "login") {
+        await refreshUser();
+        if (dialog.open) dialog.close();
+      } else {
+        await refreshUser();
+        message("Đăng nhập thành công.", false);
+      }
     } catch (e) {
       passwordUpdatePending = false;
       message(friendlyAuthError(e, mode), true);
