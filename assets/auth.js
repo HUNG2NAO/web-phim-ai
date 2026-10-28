@@ -37,7 +37,7 @@
     '<div class="afn-auth-panel">',
       '<div class="afn-auth-header"><h2 id="afn-auth-title">Tài khoản thành viên</h2>',
       '<button class="afn-auth-close" type="button" aria-label="Đóng">×</button></div>',
-      '<p class="afn-auth-hint">Một tài khoản chung cho 5 website. Mỗi website có phiên đăng nhập độc lập.</p>',
+      '<p class="afn-auth-hint">Đăng nhập để quản lý tài khoản thành viên của bạn.</p>',
       '<div class="afn-auth-tabs" role="tablist" aria-label="Đăng nhập hoặc đăng ký">',
       '<button class="afn-auth-tab" type="button" role="tab" data-mode="login" aria-selected="true">Đăng nhập</button>',
       '<button class="afn-auth-tab" type="button" role="tab" data-mode="signup" aria-selected="false">Đăng ký</button></div>',
@@ -95,6 +95,9 @@
   var mode = "login";
   var busy = false;
   var currentUser = null;
+  // Recovery links can create a valid session before PASSWORD_RECOVERY is dispatched.
+  // Keep the reset-password form above the normal account view until the user finishes.
+  var recovering = new URL(window.location.href).searchParams.get("auth") === "recovery";
 
   function message(text, isError) {
     msg.textContent = text || "";
@@ -146,8 +149,20 @@
     try {
       var result = await client.auth.getUser();
       currentUser = result.data && result.data.user;
-      if (currentUser) showProfile(currentUser);
-      else { trigger.textContent = "Đăng nhập"; setMode("login"); }
+      if (currentUser) {
+        trigger.textContent = "Tài khoản";
+        if (recovering) {
+          if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
+          if (mode !== "update") setMode("update");
+        } else showProfile(currentUser);
+      } else {
+        trigger.textContent = "Đăng nhập";
+        if (recovering) {
+          // A recovery URL without an established session must not display a working reset form.
+          setMode("login");
+          message("Liên kết khôi phục chưa được xác thực hoặc đã hết hạn. Hãy yêu cầu liên kết mới.", true);
+        } else setMode("login");
+      }
     } catch (e) {
       trigger.textContent = "Đăng nhập";
       message("Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.", true);
@@ -164,7 +179,8 @@
       google.classList.add("afn-auth-hidden");
       forgot.classList.add("afn-auth-hidden");
       message("Chức năng thành viên đang được cấu hình trên môi trường thử nghiệm. Chưa thể đăng nhập.", false);
-    } else if (currentUser) showProfile(currentUser);
+    } else if (recovering && currentUser) setMode("update");
+    else if (currentUser) showProfile(currentUser);
     else setMode("login");
   }
   trigger.addEventListener("click", reveal);
@@ -237,7 +253,14 @@
       resetPasswords();
       if (mode === "recover") message("Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.", false);
       else if (mode === "signup" && !result.data.session) message("Kiểm tra email để xác minh tài khoản trước khi đăng nhập.", false);
-      else if (mode === "update") { await refreshUser(); message("Mật khẩu đã được cập nhật.", false); }
+      else if (mode === "update") {
+        recovering = false;
+        var cleanURL = new URL(window.location.href);
+        cleanURL.searchParams.delete("auth");
+        window.history.replaceState(window.history.state, "", cleanURL.href);
+        await refreshUser();
+        message("Mật khẩu đã được cập nhật. Bạn có thể sử dụng mật khẩu mới để đăng nhập.", false);
+      }
       else if (mode === "edit") { await refreshUser(); message("Tên hiển thị đã được cập nhật.", false); }
       else { await refreshUser(); message("Đăng nhập thành công.", false); }
     } catch (e) { message(friendlyAuthError(e, mode), true); }
@@ -247,18 +270,19 @@
   if (client) {
     client.auth.onAuthStateChange(function (event) {
       if (event === "PASSWORD_RECOVERY") {
-        queueMicrotask(function () { reveal(); setMode("update"); });
+        recovering = true;
+        queueMicrotask(function () { refreshUser(); });
       } else if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") {
         queueMicrotask(function () { refreshUser(); });
       }
     });
     refreshUser().then(function () {
       var url = new URL(location.href);
-      if (url.searchParams.get("auth") === "recovery") { reveal(); setMode("update"); }
-      else if (url.searchParams.get("auth") === "callback" || url.searchParams.get("auth") === "confirm") {
+      if (url.searchParams.get("auth") === "callback" || url.searchParams.get("auth") === "confirm") {
         url.searchParams.delete("auth");
         window.history.replaceState(window.history.state, "", url.href);
       }
+      // ?auth=recovery is intentionally kept until a password was updated.
     });
   }
 })();
