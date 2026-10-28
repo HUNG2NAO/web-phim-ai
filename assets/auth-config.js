@@ -3,7 +3,7 @@
    This file must stay disabled until a dedicated AI Film Network Supabase project exists. */
 window.AFN_AUTH_CONFIG = {
   enabled: false,
-  url: "",
-  publishableKey: "",
+  url: "https://jurvphonehknrxjpowoe.supabase.co",
+  publishableKey: "sb_publishable_RvkZO52tu4ywhjaQzNDs4Q_VFvmJFsu",
   storageKey: "afn-film-auth-v1"
 };
