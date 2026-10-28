@@ -35,5 +35,5 @@ jobs:
           node --check assets/auth-config.js
           node --check assets/app.js
           node --check assets/sites.js
-      - name: Verify auth logic contracts
-        run: node --test tests/*.cjs
+      - name: Verify auth-only logic contracts (no jsdom dependency)
+        run: node --test tests/auth-contract.test.cjs tests/auth-account-menu.test.cjs
