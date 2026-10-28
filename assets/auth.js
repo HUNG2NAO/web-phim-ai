@@ -55,9 +55,17 @@
       '<div class="afn-auth-profile afn-auth-hidden" id="afn-profile">',
         '<div><div class="afn-auth-hint">Đang đăng nhập</div>',
         '<div class="afn-auth-profile-name" id="afn-profile-name"></div></div>',
-        '<button type="button" class="afn-auth-primary" id="afn-edit">Đổi tên hiển thị</button>',
+        '<button type="button" class="afn-auth-primary" id="afn-profile-continue">Tiếp tục xem phim</button>',
+        '<button type="button" class="afn-auth-google" id="afn-edit">Đổi tên hiển thị</button>',
         '<button type="button" class="afn-auth-google" id="afn-signout">Đăng xuất website này</button>',
       '</div>',
+      '<section class="afn-auth-success afn-auth-hidden" id="afn-reset-success" role="status" aria-live="polite">',
+        '<span class="afn-auth-success-icon" aria-hidden="true">✓</span>',
+        '<h3>Đặt lại mật khẩu thành công</h3>',
+        '<p>Mật khẩu mới đã được lưu. Tài khoản của bạn đã sẵn sàng sử dụng.</p>',
+        '<button type="button" class="afn-auth-primary" id="afn-success-continue">Tiếp tục xem phim</button>',
+        '<button type="button" class="afn-auth-google" id="afn-success-account">Tài khoản của tôi</button>',
+      '</section>',
       '<p class="afn-auth-message afn-auth-hidden" id="afn-auth-message" role="status" aria-live="polite"></p>',
       '<p class="afn-auth-hint">Bạn có thể xem phim miễn phí mà không cần đăng nhập.</p>',
     '</div>'
@@ -91,10 +99,13 @@
   var passwordWrap = dialog.querySelector(".afn-password-wrap");
   var profile = dialog.querySelector("#afn-profile");
   var profileName = dialog.querySelector("#afn-profile-name");
+  var successPanel = dialog.querySelector("#afn-reset-success");
   var msg = dialog.querySelector("#afn-auth-message");
   var mode = "login";
   var busy = false;
   var currentUser = null;
+  var postResetSuccess = false;
+  var passwordUpdatePending = false;
   // Recovery links can create a valid session before PASSWORD_RECOVERY is dispatched.
   // Keep the reset-password form above the normal account view until the user finishes.
   var recovering = new URL(window.location.href).searchParams.get("auth") === "recovery";
@@ -130,9 +141,23 @@
       ({login:"Đăng nhập",signup:"Đăng ký",recover:"Quên mật khẩu",update:"Đặt lại mật khẩu",edit:"Đổi tên hiển thị"})[mode];
     form.classList.remove("afn-auth-hidden");
     profile.classList.add("afn-auth-hidden");
+    successPanel.classList.add("afn-auth-hidden");
+  }
+  function showResetSuccess() {
+    if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
+    form.classList.add("afn-auth-hidden");
+    tabs.classList.add("afn-auth-hidden");
+    google.classList.add("afn-auth-hidden");
+    forgot.classList.add("afn-auth-hidden");
+    profile.classList.add("afn-auth-hidden");
+    successPanel.classList.remove("afn-auth-hidden");
+    dialog.querySelector("#afn-auth-title").textContent = "Hoàn tất khôi phục";
+    trigger.textContent = "Tài khoản";
+    message("", false);
   }
   function showProfile(user) {
     currentUser = user;
+    successPanel.classList.add("afn-auth-hidden");
     form.classList.add("afn-auth-hidden");
     tabs.classList.add("afn-auth-hidden");
     google.classList.add("afn-auth-hidden");
@@ -151,7 +176,8 @@
       currentUser = result.data && result.data.user;
       if (currentUser) {
         trigger.textContent = "Tài khoản";
-        if (recovering) {
+        if (postResetSuccess) showResetSuccess();
+        else if (recovering || passwordUpdatePending) {
           if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
           if (mode !== "update") setMode("update");
         } else showProfile(currentUser);
@@ -179,7 +205,8 @@
       google.classList.add("afn-auth-hidden");
       forgot.classList.add("afn-auth-hidden");
       message("Chức năng thành viên đang được cấu hình trên môi trường thử nghiệm. Chưa thể đăng nhập.", false);
-    } else if (recovering && currentUser) setMode("update");
+    } else if (postResetSuccess) showResetSuccess();
+    else if (recovering && currentUser) setMode("update");
     else if (currentUser) showProfile(currentUser);
     else setMode("login");
   }
@@ -193,6 +220,21 @@
     if (b && !busy) setMode(b.dataset.mode);
   });
   forgot.addEventListener("click", function () { if (!busy) setMode("recover"); });
+  dialog.querySelector("#afn-profile-continue").addEventListener("click", function () {
+    message("", false);
+    dialog.close();
+  });
+  dialog.querySelector("#afn-success-continue").addEventListener("click", function () {
+    postResetSuccess = false;
+    message("", false);
+    dialog.close();
+  });
+  dialog.querySelector("#afn-success-account").addEventListener("click", function () {
+    postResetSuccess = false;
+    message("", false);
+    if (currentUser) showProfile(currentUser);
+    else setMode("login");
+  });
   dialog.querySelector("#afn-edit").addEventListener("click", function () { if (!busy) setMode("edit"); });
   dialog.querySelector("#afn-signout").addEventListener("click", async function () {
     if (!client || busy) return;
@@ -247,24 +289,31 @@
         options:{emailRedirectTo:callbackURL("confirm"),data:{display_name:displayName}}
       });
       else if (mode === "recover") result = await client.auth.resetPasswordForEmail(email,{redirectTo:callbackURL("recovery")});
-      else if (mode === "update") result = await client.auth.updateUser({password:password});
+      else if (mode === "update") {
+        passwordUpdatePending = true;
+        result = await client.auth.updateUser({password:password});
+      }
       else if (mode === "edit") result = await client.auth.updateUser({data:{display_name:displayName}});
       if (result.error) throw result.error;
       resetPasswords();
       if (mode === "recover") message("Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.", false);
       else if (mode === "signup" && !result.data.session) message("Kiểm tra email để xác minh tài khoản trước khi đăng nhập.", false);
       else if (mode === "update") {
+        postResetSuccess = true;
         recovering = false;
+        passwordUpdatePending = false;
         var cleanURL = new URL(window.location.href);
         cleanURL.searchParams.delete("auth");
         window.history.replaceState(window.history.state, "", cleanURL.href);
         await refreshUser();
-        message("Mật khẩu đã được cập nhật. Bạn có thể sử dụng mật khẩu mới để đăng nhập.", false);
+        showResetSuccess();
       }
       else if (mode === "edit") { await refreshUser(); message("Tên hiển thị đã được cập nhật.", false); }
       else { await refreshUser(); message("Đăng nhập thành công.", false); }
-    } catch (e) { message(friendlyAuthError(e, mode), true); }
-    finally { setBusy(false); }
+    } catch (e) {
+      passwordUpdatePending = false;
+      message(friendlyAuthError(e, mode), true);
+    } finally { setBusy(false); }
   });
 
   if (client) {
