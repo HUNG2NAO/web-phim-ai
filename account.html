@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex,follow">
+  <title>Hồ sơ cá nhân — Phim AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Chakra+Petch:wght@600;700&display=swap">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/account.css">
+</head>
+<body>
+  <header class="afn-profile-header">
+    <div class="afn-profile-header-inner">
+      <a class="afn-profile-brand" id="afn-brand-home" href="./" aria-label="Về trang chủ">
+        <span id="afn-brand-seal" class="afn-profile-seal">XP</span>
+        <span id="afn-brand-name">XƯỞNG PHIM</span><span class="afn-profile-ai">.AI</span>
+      </a>
+      <a class="afn-back-link" id="afn-back-top" href="./">← Quay lại xem phim</a>
+    </div>
+  </header>
+
+  <main class="afn-account-main">
+    <div class="afn-account-container">
+      <div class="afn-page-lead">
+        <p class="afn-eyebrow">KHU VỰC THÀNH VIÊN</p>
+        <h1>Hồ sơ cá nhân</h1>
+        <p>Thông tin tài khoản của bạn. Xem phim vẫn miễn phí mà không cần đăng nhập.</p>
+      </div>
+
+      <section class="afn-account-panel" id="afn-account-loading" role="status" aria-live="polite">
+        <p>Đang kiểm tra tài khoản…</p>
+      </section>
+
+      <section class="afn-account-panel" id="afn-account-signedout" hidden>
+        <h2>Bạn chưa đăng nhập</h2>
+        <p>Trở về trang chủ và chọn Đăng nhập để truy cập tài khoản.</p>
+        <a class="afn-action-primary" id="afn-signin-home" href="./">Về trang chủ để đăng nhập</a>
+      </section>
+
+      <section class="afn-account-panel" id="afn-account-signedin" hidden>
+        <div class="afn-member-heading">
+          <div class="afn-member-avatar" id="afn-avatar" aria-hidden="true">T</div>
+          <div>
+            <p class="afn-eyebrow">THÀNH VIÊN</p>
+            <h2 id="afn-profile-display">Thành viên</h2>
+            <p id="afn-profile-email"></p>
+          </div>
+          <span class="afn-verified" id="afn-verified">Email đã xác minh</span>
+        </div>
+
+        <div class="afn-detail-row">
+          <span>Ngày tham gia</span>
+          <strong id="afn-member-since">—</strong>
+        </div>
+        <div class="afn-detail-row">
+          <span>Đăng nhập</span>
+          <strong>Email / Google</strong>
+        </div>
+
+        <form id="afn-profile-form" class="afn-profile-edit">
+          <label for="afn-edit-display">Tên hiển thị</label>
+          <p>Đây là tên sẽ xuất hiện trong tài khoản và các tính năng cộng đồng sau này.</p>
+          <input id="afn-edit-display" name="displayName" type="text" minlength="2" maxlength="60" autocomplete="nickname" required>
+          <button class="afn-action-primary" id="afn-save-profile" type="submit">Lưu thay đổi</button>
+        </form>
+
+        <p id="afn-profile-status" class="afn-profile-status" aria-live="polite" role="status" hidden></p>
+        <div class="afn-profile-actions">
+          <a id="afn-profile-back" class="afn-action-secondary" href="./">← Quay lại xem phim</a>
+          <button id="afn-page-signout" class="afn-action-quiet" type="button">Đăng xuất website này</button>
+        </div>
+      </section>
+      <section class="afn-future-features" aria-label="Tính năng dành cho thành viên sắp ra mắt">
+        <h2>Trải nghiệm dành cho thành viên</h2>
+        <div class="afn-feature-grid">
+          <div><strong>Danh sách phim yêu thích</strong><p>Chúng tôi đang phát triển, chưa khả dụng trong bản demo.</p></div>
+          <div><strong>Tiếp tục xem</strong><p>Chúng tôi sẽ kích hoạt khi có những bộ phim đầu tiên.</p></div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="assets/sites.js"></script>
+  <script src="assets/auth-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
+  <script src="assets/account.js"></script>
+</body>
+</html>
