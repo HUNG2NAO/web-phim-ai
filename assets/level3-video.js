@@ -5,7 +5,12 @@
   const cfg=window.AFN_AUTH_CONFIG||{};
   const host=window.location.hostname.replace(/^www\./,"");
   const params=new URLSearchParams(window.location.search);
-  const pilot=host==="xuongphim.ai"||(host.endsWith(".pages.dev")&&(!params.has("site")||params.get("site")==="xuongphim"));
+  const brands=window.SITES||[];
+  const site=host.endsWith(".pages.dev") ?
+    (brands.find(x=>x.id===params.get("site"))||brands[0]) :
+    brands.find(x=>x.domain===host);
+  const SITE=site?.id||"unknown";
+  const pilot=(window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(SITE);
   if(!pilot||!cfg.enabled||!window.supabase||!/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||""))return;
   const client=window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
     persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:"pkce",
@@ -24,9 +29,9 @@
         const a=await client.auth.getUser();
         if(a.error||!a.data?.user)return;
         user=a.data.user;
-        let profileId;try{profileId=localStorage.getItem("afn-active-viewer:"+user.id+":xuongphim");}catch(_){return;}
+        let profileId;try{profileId=localStorage.getItem("afn-active-viewer:"+user.id+":"+SITE");}catch(_){return;}
         if(!profileId||!/^[a-f0-9-]{36}$/i.test(profileId))return;
-        const p=await client.from("viewer_profiles").select("id").eq("id",profileId).eq("user_id",user.id).eq("site_id","xuongphim").maybeSingle();
+        const p=await client.from("viewer_profiles").select("id").eq("id",profileId).eq("user_id",user.id).eq("site_id",SITE).maybeSingle();
         if(p.error||!p.data)return;
         const pref=await client.from("viewer_preferences").select("watch_tracking_enabled")
           .eq("viewer_profile_id",profileId).eq("user_id",user.id).maybeSingle();
@@ -52,7 +57,7 @@
       busy=true;lastSaved=now;
       try{
         await client.from("watch_progress").upsert({
-          viewer_profile_id:viewer,user_id:user.id,site_id:"xuongphim",film_id:filmId,episode:episode,
+          viewer_profile_id:viewer,user_id:user.id,site_id:SITE,film_id:filmId,episode:episode,
           position_seconds:Math.floor(position),duration_seconds:Math.floor(duration),
           watched_at:new Date().toISOString()
         },{onConflict:"viewer_profile_id,film_id,episode"});
