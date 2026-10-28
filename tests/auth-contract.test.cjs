@@ -9,9 +9,10 @@ const auth = read("assets/auth.js");
 const cfg = read("assets/auth-config.js");
 const sql = read("db/auth_v1.sql");
 
-test("auth is opt-in and cannot accidentally connect to HUNGCREATOR", () => {
-  assert.match(cfg, /enabled:\s*false/);
-  assert.match(cfg, /publishableKey:\s*""/);
+test("auth is only active on preview and cannot connect to HUNGCREATOR", () => {
+  assert.match(cfg, /enabled:\s*true/);
+  assert.match(cfg, /googleEnabled:\s*false/);
+  assert.match(cfg, /publishableKey:\s*"sb_publishable_[A-Za-z0-9_-]+"/);
   assert.doesNotMatch(cfg, /noiuubqnrklsfbehorbe/); // Existing Supabase project ref.
 });
 test("same shared UI is mounted once on every site", () => {
