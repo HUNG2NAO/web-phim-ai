@@ -201,7 +201,15 @@
         make("span","",p.id===state.profile.id?"Đang sử dụng":"Hồ sơ riêng"));
       const btn=make("button","",p.id===state.profile.id?"Đang chọn":"Chuyển sang hồ sơ này");
       btn.type="button";btn.disabled=p.id===state.profile.id;btn.dataset.pickProfile=p.id;
-      card.append(btn);root.append(card);
+      card.append(btn);
+      if(p.id!==state.profile.id){
+        const remove=make("button","remove-profile","Xóa hồ sơ này");
+        remove.type="button";
+        remove.dataset.deleteProfile=p.id;
+        remove.title="Xóa hồ sơ và toàn bộ dữ liệu xem, sở thích, danh sách đã lưu riêng của hồ sơ.";
+        card.append(remove);
+      }
+      root.append(card);
     });
     $("#new-profile-name").disabled=state.profiles.length>=5;
     $$("#new-profile-form button").forEach(b=>b.disabled=state.profiles.length>=5);
@@ -277,6 +285,19 @@
     if(collection){state.collection=collection.dataset.collectionFilter;renderLibrary();return;}
     const pick=e.target.closest("[data-pick-profile]");
     if(pick){try{await selectProfile(pick.dataset.pickProfile);}catch(err){announce(errorText(),true);}return;}
+    const remove=e.target.closest("[data-delete-profile]");
+    if(remove){
+      const id=remove.dataset.deleteProfile;
+      if(!state.profiles.some(p=>p.id===id)||id===state.profile.id||state.profiles.length<=1)return;
+      if(!window.confirm("Xóa hồ sơ xem này và toàn bộ dữ liệu riêng của hồ sơ? Thao tác không thể hoàn tác."))return;
+      remove.disabled=true;
+      try{
+        const {error}=await client.from("viewer_profiles").delete().eq("id",id).eq("user_id",state.user.id);
+        if(error)throw error;
+        await ensureProfiles();await loadSelected();announce("Đã xóa hồ sơ phụ và dữ liệu liên quan.");
+      }catch(_){remove.disabled=false;announce(errorText(),true);}
+      return;
+    }
     const act=e.target.closest("[data-film][data-action]");
     if(act){
       if(state.busy)return;
@@ -351,6 +372,25 @@
     if(!window.confirm("Xóa toàn bộ lịch sử xem của hồ sơ này? Thao tác không thể hoàn tác."))return;
     const {error}=await client.from("watch_progress").delete().eq("viewer_profile_id",state.profile.id).eq("user_id",state.user.id);
     if(error)announce(errorText(),true);else{await loadSelected();announce("Đã xóa tiến độ xem của hồ sơ.");}
+  });
+  $("#export-data").addEventListener("click",async function(){
+    this.disabled=true;
+    try{
+      const owned=["profiles","site_memberships","viewer_profiles","viewer_preferences","film_library","watch_progress","film_reviews","member_notifications"];
+      const exports={exported_at:new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:{}};
+      for(const table of owned){
+        const key=table==="profiles"?"id":"user_id";
+        exports.data[table]=await getRows(table,{[key]:state.user.id});
+      }
+      const payload=new Blob([JSON.stringify(exports,null,2)],{type:"application/json;charset=utf-8"});
+      const link=document.createElement("a");
+      const url=URL.createObjectURL(payload);
+      link.href=url;link.download="ai-film-network-my-data.json";
+      document.body.append(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      announce("Đã chuẩn bị tệp dữ liệu cá nhân trên thiết bị của bạn.");
+    }catch(_){announce("Chưa thể xuất dữ liệu. Vui lòng thử lại.",true);}
+    finally{this.disabled=false;}
   });
   initStaticSelects();
   try{
