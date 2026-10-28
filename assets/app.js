@@ -120,6 +120,7 @@
   }
 
   function heroHTML(f) {
+    var hasVideo = Array.isArray(f.video) ? f.video.some(Boolean) : !!f.video;
     var artAttr = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="1600x800"';
     return '<section class="hero" aria-label="Phim nổi bật">' +
       '<div class="hero-art"' + artAttr + '></div><div class="mist" aria-hidden="true"></div>' +
@@ -133,7 +134,7 @@
       '<div class="tags"><span class="tag age">' + esc(f.age) + '</span><span class="tag">' + esc(f.duration) + '</span>' +
       '<span class="tag">' + fmtViews(f.views) + ' lượt xem</span></div>' +
       '<div class="actions">' +
-      '<button class="btn primary" type="button" data-film="' + f.id + '" data-play="1">' + playIcon(18) + (f.type === "bo" ? "Xem tập 1" : "Xem ngay") + '</button>' +
+      '<button class="btn primary" type="button" data-film="' + f.id + '" data-play="1">' + playIcon(18) + (!hasVideo ? "Xem demo" : f.type === "bo" ? "Xem tập 1" : "Xem ngay") + '</button>' +
       '<button class="btn ghost" type="button" data-film="' + f.id + '">Thông tin phim</button>' +
       '</div></div></div></section>';
   }
@@ -271,7 +272,7 @@
       p.innerHTML = '<video controls autoplay playsinline src="' + encodeURI(src) + '"></video>';
     } else if (!p.querySelector(".note")) {
       var note = document.createElement("p"); note.className = "note";
-      note.textContent = "Phim mẫu chưa có video. Thêm link video cho phim này trong assets/films.js.";
+      note.textContent = "Phim mẫu do AI tạo, chưa có video để phát. Bạn có thể khám phá thông tin phim và giao diện demo.";
       p.appendChild(note);
     }
   }

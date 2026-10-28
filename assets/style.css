@@ -45,6 +45,9 @@ button, select, input { font: inherit; color: inherit; }
   box-shadow: inset 0 0 0 2px rgb(246 233 210 / .22);
 }
 
+.demo-notice { padding: 9px 0; color: var(--fg); background: var(--surface); border-bottom: 1px solid var(--line); font-size: 13px; }
+.demo-notice strong { letter-spacing: .06em; }
+
 /* ---------- Thanh xem thử ---------- */
 .preview-bar { background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 13px; }
 .preview-bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-block: 8px; }
