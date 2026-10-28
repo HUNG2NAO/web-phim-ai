@@ -61,8 +61,20 @@
       user.created_at ? new Intl.DateTimeFormat("vi-VN",{dateStyle:"medium"}).format(new Date(user.created_at)) : "—";
     var verified = !!user.email_confirmed_at;
     document.getElementById("afn-verified").textContent = verified ? "Email đã xác minh" : "Email chưa xác minh";
+    var providers = (user.app_metadata && user.app_metadata.providers) || [];
+    document.getElementById("afn-login-method").textContent =
+      providers.includes("google") ? "Google" : providers.includes("email") ? "Email" : "Tài khoản thành viên";
     setView("signedin");
   }
+  supabase.auth.onAuthStateChange(function(event,session) {
+    if (event === "SIGNED_OUT") queueMicrotask(function(){ present(null); });
+    if (event === "USER_UPDATED" && session && session.user) {
+      queueMicrotask(function(){ present(session.user); });
+    }
+    if (event === "SIGNED_IN" && !current && session && session.user) {
+      queueMicrotask(function(){ present(session.user); });
+    }
+  });
   var response = await supabase.auth.getUser();
   if (response.error) { setView("signedout"); signedout.querySelector("p").textContent = "Chưa thể xác nhận phiên đăng nhập. Hãy về trang chủ và thử lại."; }
   else present(response.data && response.data.user);
