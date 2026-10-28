@@ -271,7 +271,7 @@
     if (src) {
       p.innerHTML = '<video controls autoplay playsinline src="' + encodeURI(src) + '"></video>';
       // Progress is recorded only for actually playing native video, with explicit viewer consent.
-      if (site.id === "xuongphim" && typeof window.AFN_TRACK_VIDEO === "function") {
+      if ((window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
         window.AFN_TRACK_VIDEO({
           video: p.querySelector("video"), filmId: f.id,
           episode: ep ? Number(ep.dataset.ep) || 1 : 1
