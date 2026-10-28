@@ -106,7 +106,7 @@
     passEl.autocomplete = mode === "login" ? "current-password" : "new-password";
     passEl.required = mode !== "recover" && mode !== "edit";
     emailEl.required = mode !== "update" && mode !== "edit";
-    google.classList.toggle("afn-auth-hidden", !["login", "signup"].includes(mode));
+    google.classList.toggle("afn-auth-hidden", cfg.googleEnabled !== true || !["login", "signup"].includes(mode));
     forgot.classList.toggle("afn-auth-hidden", mode !== "login");
     submit.textContent = ({login:"Đăng nhập",signup:"Tạo tài khoản",recover:"Gửi email đặt lại mật khẩu",update:"Lưu mật khẩu mới",edit:"Lưu tên hiển thị"})[mode];
     dialog.querySelector("#afn-auth-title").textContent =
