@@ -9,7 +9,30 @@ const read=(file)=>fs.readFileSync(path.join(root,file),"utf8");
 const wait=()=>new Promise(resolve=>setTimeout(resolve,20));
 function fakeClient(startUser) {
   let user=startUser, subscriber=()=>{};
+  const profiles=new Map(), memberships=new Map();
   return {
+    from(table) {
+      const terms=[];
+      const query={
+        select(){return query;},
+        eq(key,value){terms.push([key,value]);return query;},
+        async maybeSingle() {
+          if (table==="profiles") return {data:profiles.get(terms.find(x=>x[0]==="id")?.[1])||null,error:null};
+          const key=terms.find(x=>x[0]==="user_id")?.[1]+":"+terms.find(x=>x[0]==="site_id")?.[1];
+          return {data:memberships.get(key)||null,error:null};
+        },
+        async insert(data) {
+          if(table==="profiles")profiles.set(data.id,data);
+          else memberships.set(data.user_id+":"+data.site_id,data);
+          return {data,error:null};
+        },
+        async upsert(data) {
+          profiles.set(data.id,data);
+          return {data,error:null};
+        }
+      };
+      return query;
+    },
     auth:{
       async getUser(){return {data:{user},error:null};},
       onAuthStateChange(callback){subscriber=callback;return {data:{subscription:{unsubscribe(){}}}};},
