@@ -9,6 +9,7 @@
  *   { trending: true }        – xem nhiều nhất
  *   { newest: true }          – mới cập nhật
  *   { airing: true }          – phim bộ đang chiếu
+ *   { completed: true }       – phim bộ đã chiếu đủ tập
  *   { type: "bo" | "le" | "ngan" }
  *   { genre: "Tu tiên" }      – theo thể loại (viết đúng như trong GENRES)
  */
@@ -73,7 +74,7 @@ window.SITES = [
     featured: "ho-ly-nui-tuyet",
     rows: [
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
-      { title: "Phim bộ trọn bộ", filter: { type: "bo" } },
+      { title: "Phim bộ trọn bộ", filter: { type: "bo", completed: true } },
       { title: "Tu tiên", filter: { genre: "Tu tiên" } },
       { title: "Huyền huyễn", filter: { genre: "Huyền huyễn" } }
     ]
