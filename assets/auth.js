@@ -34,10 +34,16 @@
       '<strong id="afn-menu-name"></strong>',
       '<span id="afn-menu-email"></span>',
     '</div>',
-    '<button type="button" id="afn-menu-profile">Hồ sơ cá nhân</button>',
+    '<a href="./account.html" id="afn-menu-profile">Hồ sơ cá nhân</a>',
     '<button type="button" id="afn-menu-signout">Đăng xuất</button>'
   ].join("");
   accountMenu.setAttribute("aria-label", "Tùy chọn tài khoản");
+  var accountURL = new URL("./account.html", window.location.href);
+  var previewBrand = new URL(window.location.href).searchParams.get("site");
+  if (window.location.hostname.endsWith(".pages.dev") && ["xuongphim","khophim","phephim","phimhay","ghienphim"].includes(previewBrand)) {
+    accountURL.searchParams.set("site", previewBrand);
+  }
+  accountMenu.querySelector("#afn-menu-profile").href = accountURL.href;
   slot.appendChild(accountMenu);
   trigger.setAttribute("aria-expanded", "false");
   var header = document.querySelector(".site-header .wrap");
@@ -66,12 +72,6 @@
       '</form>',
       '<button type="button" class="afn-auth-google" id="afn-google">Tiếp tục với Google</button>',
       '<button type="button" class="afn-auth-link" id="afn-forgot">Quên mật khẩu?</button>',
-      '<div class="afn-auth-profile afn-auth-hidden" id="afn-profile">',
-        '<div><div class="afn-auth-hint">Đang đăng nhập</div>',
-        '<div class="afn-auth-profile-name" id="afn-profile-name"></div></div>',
-        '<button type="button" class="afn-auth-primary" id="afn-edit">Đổi tên hiển thị</button>',
-        '<button type="button" class="afn-auth-google" id="afn-signout">Đăng xuất website này</button>',
-      '</div>',
       '<section class="afn-auth-success afn-auth-hidden" id="afn-reset-success" role="status" aria-live="polite">',
         '<span class="afn-auth-success-icon" aria-hidden="true">✓</span>',
         '<h3>Đặt lại mật khẩu thành công</h3>',
@@ -110,8 +110,6 @@
   var nameWrap = dialog.querySelector(".afn-name-wrap");
   var emailWrap = dialog.querySelector(".afn-email-wrap");
   var passwordWrap = dialog.querySelector(".afn-password-wrap");
-  var profile = dialog.querySelector("#afn-profile");
-  var profileName = dialog.querySelector("#afn-profile-name");
   var successPanel = dialog.querySelector("#afn-reset-success");
   var msg = dialog.querySelector("#afn-auth-message");
   var mode = "login";
@@ -155,19 +153,18 @@
     Array.prototype.forEach.call(tabs.querySelectorAll("[data-mode]"), function (b) {
       b.setAttribute("aria-selected", String(b.dataset.mode === mode));
     });
-    nameWrap.classList.toggle("afn-auth-hidden", mode !== "signup" && mode !== "edit");
-    emailWrap.classList.toggle("afn-auth-hidden", mode === "update" || mode === "edit");
-    passwordWrap.classList.toggle("afn-auth-hidden", mode === "recover" || mode === "edit");
+    nameWrap.classList.toggle("afn-auth-hidden", mode !== "signup");
+    emailWrap.classList.toggle("afn-auth-hidden", mode === "update");
+    passwordWrap.classList.toggle("afn-auth-hidden", mode === "recover");
     passEl.autocomplete = mode === "login" ? "current-password" : "new-password";
-    passEl.required = mode !== "recover" && mode !== "edit";
-    emailEl.required = mode !== "update" && mode !== "edit";
+    passEl.required = mode !== "recover";
+    emailEl.required = mode !== "update";
     google.classList.toggle("afn-auth-hidden", cfg.googleEnabled !== true || !["login", "signup"].includes(mode));
     forgot.classList.toggle("afn-auth-hidden", mode !== "login");
-    submit.textContent = ({login:"Đăng nhập",signup:"Tạo tài khoản",recover:"Gửi email đặt lại mật khẩu",update:"Lưu mật khẩu mới",edit:"Lưu tên hiển thị"})[mode];
+    submit.textContent = ({login:"Đăng nhập",signup:"Tạo tài khoản",recover:"Gửi email đặt lại mật khẩu",update:"Lưu mật khẩu mới"})[mode];
     dialog.querySelector("#afn-auth-title").textContent =
-      ({login:"Đăng nhập",signup:"Đăng ký",recover:"Quên mật khẩu",update:"Đặt lại mật khẩu",edit:"Đổi tên hiển thị"})[mode];
+      ({login:"Đăng nhập",signup:"Đăng ký",recover:"Quên mật khẩu",update:"Đặt lại mật khẩu"})[mode];
     form.classList.remove("afn-auth-hidden");
-    profile.classList.add("afn-auth-hidden");
     successPanel.classList.add("afn-auth-hidden");
   }
   function showResetSuccess() {
@@ -176,27 +173,10 @@
     tabs.classList.add("afn-auth-hidden");
     google.classList.add("afn-auth-hidden");
     forgot.classList.add("afn-auth-hidden");
-    profile.classList.add("afn-auth-hidden");
     successPanel.classList.remove("afn-auth-hidden");
     dialog.querySelector("#afn-auth-title").textContent = "Hoàn tất khôi phục";
     trigger.textContent = "Tài khoản";
     message("", false);
-  }
-  function showProfile(user) {
-    currentUser = user;
-    successPanel.classList.add("afn-auth-hidden");
-    form.classList.add("afn-auth-hidden");
-    tabs.classList.add("afn-auth-hidden");
-    google.classList.add("afn-auth-hidden");
-    forgot.classList.add("afn-auth-hidden");
-    profile.classList.remove("afn-auth-hidden");
-    dialog.querySelector("#afn-auth-title").textContent = "Tài khoản của bạn";
-    profileName.textContent = (user.user_metadata && (user.user_metadata.display_name || user.user_metadata.full_name))
-      || user.email || "Thành viên";
-    nameEl.value = (user.user_metadata && user.user_metadata.display_name) || "";
-    trigger.textContent = "Tài khoản";
-    trigger.setAttribute("aria-haspopup", "true");
-    trigger.setAttribute("aria-controls", "afn-account-menu");
   }
   async function refreshUser() {
     if (!client) return;
@@ -205,14 +185,18 @@
       currentUser = result.data && result.data.user;
       if (currentUser) {
         trigger.textContent = "Tài khoản";
+        trigger.setAttribute("aria-haspopup", "menu");
         trigger.setAttribute("aria-controls", "afn-account-menu");
         if (postResetSuccess) showResetSuccess();
         else if (recovering || passwordUpdatePending) {
           if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
           if (mode !== "update") setMode("update");
-        } else showProfile(currentUser);
+        } else if (dialog.open && mode === "login") {
+          dialog.close();
+        }
       } else {
         trigger.textContent = "Đăng nhập";
+        trigger.setAttribute("aria-haspopup", "dialog");
         trigger.removeAttribute("aria-controls");
         closeAccountMenu();
         if (recovering) {
@@ -239,7 +223,7 @@
       message("Chức năng thành viên đang được cấu hình trên môi trường thử nghiệm. Chưa thể đăng nhập.", false);
     } else if (postResetSuccess) showResetSuccess();
     else if (recovering && currentUser) setMode("update");
-    else if (currentUser) showProfile(currentUser);
+    else if (currentUser) window.location.assign(accountURL.href);
     else setMode("login");
   }
   trigger.addEventListener("click", function () {
@@ -251,10 +235,7 @@
       reveal();
     }
   });
-  accountMenu.querySelector("#afn-menu-profile").addEventListener("click", function () {
-    closeAccountMenu();
-    reveal();
-  });
+  accountMenu.querySelector("#afn-menu-profile").addEventListener("click", closeAccountMenu);
   document.addEventListener("pointerdown", function (event) {
     if (!slot.contains(event.target)) closeAccountMenu();
   });
@@ -281,10 +262,9 @@
   dialog.querySelector("#afn-success-account").addEventListener("click", function () {
     postResetSuccess = false;
     message("", false);
-    if (currentUser) showProfile(currentUser);
-    else setMode("login");
+    dialog.close();
+    window.location.assign(accountURL.href);
   });
-  dialog.querySelector("#afn-edit").addEventListener("click", function () { if (!busy) setMode("edit"); });
   async function signOutSite() {
     if (!client || busy) return;
     closeAccountMenu();
@@ -305,7 +285,6 @@
       }
     } finally { setBusy(false); }
   }
-  dialog.querySelector("#afn-signout").addEventListener("click", signOutSite);
   accountMenu.querySelector("#afn-menu-signout").addEventListener("click", signOutSite);
   google.addEventListener("click", async function () {
     if (!client || busy) return;
@@ -356,7 +335,6 @@
         passwordUpdatePending = true;
         result = await client.auth.updateUser({password:password});
       }
-      else if (mode === "edit") result = await client.auth.updateUser({data:{display_name:displayName}});
       if (result.error) throw result.error;
       resetPasswords();
       if (mode === "recover") message("Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.", false);
@@ -371,7 +349,6 @@
         await refreshUser();
         showResetSuccess();
       }
-      else if (mode === "edit") { await refreshUser(); message("Tên hiển thị đã được cập nhật.", false); }
       else if (mode === "login") {
         await refreshUser();
         if (dialog.open) dialog.close();
