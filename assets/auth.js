@@ -180,6 +180,22 @@
       if (result.error) throw result.error;
     } catch (e) { message("Chưa thể đăng nhập Google: " + e.message, true); setBusy(false); }
   });
+  function friendlyAuthError(error, currentMode) {
+    var raw = String((error && error.message) || "");
+    var status = error && error.status;
+    var seconds = raw.match(/after\s+(\d+)\s+seconds?/i);
+    if (status === 429 || /For security purposes|rate limit|too many requests/i.test(raw)) {
+      return "Bạn đang gửi yêu cầu quá nhanh. " +
+        (seconds ? "Có thể thử lại sau " + seconds[1] + " giây. " : "Vui lòng thử lại sau. ") +
+        (currentMode === "signup" ? "Nếu bạn đã đăng ký trước đó, hãy kiểm tra email xác minh thay vì tạo lại tài khoản." : "");
+    }
+    if (/email not confirmed/i.test(raw)) return "Email chưa được xác minh. Hãy mở hộp thư, kiểm tra cả Spam rồi nhấn liên kết xác minh.";
+    if (/invalid login credentials/i.test(raw)) return "Email hoặc mật khẩu chưa đúng, hoặc tài khoản chưa xác minh. Hãy kiểm tra lại thông tin.";
+    if (/email address not authorized/i.test(raw)) return "Dịch vụ email thử nghiệm chưa được cấp quyền gửi tới địa chỉ này. Quản trị viên cần cấu hình SMTP.";
+    if (/user already registered/i.test(raw)) return "Địa chỉ email này đã có tài khoản. Hãy đăng nhập hoặc sử dụng Quên mật khẩu.";
+    if (/password/i.test(raw) && /weak|short/i.test(raw)) return "Mật khẩu chưa đáp ứng yêu cầu bảo mật. Hãy dùng ít nhất 8 ký tự.";
+    return "Không thể hoàn thành thao tác. Vui lòng kiểm tra thông tin hoặc thử lại.";
+  }
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
     if (!client || busy) return;
@@ -210,7 +226,7 @@
       else if (mode === "update") { await refreshUser(); message("Mật khẩu đã được cập nhật.", false); }
       else if (mode === "edit") { await refreshUser(); message("Tên hiển thị đã được cập nhật.", false); }
       else { await refreshUser(); message("Đăng nhập thành công.", false); }
-    } catch (e) { message("Không thể hoàn thành: " + (e.message || "Vui lòng thử lại."), true); }
+    } catch (e) { message(friendlyAuthError(e, mode), true); }
     finally { setBusy(false); }
   });
 
