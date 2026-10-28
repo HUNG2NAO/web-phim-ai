@@ -29,7 +29,7 @@
         const a=await client.auth.getUser();
         if(a.error||!a.data?.user)return;
         user=a.data.user;
-        let profileId;try{profileId=localStorage.getItem("afn-active-viewer:"+user.id+":"+SITE");}catch(_){return;}
+        let profileId;try{profileId=localStorage.getItem("afn-active-viewer:"+user.id+":"+SITE);}catch(_){return;}
         if(!profileId||!/^[a-f0-9-]{36}$/i.test(profileId))return;
         const p=await client.from("viewer_profiles").select("id").eq("id",profileId).eq("user_id",user.id).eq("site_id",SITE).maybeSingle();
         if(p.error||!p.data)return;
