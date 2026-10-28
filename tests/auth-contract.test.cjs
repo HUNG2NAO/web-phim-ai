@@ -44,3 +44,15 @@ test("Production demo content stays unchanged", () => {
   assert.match(html, /noindex,follow/);
   assert.match(html, /assets\/films-tuong-lai\.js/);
 });
+
+test("audience sees only their own account, not internal five-site architecture", () => {
+  assert.doesNotMatch(auth, /Một tài khoản chung cho 5 website/);
+  assert.match(auth, /Đăng nhập để quản lý tài khoản thành viên của bạn/);
+});
+test("password recovery remains in update mode while session refreshes", () => {
+  assert.match(auth, /var recovering = new URL/);
+  assert.match(auth, /if \(recovering\)/);
+  assert.match(auth, /if \(mode !== "update"\) setMode\("update"\)/);
+  assert.match(auth, /recovering = false;/);
+  assert.doesNotMatch(auth, /reveal\(\); setMode\("update"\)/);
+});
