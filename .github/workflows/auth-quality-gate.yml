@@ -4,9 +4,15 @@ on:
   push:
     branches:
       - 'feature/auth-first-pilot-*'
+      - 'feature/level3-xuongphim-*'
     paths:
       - 'assets/auth.js'
       - 'assets/account.js'
+      - 'assets/level3.js'
+      - 'assets/level3-video.js'
+      - 'assets/level3.css'
+      - 'member.html'
+      - 'assets/app.js'
       - 'account.html'
       - 'assets/auth.css'
       - 'assets/auth-config.js'
@@ -35,6 +41,8 @@ jobs:
         run: |
           node --check assets/auth.js
           node --check assets/account.js
+          node --check assets/level3.js
+          node --check assets/level3-video.js
           node --check assets/auth-config.js
           node --check assets/app.js
           node --check assets/sites.js
@@ -43,4 +51,4 @@ jobs:
       - name: Install DOM test harness
         run: npm install --no-save --no-package-lock jsdom@26.1.0
       - name: Simulate viewer interactions on home and account pages
-        run: node --test tests/auth-browser.test.cjs
+        run: node --test tests/auth-browser.test.cjs tests/level3-hub.test.cjs
