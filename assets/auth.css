@@ -1,0 +1,43 @@
+/* AI Film Network — opt-in auth UI. Isolated from the original film layout. */
+.afn-account-slot { margin-left: auto; display: flex; align-items: center; }
+.afn-account-btn { border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  padding: 8px 14px; border-radius: var(--radius); cursor: pointer; min-height: 40px; white-space: nowrap; font-weight: 600; }
+.afn-account-btn:hover, .afn-account-btn:focus-visible { border-color: var(--accent); }
+.afn-auth-dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; color: var(--fg);
+  background: var(--surface); width: min(440px, calc(100vw - 24px)); max-height: min(86dvh, 800px);
+  box-shadow: 0 25px 90px #000a; }
+.afn-auth-dialog::backdrop { background: rgba(0,0,0,.76); }
+.afn-auth-panel { padding: 26px; display: grid; gap: 15px; }
+.afn-auth-header { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }
+.afn-auth-header h2 { font-size: 23px; line-height: 1.2; margin: 0; font-family: var(--font-display); }
+.afn-auth-close { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 28px; line-height: 1; padding: 0 6px; }
+.afn-auth-tabs { display: flex; gap: 8px; }
+.afn-auth-tab { flex: 1; min-height: 42px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: transparent; color: var(--fg); cursor: pointer; }
+.afn-auth-tab[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.afn-auth-form { display: grid; gap: 13px; }
+.afn-field { display: grid; gap: 5px; }
+.afn-field label { font-size: 13px; font-weight: 600; color: var(--fg); }
+.afn-field input { width: 100%; min-height: 44px; background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 12px; font: inherit; }
+.afn-field input:focus-visible { outline: 2px solid var(--accent); }
+.afn-auth-primary, .afn-auth-google { width: 100%; padding: 11px 14px; min-height: 44px; cursor: pointer;
+  font: inherit; font-weight: 700; border-radius: var(--radius); }
+.afn-auth-primary { background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); }
+.afn-auth-google { background: var(--bg); color: var(--fg); border: 1px solid var(--line); }
+.afn-auth-form button[disabled] { cursor: wait; opacity: .65; }
+.afn-auth-link { background: none; border: 0; text-decoration: underline; color: var(--fg);
+  padding: 6px; cursor: pointer; font: inherit; justify-self: center; }
+.afn-auth-message { font-size: 13px; padding: 9px 11px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+.afn-auth-message[data-kind="error"] { border-color: #c75c55; }
+.afn-auth-hint { color: var(--muted); font-size: 12px; margin: 0; line-height: 1.45; }
+.afn-auth-hidden { display: none !important; }
+.afn-auth-profile { display: grid; gap: 12px; }
+.afn-auth-profile-name { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .afn-account-slot { margin-left: 0; }
+  .afn-account-btn { padding: 7px 10px; font-size: 13px; }
+  .afn-auth-panel { padding: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { .afn-auth-dialog * { animation: none !important; transition: none !important; } }
