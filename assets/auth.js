@@ -72,6 +72,20 @@
   var emailEl = dialog.querySelector("#afn-email");
   var passEl = dialog.querySelector("#afn-password");
   var nameEl = dialog.querySelector("#afn-name");
+  var visibilityButton = document.createElement("button");
+  visibilityButton.type = "button";
+  visibilityButton.className = "afn-password-visibility";
+  visibilityButton.textContent = "Hiện mật khẩu";
+  visibilityButton.setAttribute("aria-label", "Hiện mật khẩu đã nhập");
+  visibilityButton.setAttribute("aria-pressed", "false");
+  dialog.querySelector(".afn-password-wrap").appendChild(visibilityButton);
+  visibilityButton.addEventListener("click", function () {
+    var showing = passEl.type === "text";
+    passEl.type = showing ? "password" : "text";
+    visibilityButton.textContent = showing ? "Hiện mật khẩu" : "Ẩn mật khẩu";
+    visibilityButton.setAttribute("aria-label", showing ? "Hiện mật khẩu đã nhập" : "Ẩn mật khẩu đã nhập");
+    visibilityButton.setAttribute("aria-pressed", String(!showing));
+  });
   var nameWrap = dialog.querySelector(".afn-name-wrap");
   var emailWrap = dialog.querySelector(".afn-email-wrap");
   var passwordWrap = dialog.querySelector(".afn-password-wrap");
@@ -91,7 +105,7 @@
     busy = v;
     Array.prototype.forEach.call(dialog.querySelectorAll("button, input"), function (el) { el.disabled = v; });
   }
-  function resetPasswords() { passEl.value = ""; }
+  function resetPasswords() { passEl.value = ""; passEl.type = "password"; visibilityButton.textContent = "Hiện mật khẩu"; visibilityButton.setAttribute("aria-pressed", "false"); visibilityButton.setAttribute("aria-label", "Hiện mật khẩu đã nhập"); }
   function setMode(next) {
     mode = next;
     message("", false);
@@ -190,7 +204,7 @@
         (currentMode === "signup" ? "Nếu bạn đã đăng ký trước đó, hãy kiểm tra email xác minh thay vì tạo lại tài khoản." : "");
     }
     if (/email not confirmed/i.test(raw)) return "Email chưa được xác minh. Hãy mở hộp thư, kiểm tra cả Spam rồi nhấn liên kết xác minh.";
-    if (/invalid login credentials/i.test(raw)) return "Email hoặc mật khẩu chưa đúng, hoặc tài khoản chưa xác minh. Hãy kiểm tra lại thông tin.";
+    if (/invalid login credentials/i.test(raw)) return "Không thể đăng nhập bằng email và mật khẩu này. Hãy kiểm tra lại hoặc chọn Quên mật khẩu? để đặt mật khẩu mới.";
     if (/email address not authorized/i.test(raw)) return "Dịch vụ email thử nghiệm chưa được cấp quyền gửi tới địa chỉ này. Quản trị viên cần cấu hình SMTP.";
     if (/user already registered/i.test(raw)) return "Địa chỉ email này đã có tài khoản. Hãy đăng nhập hoặc sử dụng Quên mật khẩu.";
     if (/password/i.test(raw) && /weak|short/i.test(raw)) return "Mật khẩu chưa đáp ứng yêu cầu bảo mật. Hãy dùng ít nhất 8 ký tự.";
