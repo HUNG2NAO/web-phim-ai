@@ -56,3 +56,12 @@ test("password recovery remains in update mode while session refreshes", () => {
   assert.match(auth, /recovering = false;/);
   assert.doesNotMatch(auth, /reveal\(\); setMode\("update"\)/);
 });
+
+test("password reset shows a dedicated success view instead of mixing with profile", () => {
+  assert.match(auth, /id="afn-reset-success"/);
+  assert.match(auth, /id="afn-success-continue"/);
+  assert.match(auth, /id="afn-success-account"/);
+  assert.match(auth, /postResetSuccess = true;/);
+  assert.match(auth, /function showResetSuccess\(\)/);
+  assert.doesNotMatch(auth, /message\("Mật khẩu đã được cập nhật/);
+});
