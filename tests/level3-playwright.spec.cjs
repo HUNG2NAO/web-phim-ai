@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const BASE = "https://feature-level3-xuongphim-pil.web-phim-ai-5sites.pages.dev";
+const BASE = "https://feature-level3-five-brands-p.web-phim-ai-5sites.pages.dev";
 function installMock() {
   var user=window.__AFN_GUEST?null:{id:"00000000-0000-4000-8000-000000000099",email:"test-viewer@example.test",created_at:"2026-10-28T16:00:00Z",email_confirmed_at:"2026-10-28T16:02:00Z",user_metadata:{display_name:"Khán giả kiểm thử"},app_metadata:{providers:["email"]}};
   var key="__AFN_E2E_ROWS",memory={},next=0;
@@ -88,11 +88,29 @@ test("mobile fits within viewport",async({page})=>{
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(393);
   await page.screenshot({path:"test-results/level3-mobile.png",fullPage:true});
 });
-test("guest and other brands remain outside Level 3 pilot",async({page})=>{
+test("guest is asked to sign in",async({page})=>{
   await setup(page,true);
   await page.goto(BASE+"/member.html?site=xuongphim",{waitUntil:"domcontentloaded"});
   await expect(page.locator("#hub-guest")).toBeVisible();
-  await page.goto(BASE+"/member.html?site=khophim",{waitUntil:"domcontentloaded"});
-  await expect(page.locator("#hub-guest")).toBeVisible();
   await expect(page.locator("#hub-app")).toBeHidden();
 });
+for(const [site,label] of [
+  ["xuongphim","Xưởng Phim"],
+  ["khophim","Kho Phim"],
+  ["phephim","Phê Phim"],
+  ["phimhay","Phim Hay"],
+  ["ghienphim","Ghiền Phim"]
+]){
+  test(site+" renders own branded hub and nonempty matching catalog",async({page})=>{
+    await setup(page);
+    await page.goto(BASE+"/member.html?site="+site,{waitUntil:"domcontentloaded"});
+    await expect(page.locator("#hub-app")).toBeVisible();
+    await expect(page).toHaveTitle(new RegExp(label));
+    await page.locator('[data-tab="discover"]').click();
+    const cards=page.locator("#discover-items article");
+    expect(await cards.count()).toBeGreaterThan(0);
+    const actual=await page.locator(".brand-mark").textContent();
+    expect(actual.length).toBeGreaterThan(0);
+    await expect(page.locator("#stat-progress")).toHaveText("0");
+  });
+}
