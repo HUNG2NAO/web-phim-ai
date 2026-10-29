@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const BASE = "https://feature-level3-five-brands-p.web-phim-ai-5sites.pages.dev";
+const BASE = process.env.AFN_PREVIEW_URL || "https://feature-level3-five-brands-p.web-phim-ai-5sites.pages.dev";
 function installMock() {
   var user=window.__AFN_GUEST?null:{id:"00000000-0000-4000-8000-000000000099",email:"test-viewer@example.test",created_at:"2026-10-28T16:00:00Z",email_confirmed_at:"2026-10-28T16:02:00Z",user_metadata:{display_name:"Khán giả kiểm thử"},app_metadata:{providers:["email"]}};
   var key="__AFN_E2E_ROWS",memory={},next=0;
@@ -139,3 +139,56 @@ for(const [site,label] of [
     await expect(page.locator("#afn-member-hub-shortcut")).toContainText(label);
   });
 }
+
+test("self-service password change and privacy request require signed-in viewer",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/account.html?site=xuongphim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#afn-account-security")).toBeVisible();
+  await page.locator("#afn-new-password").fill("MyLongPrivatePassword2026!");
+  await page.locator("#afn-confirm-password").fill("MyLongPrivatePassword2026!");
+  await page.locator('#afn-password-form button[type="submit"]').click();
+  await expect(page.locator("#afn-profile-status")).toContainText("cập nhật mật khẩu");
+  page.on("dialog",d=>d.accept());
+  await page.locator("#afn-request-delete").click();
+  await expect(page.locator("#afn-privacy-requests")).toContainText("Yêu cầu xóa tài khoản");
+});
+test("unprivileged viewers cannot access the moderation console",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/admin.html",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#studio-denied")).toBeVisible();
+  await expect(page.locator("#studio-app")).toBeHidden();
+});
+test("staff can save a rights-attested draft and moderate a review",async({page})=>{
+  await setup(page);
+  await page.addInitScript(()=>{
+    const userId="00000000-0000-4000-8000-000000000099";
+    localStorage.setItem("__AFN_E2E_ROWS",JSON.stringify({
+      site_staff:[{user_id:userId,site_id:"xuongphim",role:"admin"}],
+      site_memberships:[{user_id:userId,site_id:"xuongphim"}],
+      film_reviews:[{id:"00000000-0000-4000-8000-000000000098",viewer_profile_id:"abc",
+        user_id:userId,site_id:"xuongphim",film_id:"phim-thu",content:"Bài bình luận kiểm duyệt thử nghiệm",rating:5,moderation_status:"pending"}]
+    }));
+  });
+  await page.goto(BASE+"/admin.html?site=xuongphim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#studio-app")).toBeVisible();
+  await page.locator("#studio-film-id").fill("phim-demo-duoc-phep");
+  await page.locator("#studio-film-title").fill("Phim đã được cấp phép");
+  await page.locator("#studio-film-video").fill("dQw4w9WgXcQ");
+  await page.locator("#studio-rights").check();
+  await page.locator("#studio-save-film").click();
+  await expect(page.locator("#studio-films")).toContainText("Phim đã được cấp phép");
+  await page.locator('[data-studio-tab="reviews"]').click();
+  await expect(page.locator("#studio-reviews")).toContainText("phim-thu");
+  await page.locator('[data-review-action*="approved"]').click();
+  await expect(page.locator("#studio-reviews")).toContainText("Không có đánh giá cần duyệt");
+});
+test("member data can be exported as JSON",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/member.html?site=xuongphim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#hub-app")).toBeVisible();
+  await page.locator('[data-tab="settings"]').click();
+  const download=page.waitForEvent("download");
+  await page.locator("#export-data").click();
+  const file=await download;
+  expect(file.suggestedFilename()).toBe("ai-film-network-my-data.json");
+});
