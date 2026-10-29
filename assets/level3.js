@@ -1,6 +1,5 @@
-/* Xưởng Phim Level 3 pilot — browser client for opt-in member experiences.
-   All user-supplied text is rendered via textContent. No secret/server keys.
-   Other brands are deliberately not activated until pilot acceptance. */
+/* Shared Level 3 Member Hub — staged five-brand Preview candidate.
+   Public code, per-site access and user-owned RLS policies. */
 (async function(){
   "use strict";
   const $=(s,root=document)=>root.querySelector(s);
@@ -16,7 +15,7 @@
   const SITE=brand?.id||"unknown";
   const flags=window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"];
   const isPilot=flags.includes(SITE);
-  const FILMS=ALL.filter(f=>f.world===(brand?.world||"co-trang"));
+  const FILMS=ALL.filter(f=>(f.world||"co-trang")===(brand?.world||"co-trang"));
   const byId=new Map(ALL.map(f=>[f.id,f]));
   const cfg=window.AFN_AUTH_CONFIG||{};
   const configured=cfg.enabled===true&&/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(cfg.url||"")
@@ -31,7 +30,8 @@
   if(brand) {
     document.title="Trung tâm thành viên — "+brand.name;
     $(".brand-mark").textContent=brand.seal;
-    $(".brand>span:nth-child(2)").textContent=brand.name.toUpperCase()+".AI";
+    const headerName=$(".brand>span:nth-child(2)");
+    headerName.replaceChildren(document.createTextNode(brand.name.toUpperCase()),Object.assign(document.createElement("span"),{className:"brand-dot",textContent:".AI"}));
     document.documentElement.style.setProperty("--cyan",brand.accent);
     document.documentElement.style.setProperty("--cyan-txt",brand.onAccent);
     $(".member-hero .eyebrow").textContent="KHÔNG GIAN "+brand.name.toUpperCase();
