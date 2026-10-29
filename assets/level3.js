@@ -159,7 +159,7 @@
     if(!film)return;
     $("#hero-feature-title").textContent=film.title;
     $("#hero-feature-genre").textContent=(film.genres||[]).slice(0,2).join(" · ")+" · "+(film.live?"Có video được phép phát":"Phim minh họa");
-    $("#hero-feature-label").textContent=film.live?"PHIM ĐƯỢC PHÁT HÀNH":"PHIM MINH HỌA NỔI BẬT";
+    $(".hero-feature-label").textContent=film.live?"PHIM ĐƯỢC PHÁT HÀNH":"PHIM MINH HỌA NỔI BẬT";
     if(window.InkArt?.paint){
       try{const url=window.InkArt.paint(film,550,340);
         if(url)$("#hero-feature-art").style.backgroundImage="url("+JSON.stringify(url)+")";
