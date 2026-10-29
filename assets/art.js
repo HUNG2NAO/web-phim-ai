@@ -518,25 +518,66 @@ window.InkArt = (function () {
     ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
   }
 
-  /* Vẽ dần các ô có data-art để trang không bị khựng */
-  var queue = [];
-  var busy = false;
-  function hydrate(root, lookup) {
-    (root || document).querySelectorAll("[data-art]").forEach(function (el) { queue.push([el, lookup]); });
-    if (!busy) pump();
+  /* Progressive art loading: keep layout/text interactive before expensive Canvas painting.
+     Only draw posters close to the viewport, one per idle task. */
+  var queue = [], queued = new WeakSet(), scheduled = false;
+  var artObserver = typeof IntersectionObserver === "function"
+    ? new IntersectionObserver(function (entries) {
+        entries.forEach(function(entry) {
+          if (!entry.isIntersecting) return;
+          artObserver.unobserve(entry.target);
+          add(entry.target, entry.target.__inkLookup);
+        });
+      }, { rootMargin: "320px 0px" })
+    : null;
+  function add(el, lookup) {
+    if (!el || !lookup || queued.has(el) || !el.hasAttribute("data-art")) return;
+    queued.add(el);
+    var job = [el, lookup];
+    if (el.classList.contains("hero-art")) queue.unshift(job);
+    else queue.push(job);
+    schedule();
   }
-  function pump() {
-    busy = true;
-    var start = performance.now();
-    while (queue.length && performance.now() - start < 12) {
-      var item = queue.shift(), el = item[0], film = item[1](el.getAttribute("data-art"));
-      if (!film || !el.isConnected) continue;
-      var size = (el.getAttribute("data-size") || "360x540").split("x").map(Number);
-      var url = paint(film, size[0], size[1]);
-      if (url) el.style.backgroundImage = "url(" + url + ")";
-      el.removeAttribute("data-art");
+  function schedule() {
+    if (scheduled || !queue.length) return;
+    scheduled = true;
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(runOne, { timeout: 500 });
+    } else {
+      setTimeout(runOne, 0);
     }
-    if (queue.length) requestAnimationFrame(pump); else busy = false;
+  }
+  function runOne() {
+    scheduled = false;
+    var item = queue.shift();
+    if (!item) return;
+    var el = item[0];
+    queued.delete(el);
+    if (el.isConnected && el.hasAttribute("data-art")) {
+      var film = item[1](el.getAttribute("data-art"));
+      if (film) {
+        try {
+          var size = (el.getAttribute("data-size") || "320x480").split("x").map(Number);
+          var w = Math.min(1200, Math.max(80, size[0] || 320));
+          var h = Math.min(650, Math.max(80, size[1] || 480));
+          var url = paint(film, w, h);
+          if (url) el.style.backgroundImage = "url(" + url + ")";
+          el.removeAttribute("data-art");
+        } catch (e) {
+          // A failed preview illustration must not block reading the movie page.
+          el.removeAttribute("data-art");
+        }
+      }
+    }
+    schedule();
+  }
+  function hydrate(root, lookup) {
+    (root || document).querySelectorAll("[data-art]").forEach(function(el) {
+      if (artObserver && !el.classList.contains("hero-art")) {
+        el.__inkLookup = lookup;
+        artObserver.observe(el);
+      } else add(el, lookup);
+    });
   }
 
   return { paint: paint, hydrate: hydrate };

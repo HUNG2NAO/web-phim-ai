@@ -105,7 +105,7 @@
 
   /* ---------- 3. Thành phần ---------- */
   function posterHTML(f) {
-    var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="360x540"';
+    var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="320x480"';
     var progress = seriesProgress(f);
     var right = f.type === "bo" ? (!progress ? '<span class="badge">Phim bộ</span>' : !progress.completed ? '<span class="badge accent">' + (progress.aired ? "Tập " + progress.aired : "Sắp chiếu") + '</span>' : '<span class="badge">' + progress.total + ' tập</span>') :
       f.type === "ngan" ? '<span class="badge">' + esc(f.duration) + '</span>' : "";
@@ -121,7 +121,7 @@
 
   function heroHTML(f) {
     var hasVideo = Array.isArray(f.video) ? f.video.some(Boolean) : !!f.video;
-    var artAttr = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="1600x800"';
+    var artAttr = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="1200x600"';
     return '<section class="hero" aria-label="Phim nổi bật">' +
       '<div class="hero-art"' + artAttr + '></div><div class="mist" aria-hidden="true"></div>' +
       '<div class="watermark" aria-hidden="true">' + genreChar(f.genres[0]) + '</div>' +

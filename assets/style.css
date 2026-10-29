@@ -361,3 +361,19 @@ dialog.film::backdrop { background: rgb(6 5 4 / .8); }
 [data-world="tuong-lai"] .network-label,
 [data-world="tuong-lai"] .ep-head,
 [data-world="tuong-lai"] .specs dt { font-family: var(--font-display); }
+
+/* Stable typography while optional Google Fonts load: prevent delayed
+   balanced-line reflow and any unintended intra-word wrapping. */
+.hero h1 {
+  text-wrap: wrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+}
+.logo .name {
+  white-space: nowrap;
+  word-break: normal;
+}
+@media (max-width: 600px) {
+  .hero h1 { font-size: clamp(40px, 10vw, 64px); }
+}
