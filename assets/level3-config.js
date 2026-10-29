@@ -1,7 +1,7 @@
 /* Membership rollout switch.
-   Enabled only for Xưởng Phim pilot. Other four websites remain on existing account UX.
+   PREVIEW candidate for all five brands; keep Production untouched until each site QA passes.
    Enable additional site IDs only after real-domain security and browser QA. */
 window.AFN_LEVEL3_CONFIG = Object.freeze({
-  enabledSites: ["xuongphim"],
-  pilotOnly: true
+  enabledSites: ["xuongphim", "khophim", "phephim", "phimhay", "ghienphim"],
+  pilotOnly: false
 });
