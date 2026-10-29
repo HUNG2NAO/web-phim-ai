@@ -78,12 +78,31 @@
           <button id="afn-page-signout" class="afn-action-quiet" type="button">Đăng xuất website này</button>
         </div>
       </section>
-      <section class="afn-future-features" aria-label="Tính năng dành cho thành viên sắp ra mắt">
-        <h2>Trải nghiệm dành cho thành viên</h2>
-        <div class="afn-feature-grid">
-          <div><strong>Danh sách phim yêu thích</strong><p>Chúng tôi đang phát triển, chưa khả dụng trong bản demo.</p></div>
-          <div><strong>Tiếp tục xem</strong><p>Chúng tôi sẽ kích hoạt khi có những bộ phim đầu tiên.</p></div>
+      <section class="afn-account-panel" id="afn-account-security" hidden style="margin-top:18px">
+        <h2>Bảo mật tài khoản</h2>
+        <p>Đổi mật khẩu và email bằng Supabase Auth. Nếu bật xác nhận email, hãy hoàn tất liên kết gửi tới hộp thư.</p>
+        <form id="afn-password-form" class="afn-profile-edit">
+          <label for="afn-new-password">Mật khẩu mới (tối thiểu 8 ký tự)</label>
+          <input id="afn-new-password" type="password" minlength="8" autocomplete="new-password" required>
+          <label for="afn-confirm-password">Nhập lại mật khẩu</label>
+          <input id="afn-confirm-password" type="password" minlength="8" autocomplete="new-password" required>
+          <button class="afn-action-primary" type="submit">Cập nhật mật khẩu</button>
+        </form>
+        <form id="afn-email-form" class="afn-profile-edit">
+          <label for="afn-new-email">Đổi địa chỉ email</label>
+          <input id="afn-new-email" type="email" autocomplete="email" placeholder="email-moi@example.com" required>
+          <button class="afn-action-secondary" type="submit">Gửi xác nhận đổi email</button>
+        </form>
+      </section>
+      <section class="afn-account-panel" id="afn-privacy-panel" hidden style="margin-top:18px">
+        <h2>Dữ liệu và quyền riêng tư</h2>
+        <p>Tải bản sao dữ liệu cá nhân trong Trung tâm thành viên, hoặc gửi yêu cầu xóa tài khoản.</p>
+        <div class="afn-profile-actions">
+          <a class="afn-action-secondary" id="afn-export-link" href="./member.html?site=xuongphim#settings">Xuất dữ liệu của tôi</a>
+          <button class="afn-action-quiet" id="afn-request-delete" type="button">Yêu cầu xóa tài khoản</button>
         </div>
+        <p class="afn-auth-hint">Yêu cầu xóa được đưa vào hàng đợi xử lý sau khi xác minh danh tính. Đây không phải thao tác xóa ngay lập tức.</p>
+        <div id="afn-privacy-requests" aria-live="polite"></div>
       </section>
     </div>
   </main>
