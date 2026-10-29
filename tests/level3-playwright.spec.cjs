@@ -114,3 +114,28 @@ for(const [site,label] of [
     await expect(page.locator("#stat-progress")).toHaveText("0");
   });
 }
+
+for(const [site,label] of [
+  ["xuongphim","Xưởng Phim"],
+  ["khophim","Kho Phim"],
+  ["phephim","Phê Phim"],
+  ["phimhay","Phim Hay"],
+  ["ghienphim","Ghiền Phim"]
+]){
+  test(site+" connects account dropdown to Member Hub and branded account page",async({page})=>{
+    await setup(page);
+    await page.goto(BASE+"/?site="+site,{waitUntil:"domcontentloaded"});
+    await expect(page.locator(".afn-account-btn")).toHaveText("Tài khoản");
+    await page.locator(".afn-account-btn").click();
+    const link=page.locator("#afn-menu-member");
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href",new RegExp("member\\.html\\?site="+site));
+    await link.click();
+    await expect(page.locator("#hub-app")).toBeVisible();
+    await expect(page).toHaveTitle(new RegExp(label));
+    await page.goto(BASE+"/account.html?site="+site,{waitUntil:"domcontentloaded"});
+    await expect(page.locator("#afn-account-signedin")).toBeVisible();
+    await expect(page.locator("#afn-member-hub-shortcut")).toBeVisible();
+    await expect(page.locator("#afn-member-hub-shortcut")).toContainText(label);
+  });
+}
