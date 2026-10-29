@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const BASE = process.env.AFN_PREVIEW_URL || "https://feature-level3-five-brands-p.web-phim-ai-5sites.pages.dev";
+const BASE = process.env.AFN_PREVIEW_URL || "https://feature-level3-completion-pr.web-phim-ai-5sites.pages.dev";
 function installMock() {
   var user=window.__AFN_GUEST?null:{id:"00000000-0000-4000-8000-000000000099",email:"test-viewer@example.test",created_at:"2026-10-28T16:00:00Z",email_confirmed_at:"2026-10-28T16:02:00Z",user_metadata:{display_name:"Khán giả kiểm thử"},app_metadata:{providers:["email"]}};
   var key="__AFN_E2E_ROWS",memory={},next=0;
