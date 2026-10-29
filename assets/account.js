@@ -15,6 +15,8 @@
       var hub=new URL("./member.html",window.location.href);
       if(!domainBrand)hub.searchParams.set("site",brand.id);
       document.getElementById("afn-to-member").href=hub.href;
+      var headline=memberShortcut.querySelector("strong");
+      if(headline)headline.textContent="Trung tâm thành viên "+brand.name;
     }
   }
   var home = new URL("./", window.location.href);

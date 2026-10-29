@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feature/level3-xuongphim-*'
+      - 'feature/level3-five-brands-*'
     paths:
       - 'tests/level3-playwright.spec.cjs'
       - '.github/workflows/level3-real-browser.yml'
