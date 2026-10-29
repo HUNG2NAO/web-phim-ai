@@ -199,7 +199,7 @@
       body.append(watch);
     }
     const controls=make("div","film-controls");
-    for(const [action,label,symbol] of [["favorite","Yêu thích","♡"],["watchlist","Xem sau","＋"],["following","Theo dõi","◉"]]){
+    for(const [action,label,symbol] of [["favorite","Thích","♡"],["watchlist","Xem sau","＋"],["following","Theo dõi","◉"]]){
       const saved=has(f.id,action);
       const b=make("button",saved?"is-saved":"",symbol+" "+label);
       b.type="button";b.dataset.film=f.id;b.dataset.action=action;
