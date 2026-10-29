@@ -5,6 +5,7 @@ on:
     branches:
       - 'feature/level3-xuongphim-*'
       - 'feature/level3-five-brands-*'
+      - 'feature/level3-completion-*'
     paths:
       - 'tests/level3-playwright.spec.cjs'
       - '.github/workflows/level3-real-browser.yml'
