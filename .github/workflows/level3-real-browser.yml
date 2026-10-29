@@ -6,6 +6,7 @@ on:
       - 'feature/level3-xuongphim-*'
       - 'feature/level3-five-brands-*'
       - 'feature/level3-completion-*'
+      - 'feature/level3-premium-uiux-*'
     paths:
       - 'tests/**'
       - 'assets/**'
