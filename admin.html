@@ -1,0 +1,46 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Kiểm duyệt & phim — AI Film Network</title><link rel="stylesheet" href="assets/level3.css"><link rel="stylesheet" href="assets/studio.css"></head><body>
+<header class="topbar"><div class="shell topbar-inner"><a class="brand" id="studio-home" href="./?site=xuongphim"><span class="brand-mark">AF</span><span>FILM STUDIO<span class="brand-dot">.ADMIN</span></span></a><div class="top-actions"><span class="pilot-label">QUẢN TRỊ · PREVIEW</span><a id="studio-member" class="back-link" href="./member.html?site=xuongphim">Trung tâm thành viên</a></div></div></header>
+<main class="shell studio-main">
+<section class="studio-heading"><p class="eyebrow">KHÔNG GIAN VẬN HÀNH</p><h1>Trung tâm quản trị nội dung</h1><p>Chỉ tài khoản đã được cấp quyền tại Supabase mới có thể thực hiện thao tác ở đây.</p></section>
+<div id="studio-loading" class="state-box" role="status">Đang xác minh quyền quản trị…</div>
+<div id="studio-denied" class="state-box" hidden><h2>Không có quyền truy cập</h2><p id="studio-denied-reason">Tài khoản này chưa được cấp quyền quản trị.</p><a id="studio-return" class="btn ghost" href="./?site=xuongphim">Quay lại website</a></div>
+<div id="studio-app" hidden>
+  <div class="studio-toolbar"><label for="studio-site">Website quản lý</label><select id="studio-site"></select><button class="btn ghost" id="studio-reload">Tải lại dữ liệu</button><span id="studio-status" role="status" aria-live="polite"></span></div>
+  <div class="studio-tabs" role="tablist" aria-label="Nghiệp vụ quản trị">
+    <button class="chip selected" type="button" data-studio-tab="films">Phim & bản quyền</button>
+    <button class="chip" type="button" data-studio-tab="reviews">Kiểm duyệt đánh giá</button>
+    <button class="chip" type="button" data-studio-tab="notices">Thông báo tập mới</button>
+    <button class="chip" type="button" data-studio-tab="privacy">Yêu cầu dữ liệu</button>
+  </div>
+  <section data-studio-panel="films">
+    <div class="two-columns">
+      <form id="studio-film-form" class="panel-card stack">
+        <h2>Đăng phim có quyền phát hành</h2>
+        <label for="studio-film-id">Mã phim không dấu</label><input id="studio-film-id" required pattern="[a-z0-9][a-z0-9-]{0,119}" placeholder="phim-demo-thu-nhat">
+        <label for="studio-film-title">Tên phim</label><input id="studio-film-title" required minlength="2" maxlength="160">
+        <label for="studio-film-synopsis">Tóm tắt</label><textarea id="studio-film-synopsis" rows="3" maxlength="4000"></textarea>
+        <label for="studio-film-type">Loại phim</label><select id="studio-film-type"><option value="le">Phim lẻ</option><option value="bo">Phim bộ</option><option value="ngan">Phim ngắn</option></select>
+        <label for="studio-film-genres">Thể loại (ngăn cách bằng dấu phẩy)</label><input id="studio-film-genres" placeholder="Viễn tưởng, Cyberpunk">
+        <label for="studio-film-source">Nguồn phát</label><select id="studio-film-source"><option value="youtube">YouTube (Video ID)</option><option value="native">Video HTTPS (.mp4)</option></select>
+        <label for="studio-film-video">YouTube ID hoặc URL video HTTPS</label><input id="studio-film-video" required placeholder="Nhập Video ID gồm 11 ký tự hoặc URL HTTPS của nội dung được cấp phép">
+        <label class="toggle-row"><input type="checkbox" id="studio-rights" required><span>Tôi xác nhận có đầy đủ quyền đăng, phát hành và nhúng nội dung này.</span></label>
+        <label class="toggle-row"><input type="checkbox" id="studio-published"><span>Phát hành công khai trên website sau khi lưu</span></label>
+        <button type="submit" id="studio-save-film" class="btn primary">Lưu phim</button>
+        <p class="muted small">Chỉ lưu metadata và nguồn được cấp quyền; không sao chép video từ YouTube.</p>
+      </form>
+      <div class="panel-card"><h2>Danh sách phim quản lý</h2><div id="studio-films" class="studio-list"></div></div>
+    </div>
+  </section>
+  <section data-studio-panel="reviews" hidden><h2>Đánh giá chờ duyệt</h2><p class="muted">Chỉ xuất hiện ở hồ sơ người đăng cho tới khi có cơ chế hiển thị công khai được kiểm duyệt.</p><div id="studio-reviews" class="studio-list"></div></section>
+  <section data-studio-panel="notices" hidden>
+    <div class="two-columns"><form id="studio-notice-form" class="panel-card stack">
+      <h2>Gửi thông báo trong website</h2>
+      <label for="studio-notice-title">Tiêu đề</label><input id="studio-notice-title" maxlength="150" required>
+      <label for="studio-notice-body">Nội dung</label><textarea id="studio-notice-body" rows="5" maxlength="1500"></textarea>
+      <p class="muted small">Chỉ gửi cho tài khoản đã tham gia website đang chọn. Đây là hộp thư trong web, không gửi email hoặc thông báo đẩy.</p>
+      <button type="submit" class="btn primary" id="studio-send">Gửi thông báo cho thành viên</button>
+    </form><div class="panel-card"><h2>Phạm vi gửi</h2><p id="studio-recipients" class="muted">Đang tải số thành viên…</p><p class="muted small">Không gửi tự động khi chưa có dữ liệu phát hành tập mới thật.</p></div></div>
+  </section>
+  <section data-studio-panel="privacy" hidden><h2>Yêu cầu quyền riêng tư</h2><p class="muted">Xác minh danh tính và xử lý yêu cầu xóa tài khoản thủ công từ Supabase Dashboard. Đánh dấu hoàn tất chỉ sau khi đã thực sự xử lý.</p><div id="studio-privacy" class="studio-list"></div></section>
+</div>
+</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio.js"></script></body></html>

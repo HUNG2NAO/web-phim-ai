@@ -15,6 +15,7 @@
       var hub=new URL("./member.html",window.location.href);
       if(!domainBrand)hub.searchParams.set("site",brand.id);
       document.getElementById("afn-to-member").href=hub.href;
+      document.getElementById("afn-export-link").href=hub.href+"#settings";
       var headline=memberShortcut.querySelector("strong");
       if(headline)headline.textContent="Trung tâm thành viên "+brand.name;
     }
@@ -84,8 +85,18 @@
     }
   }
   function present(user) {
-    if (!user) { current = null; setView("signedout"); return; }
+    if (!user) {
+      current = null; setView("signedout");
+      if(memberShortcut)memberShortcut.hidden=true;
+      document.getElementById("afn-account-security").hidden=true;
+      document.getElementById("afn-privacy-panel").hidden=true;
+      document.getElementById("afn-admin-shortcut").hidden=true;
+      return;
+    }
     current = user;
+    if(memberShortcut)memberShortcut.hidden=!isMemberPilot;
+    document.getElementById("afn-account-security").hidden=false;
+    document.getElementById("afn-privacy-panel").hidden=false;
     var m = user.user_metadata || {};
     var name = m.display_name || m.full_name || "Thành viên";
     document.getElementById("afn-profile-display").textContent = name;
@@ -116,6 +127,14 @@
     var user = response.data && response.data.user;
     present(user);
     if (user) {
+      // Staff role is read from RLS-protected server data, never user_metadata.
+      try {
+        var staff = await supabase.from("site_staff").select("role")
+          .eq("user_id",user.id).eq("site_id",brand.id);
+        var authorized=!staff.error && (staff.data||[]).length>0;
+        document.getElementById("afn-admin-shortcut").hidden=!authorized;
+        if(authorized)document.getElementById("afn-to-admin").href="./admin.html?site="+encodeURIComponent(brand.id);
+      } catch(_){document.getElementById("afn-admin-shortcut").hidden=true;}
       try { await syncMemberRecords(user); }
       catch (error) {
         showStatus("Hồ sơ hiển thị bình thường nhưng chưa thể đồng bộ dữ liệu thành viên. Vui lòng tải lại trang.",true);
@@ -159,4 +178,74 @@
     } catch(e) { showStatus("Không thể đăng xuất. Vui lòng thử lại.",true); }
     finally { btn.disabled = false; }
   });
+  // Account protection: all writes use the user's authenticated JWT.
+  var passwordForm=document.getElementById("afn-password-form");
+  passwordForm.addEventListener("submit",async function(event){
+    event.preventDefault();
+    if(!current)return;
+    var password=document.getElementById("afn-new-password").value;
+    var confirmPassword=document.getElementById("afn-confirm-password").value;
+    if(password.length<8||password!==confirmPassword){
+      showStatus("Mật khẩu phải đủ 8 ký tự và hai lần nhập phải khớp.",true);return;
+    }
+    var btn=passwordForm.querySelector('button[type="submit"]');btn.disabled=true;
+    try{
+      var response=await supabase.auth.updateUser({password:password});
+      if(response.error)throw response.error;
+      passwordForm.reset();
+      showStatus("Đã cập nhật mật khẩu. Nếu hệ thống yêu cầu xác minh bổ sung, hãy thực hiện theo hướng dẫn.",false);
+    }catch(_){showStatus("Chưa thể đổi mật khẩu. Phiên đăng nhập có thể cần xác minh bổ sung.",true);}
+    finally{btn.disabled=false;}
+  });
+  var emailForm=document.getElementById("afn-email-form");
+  emailForm.addEventListener("submit",async function(event){
+    event.preventDefault();if(!current)return;
+    var email=document.getElementById("afn-new-email").value.trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email===String(current.email||"").toLowerCase()){
+      showStatus("Hãy nhập một email hợp lệ khác email đang sử dụng.",true);return;
+    }
+    var btn=emailForm.querySelector('button[type="submit"]');btn.disabled=true;
+    try{
+      // Supabase project needs correct Auth URL Configuration for the active Preview/production origin.
+      var response=await supabase.auth.updateUser({email:email},{
+        emailRedirectTo:window.location.origin+"/?auth=confirm"
+      });
+      if(response.error)throw response.error;
+      emailForm.reset();showStatus("Đã gửi yêu cầu đổi email. Kiểm tra hộp thư để xác nhận trước khi email thay đổi.",false);
+    }catch(_){showStatus("Không thể gửi xác nhận đổi email. Kiểm tra cấu hình redirect và SMTP của Supabase.",true);}
+    finally{btn.disabled=false;}
+  });
+  async function loadPrivacyRequests(){
+    if(!current)return;
+    var box=document.getElementById("afn-privacy-requests");
+    var response=await supabase.from("member_privacy_requests").select("request_type,status,submitted_at")
+      .eq("user_id",current.id);
+    if(response.error){box.textContent="Chưa thể tải trạng thái yêu cầu.";return;}
+    box.replaceChildren();
+    (response.data||[]).sort((a,b)=>new Date(b.submitted_at)-new Date(a.submitted_at)).slice(0,10).forEach(function(r){
+      var p=document.createElement("p");
+      p.className="afn-auth-hint";
+      p.textContent="Yêu cầu "+(r.request_type==="delete_account"?"xóa tài khoản":r.request_type)+" · "+r.status+" · "+new Date(r.submitted_at).toLocaleDateString("vi-VN");
+      box.append(p);
+    });
+  }
+  document.getElementById("afn-request-delete").addEventListener("click",async function(){
+    if(!current)return;
+    if(!window.confirm("Gửi yêu cầu xóa tài khoản? Quản trị viên sẽ cần xác minh danh tính trước khi thực hiện. Đây chưa phải thao tác xóa ngay."))return;
+    var btn=this;btn.disabled=true;
+    try{
+      var old=await supabase.from("member_privacy_requests").select("id").eq("user_id",current.id)
+        .eq("request_type","delete_account").eq("status","pending");
+      if(old.error)throw old.error;
+      if((old.data||[]).length){showStatus("Yêu cầu xóa tài khoản đang được tiếp nhận.",false);return;}
+      var response=await supabase.from("member_privacy_requests").insert({
+        user_id:current.id,site_id:brand.id,request_type:"delete_account",status:"pending"
+      });
+      if(response.error)throw response.error;
+      await loadPrivacyRequests();
+      showStatus("Đã ghi nhận yêu cầu xóa tài khoản. Quản trị viên sẽ kiểm tra và xác minh.",false);
+    }catch(_){showStatus("Chưa thể gửi yêu cầu xóa. Vui lòng thử lại.",true);}
+    finally{btn.disabled=false;}
+  });
+  if(current)loadPrivacyRequests().catch(function(){});
 })();

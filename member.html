@@ -99,6 +99,9 @@
               <div class="panel-card"><h3>Thành tích cá nhân</h3><div id="achievement-items" class="achievement-list"></div><p class="muted small">Huy hiệu thử nghiệm dựa trên những hành động có dữ liệu. Không có XP hoặc thứ hạng giả.</p></div>
             </div>
             <div class="section-top"><h3>Đánh giá đã gửi</h3></div><div id="review-items" class="review-list"></div>
+            <div class="section-top"><h3>Đánh giá cộng đồng đã duyệt</h3></div>
+            <p class="muted small">Chỉ bình luận đã được quản trị viên kiểm duyệt mới hiển thị công khai.</p>
+            <div id="approved-review-items" class="review-list"></div>
           </section>
           <section class="tab-panel" id="tab-profiles" data-panel="profiles" hidden>
             <div class="section-top"><div><span class="eyebrow">HỒ SƠ XEM</span><h2>Không gian riêng cho từng người xem</h2></div></div>
@@ -123,6 +126,7 @@
               <fieldset class="genres-fieldset"><legend>Thể loại yêu thích (tùy chọn)</legend><div id="pref-genres" class="genre-checks"></div></fieldset>
               <label class="toggle-row"><input type="checkbox" id="pref-personalize"><span><strong>Gợi ý theo sở thích</strong><small>Gợi ý từ thể loại và phim đã lưu, chưa sử dụng AI bên ngoài.</small></span></label>
               <label class="toggle-row"><input type="checkbox" id="pref-track"><span><strong>Ghi nhớ tiến độ xem</strong><small>Chỉ lưu khi thực sự phát video; có thể tắt bất cứ lúc nào.</small></span></label>
+              <label class="toggle-row"><input type="checkbox" id="pref-release-alert"><span><strong>Thông báo khi phim theo dõi phát hành</strong><small>Chỉ thông báo trong website cho các phim bạn đã theo dõi, không gửi email.</small></span></label>
               <button class="btn primary" type="submit">Lưu tùy chỉnh</button>
             </form>
             <div class="panel-card privacy"><h3>Quyền riêng tư</h3><p>Danh sách và lịch sử thuộc về bạn; mặc định không công khai. Bạn có thể xóa dữ liệu xem của hồ sơ đang chọn.</p><div class="privacy-actions"><button class="btn danger" type="button" id="erase-progress">Xóa lịch sử xem hồ sơ này</button><button class="btn ghost" type="button" id="export-data">Xuất dữ liệu của tôi (.json)</button></div><p>Muốn thay đổi email, mật khẩu hoặc yêu cầu xóa tài khoản? <a id="security-link" href="./account.html?site=xuongphim">Quản lý tài khoản</a>.</p></div>
@@ -137,5 +141,6 @@
   <script src="assets/auth-config.js"></script>
 <script src="assets/level3-config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
+<script src="assets/live-catalog.js"></script>
   <script src="assets/level3.js"></script>
 </body></html>

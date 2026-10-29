@@ -39,7 +39,7 @@
     $("#tab-discover h2").textContent="Khám phá phim "+(brand.world==="tuong-lai"?"viễn tưởng":"cổ trang");
     $(".foot span:first-child").textContent=brand.name.toUpperCase()+".AI · MEMBER HUB";
   }
-  const state={user:null,profiles:[],profile:null,prefs:null,library:[],progress:[],reviews:[],inbox:[],tab:"overview",collection:"favorite",genre:"",busy:false};
+  const state={user:null,profiles:[],profile:null,prefs:null,library:[],progress:[],reviews:[],approved:[],inbox:[],tab:"overview",collection:"favorite",genre:"",busy:false};
   let client=null;
   function announce(message,error){
     const toast=$("#toast");
@@ -100,16 +100,17 @@
   async function loadSelected(){
     if(!state.profile)return;
     const k={user_id:state.user.id,site_id:SITE,viewer_profile_id:state.profile.id};
-    const [prefs,lib,progress,reviews,inbox]=await Promise.all([
+    const [prefs,lib,progress,reviews,inbox,approved]=await Promise.all([
       getRows("viewer_preferences",k),
       getRows("film_library",k),
       getRows("watch_progress",k),
       getRows("film_reviews",k),
-      getRows("member_notifications",{user_id:state.user.id,site_id:SITE})
+      getRows("member_notifications",{user_id:state.user.id,site_id:SITE}),
+      getRows("approved_reviews",{site_id:SITE})
     ]);
     state.prefs=prefs[0]||null;
     state.library=lib;state.progress=progress;state.reviews=reviews;
-    state.inbox=inbox.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    state.inbox=inbox.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));state.approved=approved;
     renderAll();
   }
   function make(tag,cls,text){
@@ -141,6 +142,12 @@
       controls.append(b);
     }
     el.append(lbl,title,genres,info,controls);
+    if(f.live){
+      const dest=new URL(home.href);dest.searchParams.set("film",f.id);
+      const watch=make("a","btn primary","Xem phim");
+      watch.href=dest.href;watch.setAttribute("aria-label","Xem phim "+f.title);
+      el.append(watch);
+    }
     if(variant==="progress"){
       const record=state.progress.filter(p=>p.film_id===f.id).sort((a,b)=>new Date(b.watched_at)-new Date(a.watched_at))[0];
       if(record){
@@ -223,6 +230,17 @@
         make("p","",x.content),make("span","muted small",x.moderation_status==="approved"?"Đã duyệt":x.moderation_status==="rejected"?"Không được duyệt":"Chờ kiểm duyệt"));
       root.append(box);
     });
+    const publicFeed=$("#approved-review-items");
+    if(publicFeed){
+      publicFeed.replaceChildren();
+      if(!state.approved.length)empty(publicFeed,"Chưa có đánh giá được duyệt","Đánh giá đang chờ quản trị viên kiểm duyệt.");
+      else state.approved.slice(0,40).forEach(r=>{
+        const box=make("article","review-item");
+        box.append(make("strong","",(byId.get(r.film_id)?.title||r.film_id)+" · "+r.rating+" sao"),
+          make("p","",r.content));
+        publicFeed.append(box);
+      });
+    }
     const badges=[
       ["★","Bước đầu sưu tầm",state.library.some(x=>x.collection==="favorite"),"Lưu ít nhất một phim yêu thích"],
       ["♧","Người khám phá",state.library.some(x=>x.collection==="watchlist"),"Thêm phim vào danh sách xem sau"],
@@ -248,10 +266,11 @@
     });
   }
   function renderPrefs(){
-    const p=state.prefs||{locale:"vi",genres:[],personalization_enabled:false,watch_tracking_enabled:false};
+    const p=state.prefs||{locale:"vi",genres:[],personalization_enabled:false,watch_tracking_enabled:false,notify_followed_releases:false};
     $("#pref-locale").value=p.locale||"vi";
     $("#pref-personalize").checked=!!p.personalization_enabled;
     $("#pref-track").checked=!!p.watch_tracking_enabled;
+    $("#pref-release-alert").checked=!!p.notify_followed_releases;
     $$("#pref-genres input").forEach(e=>e.checked=(p.genres||[]).includes(e.value));
   }
   function renderAll(){
@@ -346,7 +365,8 @@
     const payload={viewer_profile_id:state.profile.id,user_id:state.user.id,site_id:SITE,
       locale:$("#pref-locale").value,genres:selected,
       personalization_enabled:$("#pref-personalize").checked,
-      watch_tracking_enabled:$("#pref-track").checked,updated_at:new Date().toISOString()};
+      watch_tracking_enabled:$("#pref-track").checked,
+      notify_followed_releases:$("#pref-release-alert").checked,updated_at:new Date().toISOString()};
     const btn=e.target.querySelector('button[type="submit"]');btn.disabled=true;
     try{
       const {error}=await client.from("viewer_preferences").upsert(payload,{onConflict:"viewer_profile_id"});
@@ -391,6 +411,27 @@
       announce("Đã chuẩn bị tệp dữ liệu cá nhân trên thiết bị của bạn.");
     }catch(_){announce("Chưa thể xuất dữ liệu. Vui lòng thử lại.",true);}
     finally{this.disabled=false;}
+  });
+  // Load releases after Supabase's network response; never mix live films between sites.
+  window.addEventListener("afn-catalog-updated",function(event){
+    if(event.detail?.site_id!==SITE)return;
+    const incoming=(window.FILMS||[]).filter(f=>f.live&&f.sites?.includes(SITE));
+    incoming.forEach(f=>{
+      byId.set(f.id,f);
+      const index=FILMS.findIndex(x=>x.id===f.id);
+      if(index>=0)FILMS[index]=f;else FILMS.push(f);
+      if(!Array.from($("#review-film").options).some(opt=>opt.value===f.id))
+        $("#review-film").add(new Option(f.title,f.id));
+      (f.genres||[]).forEach(g=>{
+        if(!Array.from($("#genre-filter").options).some(opt=>opt.value===g)){
+          $("#genre-filter").add(new Option(g,g));
+          const wrap=make("label");const input=make("input");
+          input.type="checkbox";input.value=g;
+          wrap.append(input,document.createTextNode(g));$("#pref-genres").append(wrap);
+        }
+      });
+    });
+    if(state.profile)renderAll();
   });
   initStaticSelects();
   try{

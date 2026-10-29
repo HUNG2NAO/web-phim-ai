@@ -1,0 +1,42 @@
+/* Approved releases only. Metadata fetched via Supabase RLS using publishable key. */
+(function(){
+"use strict";
+const cfg=window.AFN_AUTH_CONFIG||{};
+const brands=window.SITES||[];
+if(!cfg.enabled||!window.supabase?.createClient)return;
+const host=location.hostname.replace(/^www\./,"");
+const params=new URLSearchParams(location.search);
+const brand=host.endsWith(".pages.dev")?
+ (brands.find(x=>x.id===params.get("site"))||brands[0]):brands.find(x=>x.domain===host);
+if(!brand)return;
+const client=window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
+ persistSession:true,autoRefreshToken:true,storageKey:cfg.storageKey||"afn-film-auth-v1"
+}});
+function valid(row){
+ return row&&row.published===true&&row.rights_attested===true
+   &&/^[a-z0-9][a-z0-9-]{0,119}$/.test(row.film_id||"")
+   &&typeof row.title==="string"&&row.title.length>=2
+   &&((row.source_kind==="youtube"&&/^[A-Za-z0-9_-]{11}$/.test(row.youtube_id||""))
+    ||(row.source_kind==="native"&&/^https:\/\/\S+$/.test(row.video_url||"")));
+}
+(async()=>{
+ try{
+  const {data,error}=await client.from("site_films").select("*").eq("site_id",brand.id).eq("published",true);
+  if(error)throw error;
+  const films=window.FILMS||[];
+  for(const row of (data||[]).filter(valid)){
+   const genres=Array.isArray(row.genres)?row.genres.filter(x=>typeof x==="string").slice(0,12):[];
+   const film={id:row.film_id,title:row.title,synopsis:row.synopsis||"",genres,
+    year:row.year||new Date().getFullYear(),type:row.film_type||"le",
+    duration:"Theo video",age:"Chưa phân loại",quality:"HD",views:0,
+    world:brand.world||"co-trang",sites:[brand.id],live:true,
+    art:{motif:brand.world==="tuong-lai"?"pho":"truc",hue:200}};
+   if(row.source_kind==="youtube")film.youtube=row.youtube_id;
+   else film.video=row.video_url;
+   const idx=films.findIndex(x=>x.id===film.id);
+   if(idx>=0)films[idx]=film;else films.push(film);
+  }
+  window.dispatchEvent(new CustomEvent("afn-catalog-updated",{detail:{site_id:brand.id,count:(data||[]).filter(valid).length}}));
+ }catch(e){window.dispatchEvent(new CustomEvent("afn-catalog-error"));}
+})();
+})();

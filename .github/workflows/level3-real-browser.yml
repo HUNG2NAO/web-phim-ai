@@ -5,8 +5,15 @@ on:
     branches:
       - 'feature/level3-xuongphim-*'
       - 'feature/level3-five-brands-*'
+      - 'feature/level3-completion-*'
     paths:
-      - 'tests/level3-playwright.spec.cjs'
+      - 'tests/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'member.html'
+      - 'account.html'
+      - 'admin.html'
+      - 'db/**'
       - '.github/workflows/level3-real-browser.yml'
   workflow_dispatch:
 
