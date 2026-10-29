@@ -188,3 +188,17 @@ button:not(:disabled),a { transition: background-color var(--premium-transition)
   .premium-account .afn-profile-header-inner{padding-left:14px;padding-right:14px}
   .premium-account .afn-account-main{padding-left:14px;padding-right:14px}
 }
+
+/* Compact active-profile selector on narrow phones: avoids a tall utility panel. */
+@media(max-width:600px) {
+  .premium-member .profile-switch {
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    gap:5px 10px;padding:11px 12px;margin:11px 0 17px;
+  }
+  .premium-member .profile-switch-name {grid-column:1;grid-row:1;width:auto;align-self:center;min-width:0}
+  .premium-member .profile-switch-name strong {font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .premium-member .profile-switch label {display:none}
+  .premium-member #profile-select {grid-column:2;grid-row:1;min-width:115px;max-width:155px;min-height:41px;font-size:12px}
+  .premium-member .profile-switch .text-btn {grid-column:1/-1;justify-self:start;min-height:28px;padding:2px 3px;font-size:11px}
+  .premium-member .side-nav {scrollbar-color:var(--cyan) transparent}
+}
