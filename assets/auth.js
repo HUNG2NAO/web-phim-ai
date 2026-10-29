@@ -34,6 +34,7 @@
       '<strong id="afn-menu-name"></strong>',
       '<span id="afn-menu-email"></span>',
     '</div>',
+    '<a href="./member.html" class="afn-auth-hidden" id="afn-menu-member">Trung tâm thành viên</a>',
     '<a href="./account.html" id="afn-menu-profile">Hồ sơ cá nhân</a>',
     '<button type="button" id="afn-menu-signout">Đăng xuất</button>'
   ].join("");
@@ -44,6 +45,19 @@
     accountURL.searchParams.set("site", previewBrand);
   }
   accountMenu.querySelector("#afn-menu-profile").href = accountURL.href;
+  const memberURL = new URL("./member.html", window.location.href);
+  if (window.location.hostname.endsWith(".pages.dev")) {
+    memberURL.searchParams.set("site",previewBrand||"xuongphim");
+  }
+  const hostBrand = window.location.hostname.replace(/^www\./,"");
+  const activeBrand = window.location.hostname.endsWith(".pages.dev")
+    ? (window.SITES||[]).find(s=>s.id===(previewBrand||"xuongphim"))
+    : (window.SITES||[]).find(s=>s.domain===hostBrand);
+  const siteId = activeBrand?.id;
+  const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId);
+  const memberLink = accountMenu.querySelector("#afn-menu-member");
+  memberLink.href = memberURL.href;
+  memberLink.classList.toggle("afn-auth-hidden",!isXuongPilot);
   slot.appendChild(accountMenu);
   trigger.setAttribute("aria-expanded", "false");
   var header = document.querySelector(".site-header .wrap");

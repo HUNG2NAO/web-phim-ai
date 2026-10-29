@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,follow"><meta name="theme-color" content="#07111D">
+  <title>Trung tâm thành viên — Xưởng Phim AI</title>
+  <meta name="description" content="Trải nghiệm thành viên: tủ phim, hồ sơ xem, lịch sử và sở thích. Bản thử nghiệm.">
+  <link rel="stylesheet" href="assets/level3.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Đến nội dung chính</a>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="./?site=xuongphim"><span class="brand-mark">XP</span><span>XƯỞNG PHIM<span class="brand-dot">.AI</span></span></a>
+      <div class="top-actions">
+        <span class="pilot-label">MEMBER HUB · PREVIEW</span>
+        <a class="back-link" id="home-link" href="./?site=xuongphim">← Trở lại xem phim</a>
+      </div>
+    </div>
+  </header>
+  <main id="main" class="shell">
+    <div id="hub-loading" role="status" class="state-box">Đang chuẩn bị trải nghiệm thành viên…</div>
+    <section id="hub-guest" hidden class="state-box">
+      <h1>Đăng nhập để sử dụng Trung tâm thành viên</h1>
+      <p>Hãy quay lại website, nhấn Đăng nhập rồi mở lại trang này.</p>
+      <a href="./?site=xuongphim" class="btn primary">Trở lại trang chủ</a>
+    </section>
+    <section id="hub-app" hidden>
+      <section class="member-hero">
+        <div class="hero-copy">
+          <div class="eyebrow">KHÔNG GIAN GIẢI TRÍ CỦA BẠN</div>
+          <h1>Chào mừng trở lại, <span id="hero-name">thành viên</span>.</h1>
+          <p>Xưởng Phim lưu sở thích và hoạt động của bạn khi được cho phép. Chọn một hồ sơ để bắt đầu.</p>
+          <div class="hero-cta"><button class="btn primary" data-tab-go="discover">Khám phá phim <span aria-hidden="true">›</span></button>
+          <button class="btn ghost" data-tab-go="library">Mở tủ phim</button></div>
+        </div>
+        <div class="hero-avatar" aria-hidden="true" id="hero-avatar">X</div>
+      </section>
+      <div class="member-banner"><span class="status-dot"></span><span id="pilot-notice">Bản thử nghiệm Level 3: phim hiện vẫn là nội dung mẫu, chưa có video phát. Tiến độ xem không được tạo giả.</span></div>
+      <section class="profile-switch" aria-label="Hồ sơ xem đang hoạt động">
+        <div class="profile-switch-name"><span class="eyebrow">HỒ SƠ ĐANG XEM</span><strong id="active-profile-name">Đang tải…</strong></div>
+        <label for="profile-select">Đổi hồ sơ:</label><select id="profile-select" aria-label="Chọn hồ sơ xem"></select>
+        <button class="text-btn" data-tab-go="profiles">Quản lý hồ sơ</button>
+      </section>
+      <div class="layout">
+        <nav class="side-nav" aria-label="Khu vực thành viên">
+          <button class="nav-item active" data-tab="overview" aria-current="page">⌂ <span>Tổng quan</span></button>
+          <button class="nav-item" data-tab="library">♡ <span>Tủ phim</span></button>
+          <button class="nav-item" data-tab="discover">✦ <span>Khám phá</span></button>
+          <button class="nav-item" data-tab="community">♧ <span>Cộng đồng</span></button>
+          <button class="nav-item" data-tab="profiles">◉ <span>Hồ sơ xem</span></button>
+          <button class="nav-item" data-tab="inbox">♧ <span>Thông báo</span></button>
+          <button class="nav-item" data-tab="settings">⚙ <span>Tùy chỉnh</span></button>
+          <a class="nav-account" id="account-link" href="./account.html?site=xuongphim">Quản lý tài khoản <span aria-hidden="true">↗</span></a>
+        </nav>
+        <div class="work-area" id="work-area">
+          <section class="tab-panel" id="tab-overview" data-panel="overview">
+            <div class="section-top"><div><span class="eyebrow">TỔNG QUAN</span><h2>Không gian của bạn</h2></div><span class="muted">Dữ liệu thực của hồ sơ đang chọn</span></div>
+            <div class="stats">
+              <div class="stat"><span>Phim yêu thích</span><strong id="stat-favorites">0</strong></div>
+              <div class="stat"><span>Để xem sau</span><strong id="stat-watchlist">0</strong></div>
+              <div class="stat"><span>Đang theo dõi</span><strong id="stat-following">0</strong></div>
+              <div class="stat"><span>Đang xem dở</span><strong id="stat-progress">0</strong></div>
+            </div>
+            <div class="section-top"><h3>Xem tiếp</h3><button class="text-btn" data-tab-go="library">Mở tủ phim</button></div>
+            <div id="continue-items" class="film-grid"></div>
+            <div class="section-top"><h3>Dành cho bạn</h3><button class="text-btn" data-tab-go="discover">Khám phá thêm</button></div>
+            <p id="recommend-context" class="muted">Bật cá nhân hóa trong Tùy chỉnh để nhận gợi ý theo sở thích.</p>
+            <div id="recommend-items" class="film-grid"></div>
+          </section>
+          <section class="tab-panel" id="tab-library" data-panel="library" hidden>
+            <div class="section-top"><div><span class="eyebrow">TỦ PHIM CÁ NHÂN</span><h2>Lưu những gì bạn yêu thích</h2></div></div>
+            <div class="filter-row" role="group" aria-label="Loại danh sách">
+              <button class="chip selected" data-collection-filter="favorite">♡ Yêu thích</button>
+              <button class="chip" data-collection-filter="watchlist">◷ Xem sau</button>
+              <button class="chip" data-collection-filter="following">◉ Theo dõi</button>
+            </div>
+            <div id="library-items" class="film-grid"></div>
+          </section>
+          <section class="tab-panel" id="tab-discover" data-panel="discover" hidden>
+            <div class="section-top"><div><span class="eyebrow">KHÁM PHÁ</span><h2>Thế giới phim viễn tưởng</h2></div></div>
+            <p class="muted">Các phim mẫu để kiểm tra chức năng lưu và theo dõi. Chưa thể phát video ở giai đoạn này.</p>
+            <div class="discovery-controls"><label for="genre-filter">Thể loại:</label><select id="genre-filter"><option value="">Tất cả thể loại</option></select></div>
+            <div id="discover-items" class="film-grid"></div>
+          </section>
+          <section class="tab-panel" id="tab-community" data-panel="community" hidden>
+            <div class="section-top"><div><span class="eyebrow">CỘNG ĐỒNG</span><h2>Đánh giá & thành tích</h2></div></div>
+            <p class="muted">Đánh giá chỉ hiển thị cho bạn cho đến khi có quản trị viên kiểm duyệt. Chưa mở bảng xếp hạng công khai.</p>
+            <div class="two-columns">
+              <div class="panel-card">
+                <h3>Gửi đánh giá phim mẫu</h3>
+                <form id="review-form" class="stack">
+                  <label for="review-film">Chọn phim</label><select id="review-film" required></select>
+                  <label for="review-rating">Đánh giá</label><select id="review-rating"><option value="5">5 sao</option><option value="4">4 sao</option><option value="3">3 sao</option><option value="2">2 sao</option><option value="1">1 sao</option></select>
+                  <label for="review-content">Nhận xét</label><textarea id="review-content" rows="4" minlength="10" maxlength="1200" required placeholder="Chia sẻ cảm nhận của bạn (10–1200 ký tự)"></textarea>
+                  <button type="submit" class="btn primary">Gửi để kiểm duyệt</button>
+                </form>
+              </div>
+              <div class="panel-card"><h3>Thành tích cá nhân</h3><div id="achievement-items" class="achievement-list"></div><p class="muted small">Huy hiệu thử nghiệm dựa trên những hành động có dữ liệu. Không có XP hoặc thứ hạng giả.</p></div>
+            </div>
+            <div class="section-top"><h3>Đánh giá đã gửi</h3></div><div id="review-items" class="review-list"></div>
+          </section>
+          <section class="tab-panel" id="tab-profiles" data-panel="profiles" hidden>
+            <div class="section-top"><div><span class="eyebrow">HỒ SƠ XEM</span><h2>Không gian riêng cho từng người xem</h2></div></div>
+            <p class="muted">Mỗi hồ sơ lưu danh sách và sở thích riêng trong cùng một tài khoản. Đây không phải khóa trẻ em hay cơ chế kiểm soát truy cập.</p>
+            <div id="viewer-profile-items" class="profiles-grid"></div>
+            <form id="new-profile-form" class="panel-card inline-form">
+              <label for="new-profile-name">Thêm hồ sơ xem (tối đa 5 hồ sơ trong giao diện)</label>
+              <input id="new-profile-name" maxlength="40" minlength="2" required placeholder="Ví dụ: Người xem 2">
+              <button class="btn primary" type="submit">Tạo hồ sơ</button>
+            </form>
+          </section>
+          <section class="tab-panel" id="tab-inbox" data-panel="inbox" hidden>
+            <div class="section-top"><div><span class="eyebrow">THÔNG BÁO</span><h2>Hộp thư của bạn</h2></div></div>
+            <p class="muted">Thông báo chỉ xuất hiện khi hệ thống quản trị gửi sự kiện thực, không tạo thông báo giả.</p>
+            <div id="inbox-items" class="notification-list"></div>
+          </section>
+          <section class="tab-panel" id="tab-settings" data-panel="settings" hidden>
+            <div class="section-top"><div><span class="eyebrow">QUYỀN RIÊNG TƯ</span><h2>Tùy chỉnh trải nghiệm</h2></div></div>
+            <form id="preferences-form" class="panel-card stack">
+              <label for="pref-locale">Ngôn ngữ đề xuất</label>
+              <select id="pref-locale"><option value="vi">Tiếng Việt</option><option value="en">English</option><option value="id">Bahasa Indonesia</option><option value="th">ภาษาไทย</option><option value="ms">Bahasa Melayu</option></select>
+              <fieldset class="genres-fieldset"><legend>Thể loại yêu thích (tùy chọn)</legend><div id="pref-genres" class="genre-checks"></div></fieldset>
+              <label class="toggle-row"><input type="checkbox" id="pref-personalize"><span><strong>Gợi ý theo sở thích</strong><small>Gợi ý từ thể loại và phim đã lưu, chưa sử dụng AI bên ngoài.</small></span></label>
+              <label class="toggle-row"><input type="checkbox" id="pref-track"><span><strong>Ghi nhớ tiến độ xem</strong><small>Chỉ lưu khi thực sự phát video; có thể tắt bất cứ lúc nào.</small></span></label>
+              <button class="btn primary" type="submit">Lưu tùy chỉnh</button>
+            </form>
+            <div class="panel-card privacy"><h3>Quyền riêng tư</h3><p>Danh sách và lịch sử thuộc về bạn; mặc định không công khai. Bạn có thể xóa dữ liệu xem của hồ sơ đang chọn.</p><div class="privacy-actions"><button class="btn danger" type="button" id="erase-progress">Xóa lịch sử xem hồ sơ này</button><button class="btn ghost" type="button" id="export-data">Xuất dữ liệu của tôi (.json)</button></div><p>Muốn thay đổi email, mật khẩu hoặc yêu cầu xóa tài khoản? <a id="security-link" href="./account.html?site=xuongphim">Quản lý tài khoản</a>.</p></div>
+          </section>
+        </div>
+      </div>
+      <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+    </section>
+  </main>
+  <footer class="shell foot"><span>XƯỞNG PHIM.AI · MEMBER HUB</span><span>Preview thử nghiệm · Không quảng cáo dữ liệu giả</span></footer>
+  <script src="assets/sites.js"></script><script src="assets/films.js"></script><script src="assets/films-tuong-lai.js"></script>
+  <script src="assets/auth-config.js"></script>
+<script src="assets/level3-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
+  <script src="assets/level3.js"></script>
+</body></html>

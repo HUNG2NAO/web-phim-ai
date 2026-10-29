@@ -270,6 +270,13 @@
     var src = Array.isArray(f.video) ? f.video[(ep ? +ep.dataset.ep : 1) - 1] : f.video;
     if (src) {
       p.innerHTML = '<video controls autoplay playsinline src="' + encodeURI(src) + '"></video>';
+      // Progress is recorded only for actually playing native video, with explicit viewer consent.
+      if ((window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
+        window.AFN_TRACK_VIDEO({
+          video: p.querySelector("video"), filmId: f.id,
+          episode: ep ? Number(ep.dataset.ep) || 1 : 1
+        });
+      }
     } else if (!p.querySelector(".note")) {
       var note = document.createElement("p"); note.className = "note";
       note.textContent = "Phim mẫu do AI tạo, chưa có video để phát. Bạn có thể khám phá thông tin phim và giao diện demo.";

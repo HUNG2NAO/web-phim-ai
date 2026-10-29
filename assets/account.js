@@ -7,6 +7,16 @@
   var domainBrand = brands.find(function(b) { return b.domain === hostname; });
   var previewBrand = brands.find(function(b) { return b.id === params.get("site"); });
   var brand = domainBrand || previewBrand || brands[0];
+  var isMemberPilot = !!(brand && (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(brand.id));
+  var memberShortcut = document.getElementById("afn-member-hub-shortcut");
+  if(memberShortcut){
+    memberShortcut.hidden = !isMemberPilot;
+    if(isMemberPilot){
+      var hub=new URL("./member.html",window.location.href);
+      if(!domainBrand)hub.searchParams.set("site",brand.id);
+      document.getElementById("afn-to-member").href=hub.href;
+    }
+  }
   var home = new URL("./", window.location.href);
   if (!domainBrand && brand) home.searchParams.set("site", brand.id);
   ["afn-brand-home","afn-back-top","afn-signin-home","afn-profile-back"].forEach(function(id) {

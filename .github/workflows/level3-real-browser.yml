@@ -1,0 +1,38 @@
+name: Level 3 real-browser acceptance
+
+on:
+  push:
+    branches:
+      - 'feature/level3-xuongphim-*'
+    paths:
+      - 'tests/level3-playwright.spec.cjs'
+      - '.github/workflows/level3-real-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Playwright Chromium
+        run: |
+          npm install --no-save --no-package-lock @playwright/test@1.64.1
+          npx playwright install --with-deps chromium
+      - name: Run automated browser acceptance against Cloudflare Preview (mock account)
+        run: npx playwright test tests/level3-playwright.spec.cjs --project=chromium --reporter=line --workers=1
+      - name: Save browser screenshots and test report on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: level3-playwright-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
