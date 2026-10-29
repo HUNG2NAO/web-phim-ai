@@ -268,7 +268,26 @@
     }
     var ep = $(".episodes [aria-pressed='true']");
     var src = Array.isArray(f.video) ? f.video[(ep ? +ep.dataset.ep : 1) - 1] : f.video;
-    if (src) {
+    var yt = Array.isArray(f.youtube) ? f.youtube[(ep ? +ep.dataset.ep : 1) - 1] : f.youtube;
+    if (f.live && typeof yt === "string" && /^[A-Za-z0-9_-]{11}$/.test(yt)) {
+      p.replaceChildren();
+      var holder=document.createElement("div");
+      holder.className="youtube-player";
+      holder.style.cssText="width:100%;aspect-ratio:16/9;background:#000";
+      p.appendChild(holder);
+      if (typeof window.AFN_PLAY_YOUTUBE === "function") {
+        window.AFN_PLAY_YOUTUBE({holder:holder,filmId:f.id,videoId:yt,
+          episode:ep?Number(ep.dataset.ep)||1:1});
+      } else {
+        var iframe=document.createElement("iframe");
+        iframe.src="https://www.youtube-nocookie.com/embed/"+yt+"?rel=0";
+        iframe.title=f.title;
+        iframe.setAttribute("allow","accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture");
+        iframe.setAttribute("allowfullscreen","");
+        iframe.style.cssText="width:100%;height:100%;border:0";
+        holder.appendChild(iframe);
+      }
+    } else if (src) {
       p.innerHTML = '<video controls autoplay playsinline src="' + encodeURI(src) + '"></video>';
       // Progress is recorded only for actually playing native video, with explicit viewer consent.
       if ((window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
@@ -339,4 +358,15 @@
 
   applyBrand();
   render();
+  // Published metadata loads asynchronously. Refresh catalog without replacing the viewer's session.
+  window.addEventListener("afn-catalog-updated",function(){
+    applyBrand();render();
+  });
+  var requestFilm=new URLSearchParams(location.search).get("film");
+  if(requestFilm && /^[a-z0-9][a-z0-9-]{0,119}$/.test(requestFilm)) {
+    if(byId(requestFilm))openFilm(requestFilm,false);
+    else window.addEventListener("afn-catalog-updated",function(){
+      if(byId(requestFilm))openFilm(requestFilm,false);
+    },{once:true});
+  }
 })();
