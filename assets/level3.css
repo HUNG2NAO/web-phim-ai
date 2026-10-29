@@ -23,3 +23,21 @@ select,input,textarea{background:#091624;color:var(--fg);border:1px solid #36506
 .viewer-box button.remove-profile { background: transparent; border-color: #7c3f4d; color: #f1b9bf; }
 .viewer-box button.remove-profile:hover { background: #40202b; }
 .toast[data-error="true"] { background: #4a2330; border-color: #a84b62; color: #fff0f2; }
+
+/* Historical film brands retain an editorial, warm movie-library feel.
+   Brand accent itself comes from assets/sites.js (green/orange/purple). */
+:root[data-world="co-trang"] {
+  --bg: #120f12;
+  --panel: #211b20;
+  --panel2: #30262d;
+  --line: #493e47;
+  --fg: #f8efe7;
+  --muted: #b6a8b2;
+}
+:root[data-world="co-trang"] body {
+  background: radial-gradient(ellipse 900px 520px at 100% -20%, #35212e 0%, transparent 72%), var(--bg);
+}
+:root[data-world="co-trang"] .topbar { background: #1b171c; }
+:root[data-world="co-trang"] .member-banner { background: #262128; border-color: #4d424c; color: #cec1cc; }
+:root[data-world="co-trang"] .film-controls button { background: #352c35; border-color: #5a4a55; }
+:root[data-world="co-trang"] .film-controls button.is-saved { background: #3a3037; border-color: var(--cyan); color: var(--cyan); }
