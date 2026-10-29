@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const BASE = process.env.AFN_PREVIEW_URL || "https://feature-level3-premium-uiux.web-phim-ai-5sites.pages.dev";
+const BASE = process.env.AFN_PREVIEW_URL || "https://feature-homepage-font-speed.web-phim-ai-5sites.pages.dev";
 function installMock() {
   var user=window.__AFN_GUEST?null:{id:"00000000-0000-4000-8000-000000000099",email:"test-viewer@example.test",created_at:"2026-10-28T16:00:00Z",email_confirmed_at:"2026-10-28T16:02:00Z",user_metadata:{display_name:"Khán giả kiểm thử"},app_metadata:{providers:["email"]}};
   var key="__AFN_E2E_ROWS",memory={},next=0;
@@ -262,4 +262,48 @@ test("premium account and staff screens keep readable typography",async({page})=
   await page.goto(BASE+"/admin.html?site=xuongphim",{waitUntil:"domcontentloaded"});
   expect(await page.locator("body").getAttribute("class")).toContain("premium-studio");
   await expect(page.locator("#studio-denied")).toBeVisible();
+});
+
+test("Ghiền Phim headline remains readable when external fonts are slow",async({page})=>{
+  await page.route("https://fonts.googleapis.com/**",route=>route.abort());
+  await page.route("https://fonts.gstatic.com/**",route=>route.abort());
+  await setup(page);
+  await page.goto(BASE+"/?site=ghienphim",{waitUntil:"domcontentloaded"});
+  const title=page.locator(".hero h1");
+  await expect(title).toHaveText("Hồ Ly Núi Tuyết");
+  await expect(title).toBeVisible();
+  await expect(page.locator("#logo .name")).toContainText("GhiềnPhim");
+  const metrics=await title.evaluate(el=>({width:el.getBoundingClientRect().width,
+    font:getComputedStyle(el).fontFamily,
+    wrapping:getComputedStyle(el).textWrap,
+    spacing:getComputedStyle(el).letterSpacing
+  }));
+  expect(metrics.width).toBeGreaterThan(250);
+  expect(metrics.wrapping).toBe("wrap");
+  await page.screenshot({path:"test-results/ghienphim-font-fallback.png",fullPage:false});
+});
+test("homepage hero painting yields and offscreen artwork remains lazy",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/?site=ghienphim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator(".hero h1")).toBeVisible();
+  await expect.poll(async()=>page.locator(".hero-art").evaluate(el=>el.style.backgroundImage),
+    {timeout:15000}).toMatch(/^url\(/);
+  const viewport=await page.evaluate(()=>({
+    artworks:document.querySelectorAll(".poster").length,
+    lazy:document.querySelectorAll(".poster[data-art]").length,
+    declaredSize:document.querySelector(".poster[data-art]")?.getAttribute("data-size")||""
+  }));
+  expect(viewport.artworks).toBeGreaterThan(4);
+  expect(viewport.lazy).toBeGreaterThan(0);
+  expect(viewport.declaredSize).toBe("320x480");
+});
+test("rapid preview-brand switching keeps headers and hero text coherent",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/?site=ghienphim",{waitUntil:"domcontentloaded"});
+  for(const [id,name] of [["xuongphim","XưởngPhim"],["khophim","KhoPhim"],["ghienphim","GhiềnPhim"]]){
+    await page.locator('#pv-pills [data-site="'+id+'"]').click();
+    await expect(page.locator("#logo .name")).toContainText(name);
+    await expect(page.locator(".hero h1")).toBeVisible();
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(1380);
 });
