@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const BASE = process.env.AFN_PREVIEW_URL || "https://feature-level3-completion-pr.web-phim-ai-5sites.pages.dev";
+const BASE = process.env.AFN_PREVIEW_URL || "https://feature-level3-premium-uiux.web-phim-ai-5sites.pages.dev";
 function installMock() {
   var user=window.__AFN_GUEST?null:{id:"00000000-0000-4000-8000-000000000099",email:"test-viewer@example.test",created_at:"2026-10-28T16:00:00Z",email_confirmed_at:"2026-10-28T16:02:00Z",user_metadata:{display_name:"Khán giả kiểm thử"},app_metadata:{providers:["email"]}};
   var key="__AFN_E2E_ROWS",memory={},next=0;
@@ -191,4 +191,75 @@ test("member data can be exported as JSON",async({page})=>{
   await page.locator("#export-data").click();
   const file=await download;
   expect(file.suggestedFilename()).toBe("ai-film-network-my-data.json");
+});
+
+test("premium film cards render actual generated artwork and large accessible controls",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/member.html?site=xuongphim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#hub-app")).toBeVisible();
+  await page.locator('[data-tab="discover"]').click();
+  const art=page.locator("#discover-items .film-art").first();
+  await expect(art).toBeVisible();
+  await expect.poll(async()=>art.evaluate(el=>el.style.backgroundImage)).toMatch(/^url\(/);
+  const label=page.locator('#discover-items [data-action="favorite"]').first();
+  await expect(label).toHaveAttribute("aria-pressed","false");
+  await expect(label).toHaveAttribute("aria-label",/Thêm .* vào yêu thích/);
+  await label.click();
+  await expect(page.locator('#discover-items [data-action="favorite"]').first()).toHaveAttribute("aria-pressed","true");
+  await page.screenshot({path:"test-results/premium-desktop-xuongphim.png",fullPage:true});
+});
+for(const [site,world,accent] of [
+  ["xuongphim","tuong-lai","#3FD0F5"],
+  ["khophim","co-trang","#4FB08F"],
+  ["phephim","tuong-lai","#FF4F7B"],
+  ["phimhay","co-trang","#E8673A"],
+  ["ghienphim","co-trang","#A68BE0"]
+]){
+  test(site+" has a distinct premium brand palette and themed movie cards",async({page})=>{
+    await setup(page);
+    await page.goto(BASE+"/member.html?site="+site,{waitUntil:"domcontentloaded"});
+    await expect(page.locator("#hub-app")).toBeVisible();
+    const meta=await page.evaluate(()=>({
+      site:document.documentElement.dataset.site,
+      world:document.documentElement.dataset.world,
+      accent:document.documentElement.style.getPropertyValue("--cyan"),
+      font:getComputedStyle(document.body).fontFamily,
+      background:getComputedStyle(document.body).getPropertyValue("--bg").trim()
+    }));
+    expect(meta.site).toBe(site);
+    expect(meta.world).toBe(world);
+    expect(meta.accent.toLowerCase()).toBe(accent.toLowerCase());
+    expect(meta.font).toContain("Be Vietnam Pro");
+    expect(meta.background).toMatch(world==="co-trang"?/^#130f14$/i:/^#070e19$/i);
+    await page.locator('[data-tab="discover"]').click();
+    await expect(page.locator("#discover-items .film-art").first()).toBeVisible();
+  });
+}
+test("premium home places Continue Watching and Recommendations before dashboard statistics",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/member.html?site=xuongphim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#hub-app")).toBeVisible();
+  const order=await page.evaluate(()=>["continue-items","recommend-items","stat-favorites"].map(id=>document.getElementById(id).getBoundingClientRect().top));
+  expect(order[0]).toBeLessThan(order[1]);
+  expect(order[1]).toBeLessThan(order[2]);
+});
+test("premium 360px mobile has no overflow and movie controls remain thumb-friendly",async({page})=>{
+  await page.setViewportSize({width:360,height:780});
+  await setup(page);
+  await page.goto(BASE+"/member.html?site=khophim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#hub-app")).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(363);
+  await page.locator('[data-tab="discover"]').click();
+  const height=await page.locator('#discover-items [data-action="favorite"]').first().evaluate(x=>x.getBoundingClientRect().height);
+  expect(height).toBeGreaterThanOrEqual(40);
+  await page.screenshot({path:"test-results/premium-mobile-khophim.png",fullPage:true});
+});
+test("premium account and staff screens keep readable typography",async({page})=>{
+  await setup(page);
+  await page.goto(BASE+"/account.html?site=phephim",{waitUntil:"domcontentloaded"});
+  await expect(page.locator("#afn-account-signedin")).toBeVisible();
+  expect(await page.locator("body").getAttribute("class")).toContain("premium-account");
+  await page.goto(BASE+"/admin.html?site=xuongphim",{waitUntil:"domcontentloaded"});
+  expect(await page.locator("body").getAttribute("class")).toContain("premium-studio");
+  await expect(page.locator("#studio-denied")).toBeVisible();
 });
