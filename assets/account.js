@@ -90,6 +90,7 @@
       if(memberShortcut)memberShortcut.hidden=true;
       document.getElementById("afn-account-security").hidden=true;
       document.getElementById("afn-privacy-panel").hidden=true;
+      document.getElementById("afn-admin-shortcut").hidden=true;
       return;
     }
     current = user;
@@ -126,6 +127,14 @@
     var user = response.data && response.data.user;
     present(user);
     if (user) {
+      // Staff role is read from RLS-protected server data, never user_metadata.
+      try {
+        var staff = await supabase.from("site_staff").select("role")
+          .eq("user_id",user.id).eq("site_id",brand.id);
+        var authorized=!staff.error && (staff.data||[]).length>0;
+        document.getElementById("afn-admin-shortcut").hidden=!authorized;
+        if(authorized)document.getElementById("afn-to-admin").href="./admin.html?site="+encodeURIComponent(brand.id);
+      } catch(_){document.getElementById("afn-admin-shortcut").hidden=true;}
       try { await syncMemberRecords(user); }
       catch (error) {
         showStatus("Hồ sơ hiển thị bình thường nhưng chưa thể đồng bộ dữ liệu thành viên. Vui lòng tải lại trang.",true);
