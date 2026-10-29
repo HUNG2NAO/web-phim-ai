@@ -60,6 +60,14 @@ async function refresh(){
  cards();message("Đã tải dữ liệu.");
 }
 function setLinks(){
+ const brand=brandData.find(b=>b.id===site);
+ if(brand){
+   document.documentElement.dataset.site=site;
+   document.documentElement.dataset.world=brand.world||"co-trang";
+   document.documentElement.style.setProperty("--cyan",brand.accent);
+   document.documentElement.style.setProperty("--cyan-txt",brand.onAccent);
+   document.title="Quản trị nội dung — "+brand.name;
+ }
  $("#studio-home").href="./?site="+site;
  $("#studio-return").href="./?site="+site;
  $("#studio-member").href="./member.html?site="+site;

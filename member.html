@@ -5,9 +5,13 @@
   <meta name="robots" content="noindex,follow"><meta name="theme-color" content="#07111D">
   <title>Trung tâm thành viên — Xưởng Phim AI</title>
   <meta name="description" content="Trải nghiệm thành viên: tủ phim, hồ sơ xem, lịch sử và sở thích. Bản thử nghiệm.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Chakra+Petch:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/level3.css">
+  <link rel="stylesheet" href="assets/premium-ui.css">
 </head>
-<body>
+<body class="premium-member">
   <a class="skip-link" href="#main">Đến nội dung chính</a>
   <header class="topbar">
     <div class="shell topbar-inner">
@@ -28,13 +32,21 @@
     <section id="hub-app" hidden>
       <section class="member-hero">
         <div class="hero-copy">
-          <div class="eyebrow">KHÔNG GIAN GIẢI TRÍ CỦA BẠN</div>
+          <div class="eyebrow" id="hero-eyebrow">THẾ GIỚI ĐIỆN ẢNH CỦA BẠN</div>
+          <div class="hero-persona"><div class="hero-avatar" aria-hidden="true" id="hero-avatar">X</div><span>Hồ sơ đang xem <strong id="hero-profile-label">Thành viên</strong></span></div>
           <h1>Chào mừng trở lại, <span id="hero-name">thành viên</span>.</h1>
-          <p>Xưởng Phim lưu sở thích và hoạt động của bạn khi được cho phép. Chọn một hồ sơ để bắt đầu.</p>
+          <p id="hero-description">Khám phá câu chuyện mới, lưu phim yêu thích và trở lại đúng nơi bạn đã dừng.</p>
           <div class="hero-cta"><button class="btn primary" data-tab-go="discover">Khám phá phim <span aria-hidden="true">›</span></button>
           <button class="btn ghost" data-tab-go="library">Mở tủ phim</button></div>
         </div>
-        <div class="hero-avatar" aria-hidden="true" id="hero-avatar">X</div>
+        <aside class="hero-feature" aria-label="Phim nổi bật của thương hiệu">
+          <div class="hero-feature-art" id="hero-feature-art" aria-hidden="true"></div>
+          <div class="hero-feature-overlay">
+            <span class="hero-feature-label">PHIM MINH HỌA NỔI BẬT</span>
+            <strong id="hero-feature-title">Khám phá câu chuyện mới</strong>
+            <span id="hero-feature-genre">Nội dung mẫu · Chưa có video</span>
+          </div>
+        </aside>
       </section>
       <div class="member-banner"><span class="status-dot"></span><span id="pilot-notice">Bản thử nghiệm Level 3: phim hiện vẫn là nội dung mẫu, chưa có video phát. Tiến độ xem không được tạo giả.</span></div>
       <section class="profile-switch" aria-label="Hồ sơ xem đang hoạt động">
@@ -56,17 +68,18 @@
         <div class="work-area" id="work-area">
           <section class="tab-panel" id="tab-overview" data-panel="overview">
             <div class="section-top"><div><span class="eyebrow">TỔNG QUAN</span><h2>Không gian của bạn</h2></div><span class="muted">Dữ liệu thực của hồ sơ đang chọn</span></div>
+            <div class="section-top"><h3>Xem tiếp</h3><button class="text-btn" data-tab-go="library">Mở tủ phim</button></div>
+            <div id="continue-items" class="film-grid"></div>
+            <div class="section-top"><h3>Dành cho bạn</h3><button class="text-btn" data-tab-go="discover">Khám phá thêm</button></div>
+            <p id="recommend-context" class="muted">Bật cá nhân hóa trong Tùy chỉnh để nhận gợi ý theo sở thích.</p>
+            <div id="recommend-items" class="film-grid"></div>
+            <div class="section-top section-stats-title"><h3>Hoạt động của bạn</h3><span class="muted">Chỉ tính từ dữ liệu thật</span></div>
             <div class="stats">
               <div class="stat"><span>Phim yêu thích</span><strong id="stat-favorites">0</strong></div>
               <div class="stat"><span>Để xem sau</span><strong id="stat-watchlist">0</strong></div>
               <div class="stat"><span>Đang theo dõi</span><strong id="stat-following">0</strong></div>
               <div class="stat"><span>Đang xem dở</span><strong id="stat-progress">0</strong></div>
             </div>
-            <div class="section-top"><h3>Xem tiếp</h3><button class="text-btn" data-tab-go="library">Mở tủ phim</button></div>
-            <div id="continue-items" class="film-grid"></div>
-            <div class="section-top"><h3>Dành cho bạn</h3><button class="text-btn" data-tab-go="discover">Khám phá thêm</button></div>
-            <p id="recommend-context" class="muted">Bật cá nhân hóa trong Tùy chỉnh để nhận gợi ý theo sở thích.</p>
-            <div id="recommend-items" class="film-grid"></div>
           </section>
           <section class="tab-panel" id="tab-library" data-panel="library" hidden>
             <div class="section-top"><div><span class="eyebrow">TỦ PHIM CÁ NHÂN</span><h2>Lưu những gì bạn yêu thích</h2></div></div>
@@ -142,5 +155,6 @@
 <script src="assets/level3-config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script>
 <script src="assets/live-catalog.js"></script>
+  <script src="assets/art.js"></script>
   <script src="assets/level3.js"></script>
 </body></html>

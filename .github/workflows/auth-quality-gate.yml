@@ -6,6 +6,7 @@ on:
       - 'feature/auth-first-pilot-*'
       - 'feature/level3-xuongphim-*'
       - 'feature/level3-completion-*'
+      - 'feature/level3-premium-uiux-*'
     paths:
       - 'assets/auth.js'
       - 'assets/account.js'
@@ -16,6 +17,7 @@ on:
       - 'admin.html'
       - 'assets/level3-video.js'
       - 'assets/level3.css'
+      - 'assets/premium-ui.css'
       - 'member.html'
       - 'assets/app.js'
       - 'account.html'

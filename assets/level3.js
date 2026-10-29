@@ -25,17 +25,24 @@
   const account=new URL("./account.html",window.location.href);
   if(preview){home.searchParams.set("site",SITE);account.searchParams.set("site",SITE);}
   $("#home-link").href=home.href;
+  $(".brand").href=home.href;
+  $("#hub-guest a").href=home.href;
   $("#account-link").href=account.href;
   $("#security-link").href=account.href;
   if(brand) {
+    document.documentElement.dataset.world=brand.world||"co-trang";
+    document.documentElement.dataset.site=brand.id;
     document.title="Trung tâm thành viên — "+brand.name;
+    const theme=document.querySelector('meta[name="theme-color"]');
+    if(theme)theme.setAttribute("content",(brand.world||"co-trang")==="co-trang"?"#120F12":"#07111D");
     $(".brand-mark").textContent=brand.seal;
     const headerName=$(".brand>span:nth-child(2)");
     headerName.replaceChildren(document.createTextNode(brand.name.toUpperCase()),Object.assign(document.createElement("span"),{className:"brand-dot",textContent:".AI"}));
     document.documentElement.style.setProperty("--cyan",brand.accent);
     document.documentElement.style.setProperty("--cyan-txt",brand.onAccent);
-    $(".member-hero .eyebrow").textContent="KHÔNG GIAN "+brand.name.toUpperCase();
-    $("#pilot-notice").textContent="Bản thử nghiệm: phim hiện vẫn là nội dung mẫu, chưa có video phát. Không tạo giả tiến độ xem.";
+    $("#hero-eyebrow").textContent="TUYỂN CHỌN RIÊNG CHO BẠN · "+brand.name.toUpperCase();
+    $("#hero-description").textContent=brand.tagline+". Lưu phim yêu thích và tiếp tục những gì bạn đang xem.";
+    $("#pilot-notice").textContent="Bản xem trước: phim minh họa dùng để thử tính năng; phim được cấp quyền phát hành sẽ có nút Xem phim.";
     $("#tab-discover h2").textContent="Khám phá phim "+(brand.world==="tuong-lai"?"viễn tưởng":"cổ trang");
     $(".foot span:first-child").textContent=brand.name.toUpperCase()+".AI · MEMBER HUB";
   }
@@ -128,39 +135,87 @@
   function has(filmId,collection){
     return state.library.some(row=>row.film_id===filmId&&row.collection===collection);
   }
+  const artObserver=typeof window.IntersectionObserver==="function"
+    ? new IntersectionObserver(entries=>{
+      entries.forEach(entry=>{
+        if(!entry.isIntersecting)return;
+        const el=entry.target;artObserver.unobserve(el);
+        if(!el.isConnected || !window.InkArt?.paint)return;
+        const film=byId.get(el.dataset.art);
+        if(!film)return;
+        try{
+          const url=window.InkArt.paint(film,260,390);
+          if(url)el.style.backgroundImage="url("+JSON.stringify(url)+")";
+        }catch(_){/* preserve neutral fallback if browser cannot draw canvas */}
+      });
+    },{rootMargin:"240px"}):null;
+  function paintCards(root){
+    if(!window.InkArt?.paint)return;
+    if(artObserver)root.querySelectorAll("[data-art]").forEach(el=>artObserver.observe(el));
+    else if(window.InkArt?.hydrate)window.InkArt.hydrate(root,id=>byId.get(id));
+  }
+  function renderFeaturedArt(){
+    const film=FILMS.find(f=>f.id===brand?.featured)||FILMS[0];
+    if(!film)return;
+    $("#hero-feature-title").textContent=film.title;
+    $("#hero-feature-genre").textContent=(film.genres||[]).slice(0,2).join(" · ")+" · "+(film.live?"Có video được phép phát":"Phim minh họa");
+    $(".hero-feature-label").textContent=film.live?"PHIM ĐƯỢC PHÁT HÀNH":"PHIM MINH HỌA NỔI BẬT";
+    if(window.InkArt?.paint){
+      try{const url=window.InkArt.paint(film,550,340);
+        if(url)$("#hero-feature-art").style.backgroundImage="url("+JSON.stringify(url)+")";
+      }catch(_){}
+    }
+  }
   function card(f,variant){
     const el=make("article","film-card");el.dataset.filmId=f.id;
-    const lbl=make("div","movie-type",(f.world==="tuong-lai"?"VIỄN TƯỞNG":"CỔ TRANG")+" · DEMO");
+    const poster=make("div","film-art");poster.dataset.art=f.id;poster.setAttribute("aria-hidden","true");
+    const label=make("span","film-art-tag",f.live?"CÓ THỂ XEM":"PHIM MINH HỌA");
+    poster.append(label);
+    const body=make("div","film-card-body");
     const title=make("h4","",f.title||f.id);
-    const genres=make("div","genre",(f.genres||[]).join(" · "));
-    const info=make("div","meta",f.year?("Phim mẫu · "+f.year):"Phim mẫu chưa phát hành");
-    const controls=make("div","film-controls");
-    for(const [action,label] of [["favorite","♡ Yêu thích"],["watchlist","＋ Xem sau"],["following","◉ Theo dõi"]]){
-      const b=make("button",has(f.id,action)?"is-saved":"",has(f.id,action)?("✓ "+label.slice(2)):label);
-      b.type="button";b.dataset.film=f.id;b.dataset.action=action;
-      b.setAttribute("aria-pressed",String(has(f.id,action)));
-      controls.append(b);
-    }
-    el.append(lbl,title,genres,info,controls);
-    if(f.live){
-      const dest=new URL(home.href);dest.searchParams.set("film",f.id);
-      const watch=make("a","btn primary","Xem phim");
-      watch.href=dest.href;watch.setAttribute("aria-label","Xem phim "+f.title);
-      el.append(watch);
-    }
+    const genres=make("div","genre",(f.genres||[]).slice(0,3).join(" · "));
+    const info=make("div","meta",(f.type==="bo"?"Phim bộ":f.type==="ngan"?"Phim ngắn":"Phim lẻ")+
+      (f.year?" · "+f.year:"")+(f.live?" · Đã phát hành":" · Chưa có video"));
+    body.append(title,genres,info);
     if(variant==="progress"){
-      const record=state.progress.filter(p=>p.film_id===f.id).sort((a,b)=>new Date(b.watched_at)-new Date(a.watched_at))[0];
+      const record=state.progress.filter(p=>p.film_id===f.id)
+        .sort((a,b)=>new Date(b.watched_at)-new Date(a.watched_at))[0];
       if(record){
-        const progress=record.duration_seconds?Math.min(100,Math.round(record.position_seconds/record.duration_seconds*100)):0;
-        el.append(make("div","meta","Tập "+record.episode+" · "+Math.floor(record.position_seconds/60)+" phút · "+progress+"%"));
+        const amount=record.duration_seconds?
+          Math.max(0,Math.min(100,Math.round(record.position_seconds/record.duration_seconds*100))):0;
+        const track=make("div","film-progress");
+        track.setAttribute("role","progressbar");
+        track.setAttribute("aria-label","Tiến độ xem "+f.title);
+        track.setAttribute("aria-valuemin","0");track.setAttribute("aria-valuemax","100");
+        track.setAttribute("aria-valuenow",String(amount));
+        const fill=make("span","");fill.style.width=amount+"%";track.append(fill);
+        body.append(make("div","meta","Tập "+record.episode+" · Đã xem "+amount+"%"),track);
       }
     }
+    if(f.live){
+      const dest=new URL(home.href);dest.searchParams.set("film",f.id);
+      const watch=make("a","btn primary watch-action",variant==="progress"?"Xem tiếp":"Xem phim");
+      watch.href=dest.href;watch.setAttribute("aria-label","Mở phim "+f.title);
+      body.append(watch);
+    }
+    const controls=make("div","film-controls");
+    for(const [action,label,symbol] of [["favorite","Thích","♡"],["watchlist","Xem sau","＋"],["following","Theo dõi","◉"]]){
+      const saved=has(f.id,action);
+      const b=make("button",saved?"is-saved":"",symbol+" "+label);
+      b.type="button";b.dataset.film=f.id;b.dataset.action=action;
+      b.setAttribute("aria-pressed",String(saved));
+      b.setAttribute("aria-label",(saved?"Bỏ ":"Thêm ")+f.title+" "+(action==="watchlist"?"vào xem sau":action==="favorite"?"vào yêu thích":"vào theo dõi"));
+      controls.append(b);
+    }
+    body.append(controls);
+    el.append(poster,body);
     return el;
   }
   function renderItems(id,films,emptyTitle,description,variant){
     const target=$(id);target.replaceChildren();
     if(!films.length){empty(target,emptyTitle,description);return;}
     films.forEach(f=>target.append(card(f,variant)));
+    paintCards(target);
   }
   function recommendations(){
     const pref=state.prefs;
@@ -275,7 +330,9 @@
   }
   function renderAll(){
     $("#hero-name").textContent=state.profile.nickname;
+    $("#hero-profile-label").textContent=state.profile.nickname;
     $("#hero-avatar").textContent=state.profile.nickname.trim().slice(0,1).toUpperCase();
+    renderFeaturedArt();
     renderOverview();renderLibrary();renderDiscover();renderProfiles();renderCommunity();renderInbox();renderPrefs();
   }
   async function selectProfile(id){
