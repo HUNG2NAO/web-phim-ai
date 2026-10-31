@@ -59,7 +59,10 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 **Ghi nhận UX (không sửa):** tài khoản tạo bằng Dashboard chưa có tên hiển thị nên hiện "Thành viên". Bảng khóa chat hiện mã người dùng (`0e41cb4f`). Đăng ký thật có ô tên hiển thị nên không gặp vấn đề này.
 
-**Còn chờ:** qa1 đăng nhập lại (đã đăng xuất lúc 23:2x với số dư 30); kiểm chứng 2 bản sửa trên Preview `0d8d5ae6` / alias với qa2 và qaadmin.
+| 21 | qa1 đăng xuất (bấm "Đăng xuất" trên giao diện) rồi đăng nhập lại (23:22) | **PASS** | Trước khi đăng xuất ô điểm hiện "★30điểm"; sau khi đăng xuất: không còn phiên, ô hiện "Điểm danh". Sau khi đăng nhập lại: ví balance 30 = ledger 30 (earned 60, spent 30), không có điểm danh trùng |
+| 22 | qa2 và qaadmin tự điểm danh trên giao diện (anh thao tác lúc 23:24) | **PASS** | Mỗi tài khoản có 1 lượt điểm danh +10, balance 10 = ledger 10 |
+
+**Còn chờ:** kiểm chứng 2 bản sửa chat trên Preview. Cần qaadmin đăng nhập ở alias (bản mới nhất); qa2 đã ở `0d8d5ae6` (bản đã sửa).
 
 ## Cập nhật 31/10/2026 23:10 — Xác minh môi trường trước khi chạy script QA
 
