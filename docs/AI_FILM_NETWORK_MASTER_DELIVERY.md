@@ -132,6 +132,23 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 **Chi phí:** 0đ (Cloudflare Pages Free, Supabase Free, Resend Free khoảng 3.000 email/tháng). Không tạo dịch vụ trả phí.
 
+### 8. Kết luận (01/11 02:00)
+
+| # | Hạng mục | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 1 | MASTER WEBSITE | **VERIFIED** | Toàn bộ hành trình Real User PASS trên Preview (31/10 23:30 → 01/11 01:25) |
+| 2 | GITHUB | **READY** | RC1 `27760a4` (`release/xuongphim-l4-rc1`), CI xanh, Preview khớp SHA từng tệp |
+| 3 | SUPABASE | **READY** | Schema = bản đã test (md5), RLS 27/27, không phục vụ Production; Redirect URL và Site URL www cập nhật ở bước R4 |
+| 4 | CLOUDFLARE | **READY** | Kế hoạch project riêng cho Xưởng Phim, không đụng 4 site; rollback 1 bước |
+| 5 | RESEND SMTP | **READY** | Domain Verified; đăng ký, xác minh, đặt lại mật khẩu thật PASS |
+| 6 | SECURITY | **PASS** | RLS, chống trừ điểm 2 lần, chống spam, quyền kiểm duyệt, XSS, header bảo mật. Leaked-password chưa bật được (có thể cần gói trả phí) |
+| 7 | SEO | **READY** | Canonical www, sitemap, robots theo cổng, 404, không lượt xem giả. Vẫn noindex có chủ đích |
+| 8 | QA CLEANUP | **PREPARED** | Đã chạy thử sao lưu và dọn dẹp; chờ anh duyệt |
+| 9 | ROLLBACK | **READY** | Website: chuyển tên miền về project cũ (`c6dd520`); CSDL: không cần (bản cũ không dùng Supabase) |
+| 10 | PRODUCTION RELEASE | **NOT READY → chờ 1 bước** | Còn **kiểm thử đăng nhập lại trên đúng RC1** (cần anh đăng nhập qa1/qa2 ở 2 tab RC). Tài liệu chính sách còn thiếu email liên hệ (bước R2) |
+
+Mã liên quan tới đăng nhập trên RC1 trùng với bản đã kiểm thử thật: `rewards.js` (44df4cb), `auth.js` (5bc36b9), `studio-ops.js` (0897e31). Khác biệt duy nhất là `community-chat.js` thêm 1 lệnh phát tín hiệu khi khóa chat trong khung chat (0f18701, đã có E2E). Bộ hồi quy đăng nhập trên RC chỉ để xác nhận lần cuối.
+
 
 ## Cập nhật 31/10/2026 23:55 — DNS email Resend cho `mail.xuongphim.ai`
 
