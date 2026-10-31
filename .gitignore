@@ -1,3 +1,6 @@
 node_modules/
 playwright-report/
 test-results/
+
+# Bản sao lưu CSDL (chứa dữ liệu người dùng) — không bao giờ commit
+backups/

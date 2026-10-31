@@ -13,6 +13,69 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 02:10 — FINAL RELEASE CANDIDATE AUDIT (`release/xuongphim-l4-rc1`)
+
+### A. Đối chiếu RC1
+
+- `release/xuongphim-l4-rc1` = **`27760a4`**.
+- So với nhánh Level 4 (`5ba11c2`), RC1 chỉ khác ở `docs/` và bộ sinh test staging; **không khác dòng mã chạy nào**.
+- RC1 chứa đủ các bản sửa đã nghiệm thu: `44df4cb` (request ví), `47119b7` (client dùng chung, UX, SEO), `0897e31` và `0f18701` (kiểm duyệt chat tức thì), `f03d95b` và `5bc36b9` (email/đăng ký/đặt lại mật khẩu).
+- Cloudflare Preview:
+  - `b2cb38aa` (commit 27760a4) và `d14d6d23` (5ba11c2): SHA-256 của 6 tệp JS chính **trùng nhau và trùng `git show 27760a4`**.
+  - Cloudflare tự tạo bản `329c9ff9` cho nhánh `release/…`, ở trạng thái *idle* vì nhánh không nằm trong danh sách Preview. **Không ảnh hưởng Production.**
+- `auth.js` và `afn-core.js` giữ nguyên từ `5bc36b9` đến RC1 (`de1a8e3…`, `e45226f8…`). Vì vậy các lần kiểm thử email thật lúc 01:09–01:25 chạy **đúng mã RC1**.
+
+### B. Kiểm thử lại trên RC1 (Real User)
+
+| Luồng | Kết quả | Bằng chứng |
+|---|---|---|
+| Đăng nhập | **PASS** | `+signup1` đăng nhập trên alias đang chạy mã RC1 (hash khớp) |
+| Điểm danh | **PASS** | Ô điểm 0 → 10, toast "+10 điểm · chuỗi 1 ngày"; lần 2 (xuongphim) và 3 lần đồng thời (khophim) trả `already` |
+| Ví điểm | **PASS** | balance 10 = ledger; sửa ví trực tiếp bị chặn: `permission denied for table wallets` |
+| Cấp điểm QA | Đã làm | `admin_adjust_points` +20 dưới danh tính chủ mạng, key `qa-test-grant-signup1-rc1`, lý do "QA TEST — RC1…" (có audit) |
+| Mở khóa tập | **PASS** | Màn khóa "Tập 2 đang mở sớm với 30 điểm. Số dư của bạn: 30 điểm."; bấm 3 lần → trừ **đúng 1 lần** (30 → 0); 5 yêu cầu đồng thời → `already_unlocked:0`; 1 quyền xem, 1 dòng `unlock −30` |
+| Quyền xem sau mở khóa | **PASS** | Nguồn `ok` (Sintel kèm nguồn dự phòng); player phát thật (`currentTime` 5,77 → 6,56 giây) |
+| Xác thực email (đăng ký, xác minh, đặt lại mật khẩu) | **PASS** | Thực hiện 01:09–01:25 trên chính mã `auth.js` của RC1 (mục 01/11 01:09) |
+| Chat 2 người, kiểm duyệt | **Chờ đăng nhập** | Cần qa2 (tab b2cb38aa) và qaadmin (tab d14d6d23) |
+
+### C. Phát hiện mới
+
+1. **Supabase gói Free không có sao lưu tự động.** Trang Backups ghi "Free Plan does not include project backups".
+   - Production sẽ có điểm thưởng và quyền xem thật, nên **phải có bản sao lưu trước khi phát hành**.
+   - Đã chuẩn bị `tools/Backup-Supabase.cmd` + `tools/backup-supabase.ps1`: hỏi chuỗi kết nối (không lưu), dùng `supabase db dump` xuất schema, dữ liệu public/private và auth vào `backups/`. Thư mục này đã nằm trong `.gitignore`.
+   - Lựa chọn khác: nâng Pro (khoảng 25 USD/tháng, có 7 ngày backup và PITR tùy chọn). **Cần anh quyết.**
+2. **Repo GitHub đang PUBLIC.**
+   - Đã quét RC1: không có secret, service key, chuỗi kết nối hay API key. Publishable key được phép công khai.
+   - Tuyệt đối không đưa bản sao lưu lên repo.
+
+### D. Kế hoạch phát hành từng bước, có kiểm tra và điều kiện tự dừng
+
+| Bước | Việc | Kiểm tra trước | Kiểm tra sau | **TỰ DỪNG khi** |
+|---|---|---|---|---|
+| R0 | Anh phê duyệt R1–R7 | Báo cáo này | — | Thiếu phê duyệt bất kỳ mục nào |
+| R1 | **Sao lưu CSDL** (`Backup-Supabase.cmd`, anh chạy) | `auth.users` = 6 | 3 tệp `.sql` > 0 byte | Lệnh dump lỗi hoặc tệp rỗng |
+| R2 | Dọn QA: `58_qa_backup.sql` → `59_qa_cleanup.sql` (chạy thử → chạy thật) → anh xóa 4 tài khoản QA | Chạy thử khớp: 4 tài khoản QA, dữ liệu người khác = 0 | `site_films` = 0, `site_staff` QA = 0, ví và lượt điểm danh của chủ không đổi (10 / 1) | Chạy thử khác số đã duyệt, hoặc đụng dữ liệu không phải QA |
+| R3 | RC2 = RC1 + email liên hệ trong `chinh-sach.html` (đổi đúng 1 tệp) | Anh gửi email | CI xanh; diff RC1..RC2 chỉ có `chinh-sach.html` | Diff có tệp khác |
+| R4 | Tạo Pages project `xuongphim-ai` (production branch `release/xuongphim-l4-rc1`) | Project cũ: 10 tên miền active | `xuongphim-ai.pages.dev`: 200, có header CSP/HSTS, hash JS = RC | Build/deploy lỗi, hoặc hash khác RC |
+| R5 | Supabase: thêm Redirect URLs `https://www.xuongphim.ai/?auth=confirm\|recovery\|callback` (giữ URL Preview), đổi Site URL thành `https://www.xuongphim.ai`, tên người gửi "Xưởng Phim" | Ghi lại giá trị cũ | Đọc lại cấu hình | Lưu lỗi |
+| R6 | **Chuyển 2 tên miền** `xuongphim.ai` và `www` sang `xuongphim-ai` | R1–R5 xong; khophim.ai trả bản `c6dd520` | Cert active; `www.xuongphim.ai` trả hash RC; 4 site kia **không đổi** | Cert lỗi quá 15 phút, 5xx, hoặc bất kỳ site nào trong 4 site kia thay đổi → **rollback ngay** |
+| R7 | Smoke test 10 bước (mục 01/11 02:00 §7) và theo dõi 24 giờ | — | Đăng ký, email, điểm danh, mở khóa, chat, kiểm duyệt trên tên miền thật | Bất kỳ bước nào FAIL → rollback frontend (R-FE) |
+
+**Rollback frontend (R-FE, khoảng 5 phút):**
+1. Gỡ 2 tên miền khỏi `xuongphim-ai`, gắn lại vào `web-phim-ai-5sites`.
+2. Kiểm tra CNAME trỏ về `web-phim-ai-5sites.pages.dev`.
+3. Kiểm tra `www.xuongphim.ai` trả bản `c6dd520`.
+- Không cần đổi `main`. Pages giữ lịch sử các bản deploy (4f786bd6, 29604a78).
+
+**Sự cố CSDL: không xóa dữ liệu giao dịch.**
+- Ledger, quyền xem và lượt điểm danh là dữ liệu **chỉ thêm**, không bao giờ xóa hay sửa tay.
+- Lỗi điểm danh: tắt bằng `admin_set_reward_rules(false, …)` (có audit).
+- Lỗi mở khóa hoặc video: gỡ phát hành tập và hoàn điểm bằng `admin_refund_unlock` (có audit, ghi dòng `refund`).
+- Cộng hoặc trừ sai: dùng `admin_adjust_points` với lý do (ghi dòng bù, không sửa dòng cũ).
+- Lỗi chat: ẩn tin, khóa chat; hoặc gỡ các nút chat ở frontend (rollback R-FE).
+- Lỗi schema nghiêm trọng: khôi phục từ bản dump R1 vào **project mới** (Restore to new project), đối chiếu rồi chuyển. **Không** chạy `99_rollback_level4.sql` khi đã có dữ liệu thật.
+
+
 ## Cập nhật 01/11/2026 02:00 — LEVEL 4 PRODUCTION RELEASE PREPARATION (Xưởng Phim)
 
 > **Chưa merge `main`, chưa deploy Production, chưa sửa DNS, chưa xóa dữ liệu QA, chưa phát sinh chi phí.** Dừng ở cổng phê duyệt.
