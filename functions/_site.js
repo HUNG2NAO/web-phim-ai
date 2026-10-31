@@ -3,6 +3,9 @@ export const DOMAINS = {
   "xuongphim.ai": "xuongphim", "khophim.ai": "khophim", "phephim.ai": "phephim",
   "phimhay.ai": "phimhay", "ghienphim.ai": "ghienphim"
 };
+// Cổng lập chỉ mục: CHỈ thêm mã site vào đây khi nội dung thật đã được duyệt và gỡ <meta name="robots" content="noindex">.
+// Trống = mọi tên miền thật trả robots "Disallow: /" và sitemap có X-Robots-Tag: noindex.
+export const INDEXABLE = new Set([]);
 // Trả về { id, domain, real } — real=false cho *.pages.dev / localhost (bản Preview, không cho lập chỉ mục).
 export function siteFor(request) {
   const url = new URL(request.url), host = url.hostname.replace(/^www\./, "");

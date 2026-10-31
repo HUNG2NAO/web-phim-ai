@@ -96,10 +96,14 @@ test("SEO: functions/_site.js domains match SITES and sitemaps are up to date", 
     const xml = fs.readFileSync(path.join(ROOT, "sitemaps", s.id + ".xml"), "utf8");
     const world = s.world || "co-trang";
     const films = FILMS.filter(f => (f.world || "co-trang") === world && (!f.sites || f.sites.includes(s.id)));
-    assert.ok(xml.includes("<loc>https://" + s.domain + "/</loc>"), s.id + " home");
-    for (const f of films) assert.ok(xml.includes("https://" + s.domain + "/phim/" + encodeURIComponent(f.id) + "<"), s.id + " missing " + f.id + " — run node tools/build-sitemaps.cjs");
+    assert.ok(xml.includes("<loc>https://www." + s.domain + "/</loc>"), s.id + " home");
+    for (const f of films) assert.ok(xml.includes("https://www." + s.domain + "/phim/" + encodeURIComponent(f.id) + "<"), s.id + " missing " + f.id + " — run node tools/build-sitemaps.cjs");
     assert.equal((xml.match(/<url>/g) || []).length, films.length + 1, s.id + " stale sitemap — run node tools/build-sitemaps.cjs");
   }
+  assert.equal(mod.INDEXABLE.size, 0, "indexing gate must stay closed until real content is approved (remove noindex together)");
+  const robotsSrc = fs.readFileSync(path.join(ROOT, "functions/robots.txt.js"), "utf8");
+  assert.match(robotsSrc, /INDEXABLE\.has\(s\.id\)/, "robots.txt must respect the indexing gate");
+  assert.match(fs.readFileSync(path.join(ROOT, "index.html"), "utf8"), /<meta name="robots" content="noindex/, "demo site keeps noindex");
   const req = u => ({ url: u });
   assert.deepEqual(mod.siteFor(req("https://www.khophim.ai/x")), { id: "khophim", domain: "khophim.ai", real: true });
   assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=phephim")).real, false);

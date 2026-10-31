@@ -1,7 +1,7 @@
 -- AI FILM NETWORK — STAGING ONLY. Gỡ dữ liệu QA sau nghiệm thu.
--- Mặc định là CHẠY THỬ (dry run): chỉ liệt kê số bản ghi sẽ bị xóa rồi dừng, không xóa gì.
+-- Chạy 58_qa_backup.sql TRƯỚC (sao lưu vào schema qa_backup). Mặc định là CHẠY THỬ (dry run): chỉ liệt kê số bản ghi sẽ bị xóa rồi dừng, không xóa gì.
 -- Muốn xóa thật: đổi dòng `v_apply boolean := false` thành true SAU KHI đã đối chiếu số liệu.
--- Phạm vi: đúng 3 tài khoản QA cố định + phim đánh dấu QA. Tài khoản QA trong auth.users KHÔNG bị xóa
+-- Phạm vi: đúng 4 tài khoản QA cố định (+qa1, +qa2, +qaadmin, +signup1) + phim đánh dấu QA. Tài khoản QA trong auth.users KHÔNG bị xóa
 -- ở đây (xóa thủ công trong Dashboard → Users; ví/điểm/chat của chúng tự xóa theo ON DELETE CASCADE).
 begin;
 do $$
@@ -11,7 +11,7 @@ declare
   other_ent int; other_reports int; r record; msg text := '';
 begin
   select coalesce(array_agg(id), '{}') into qa from auth.users
-   where lower(email) in ('hung2nao+qa1@gmail.com', 'hung2nao+qa2@gmail.com', 'hung2nao+qaadmin@gmail.com');
+   where lower(email) in ('hung2nao+qa1@gmail.com', 'hung2nao+qa2@gmail.com', 'hung2nao+qaadmin@gmail.com', 'hung2nao+signup1@gmail.com');
   msg := 'QA khớp=' || cardinality(qa);
 
   -- Đối chiếu: dữ liệu NGƯỜI KHÁC (không phải QA) có dính tới phim QA không? Có thì dừng, không xóa.

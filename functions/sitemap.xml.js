@@ -1,4 +1,4 @@
-import { siteFor } from "./_site.js";
+import { siteFor, INDEXABLE } from "./_site.js";
 // /sitemap.xml của từng website: phục vụ tệp tĩnh sitemaps/<site>.xml (sinh bởi tools/build-sitemaps.cjs).
 export async function onRequestGet({ request, env }) {
   const s = siteFor(request);
@@ -7,6 +7,6 @@ export async function onRequestGet({ request, env }) {
   return new Response(res.body, { headers: {
     "content-type": "application/xml; charset=utf-8",
     "cache-control": "public, max-age=3600",
-    ...(s.real ? {} : { "x-robots-tag": "noindex" })
+    ...(s.real && INDEXABLE.has(s.id) ? {} : { "x-robots-tag": "noindex" })
   } });
 }

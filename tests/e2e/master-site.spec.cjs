@@ -763,18 +763,21 @@ test.describe("Hoàn thiện tiếng Việt (31/10)", () => {
   test("SEO: canonical + Open Graph theo trang và theo phim; chân trang có chính sách", async ({ page }) => {
     const issues = await setup(page, {});
     await page.goto("/?site=xuongphim");
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://xuongphim.ai/");
-    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", "https://xuongphim.ai/");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.xuongphim.ai/");
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", "https://www.xuongphim.ai/");
     await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute("content", "vi_VN");
+    // Kho phim mẫu: không hiển thị lượt xem minh họa như số liệu thật.
+    expect(await page.locator("body").innerText()).not.toMatch(/lượt xem|Theo lượt xem|Xem nhiều/i);
     await page.goto("/?site=xuongphim&film=thanh-pho-khong-ngu");
     await expect(page.locator("#film-dialog")).toBeVisible();
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://xuongphim.ai/phim/thanh-pho-khong-ngu");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.xuongphim.ai/phim/thanh-pho-khong-ngu");
     await expect(page).toHaveTitle(/^Thành Phố Không Ngủ · /i);
+    await expect(page.locator("#film-dialog")).not.toContainText("Lượt xem");
     expect((await page.locator('meta[name="description"]').getAttribute("content")).length).toBeLessThanOrEqual(160);
     await page.keyboard.press("Escape");
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://xuongphim.ai/");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.xuongphim.ai/");
     await page.goto("/?site=khophim");
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://khophim.ai/");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.khophim.ai/");
     await expect(page.locator('.legal-links a[href="/chinh-sach.html#rieng-tu"]')).toBeVisible();
     await page.locator('.legal-links a[href="/chinh-sach.html#cong-dong"]').click();
     await expect(page.locator("#cong-dong")).toBeVisible();

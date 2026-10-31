@@ -4,7 +4,7 @@
   var ALL_FILMS = window.FILMS || [];
   var GENRES = [];
   var TYPE_LABEL = { bo: "Phim bộ", le: "Phim lẻ", ngan: "Phim ngắn" };
-  var SORTS = { moi: "Mới cập nhật", xem: "Xem nhiều", ten: "Tên A–Z" };
+  var SORTS = { moi: "Mới cập nhật", xem: "Nổi bật", ten: "Tên A–Z" };
   var $ = function (s, r) { return (r || document).querySelector(s); };
 
   /* ---------- 1. Nhận diện site theo tên miền ---------- */
@@ -32,6 +32,9 @@
     return String(t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
   function norm(t) { return t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); }
+  // Lượt xem của kho phim mẫu là số minh họa → không hiển thị như số liệu thật.
+  // Chỉ hiện khi dữ liệu được đánh dấu là thống kê thật (viewsVerified: true, từ hệ thống đo lường).
+  function realViews(f) { return !!f && f.viewsVerified === true && f.views > 0; }
   function fmtViews(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1).replace(".", ",") + " triệu";
     if (n >= 1e3) return Math.round(n / 1e3) + " nghìn";
@@ -141,7 +144,7 @@
       '<h1>' + esc(f.title) + '</h1>' +
       '<p class="synopsis">' + esc(f.synopsis) + '</p>' +
       '<div class="tags"><span class="tag age">' + esc(f.age) + '</span><span class="tag">' + esc(f.duration) + '</span>' +
-      '<span class="tag">' + fmtViews(f.views) + ' lượt xem</span></div>' +
+      (realViews(f) ? '<span class="tag">' + fmtViews(f.views) + ' lượt xem</span>' : '') + '</div>' +
       '<div class="actions">' +
       '<button class="btn primary" type="button" data-film="' + f.id + '" data-play="1">' + playIcon(18) + (!hasVideo ? "Xem demo" : f.type === "bo" ? "Xem tập 1" : "Xem ngay") + '</button>' +
       '<button class="btn ghost" type="button" data-film="' + f.id + '">Thông tin phim</button>' +
@@ -198,7 +201,7 @@
 
   function rankingHTML() {
     var top = query({ sort: "xem" }).slice(0, 10);
-    return '<section>' + headHTML("Bảng xếp hạng", isFuture() ? "TOP" : "榜", '<span class="count">Theo lượt xem</span>') +
+    return '<section>' + headHTML("Phim nổi bật", isFuture() ? "TOP" : "榜", '<span class="count">Gợi ý của biên tập</span>') +
       '<div class="rank-list">' + top.map(function (f, i) {
         return '<button class="rank" type="button" data-film="' + f.id + '" aria-label="Hạng ' + (i + 1) + ': ' + esc(f.title) + '">' +
           '<span class="num" aria-hidden="true">' + (i + 1) + '</span>' + posterHTML(f) + '</button>';
@@ -286,14 +289,14 @@
     } catch (e) {}
   }
   // SEO: canonical + Open Graph theo trang đang xem. Canonical luôn trỏ về tên miền thật của site
-  // (apex, không www), dạng /phim/<id> — trùng đường dẫn đẹp trong _redirects và sitemap.
+  // (https://www.<domain>, trùng AFN.filmUrl), dạng /phim/<id> — trùng đường dẫn đẹp trong _redirects và sitemap.
   function setMeta(attr, key, value) {
     var m = document.head.querySelector("meta[" + attr + '="' + key + '"]');
     if (!m) { m = document.createElement("meta"); m.setAttribute(attr, key); document.head.appendChild(m); }
     m.setAttribute("content", value);
   }
   function setSeo(f) {
-    var base = "https://" + site.domain;
+    var base = "https://www." + site.domain;   // tên miền chuẩn: xuongphim.ai chuyển 301 sang www (Cloudflare Redirect Rule)
     var url = f ? base + "/phim/" + encodeURIComponent(f.id) : base + "/";
     var title = f ? f.title + " · " + site.name + ".ai" : site.name + ".ai · " + site.tagline;
     var desc = f ? String(f.synopsis || "").slice(0, 160) : site.name + ".ai: " + site.tagline + ".";
@@ -315,7 +318,7 @@
     current = f;
     playToken++;
     var specs = [["Thể loại", f.genres.join(", ")], ["Loại", TYPE_LABEL[f.type]], ["Tình trạng", status(f)], ["Năm", f.year],
-      ["Thời lượng", f.duration], ["Chất lượng", f.quality], ["Độ tuổi", f.age], ["Lượt xem", fmtViews(f.views)]];
+      ["Thời lượng", f.duration], ["Chất lượng", f.quality], ["Độ tuổi", f.age]].concat(realViews(f) ? [["Lượt xem", fmtViews(f.views)]] : []);
     var eps = "";
     var wantEp = Number(startEp) || 1;
     if (hasEpisodeList(f)) {

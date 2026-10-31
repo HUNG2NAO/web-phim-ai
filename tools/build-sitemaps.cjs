@@ -18,7 +18,7 @@ const out = {};
 for (const site of SITES) {
   const world = site.world || "co-trang";
   const films = FILMS.filter(f => (f.world || "co-trang") === world && (!f.sites || f.sites.includes(site.id)));
-  const base = "https://" + site.domain;
+  const base = "https://www." + site.domain;   // trùng canonical trong assets/app.js
   const urls = [base + "/"].concat(films.map(f => base + "/phim/" + encodeURIComponent(f.id)));
   const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     urls.map(u => "  <url><loc>" + esc(u) + "</loc><lastmod>" + today + "</lastmod></url>").join("\n") + "\n</urlset>\n";
