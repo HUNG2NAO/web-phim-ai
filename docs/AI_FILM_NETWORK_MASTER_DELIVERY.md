@@ -13,6 +13,85 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 16:40 — Nghiệm thu tích hợp Staging/Preview
+
+### Kết luận
+
+| Hạng mục | Kết luận | Cơ sở |
+|---|---|---|
+| LOCAL LEVEL 4 | **PASS** | SQL 95 chức năng + 12 đồng thời/rollback · contract 29/29 · Chromium E2E 61/61 (mock) · GitHub Actions xanh |
+| SUPABASE STAGING | **PASS** | Migration 4 + 4.1 đã áp lên `ai-film-network`. Schema khớp tuyệt đối bản đã test (vân tay md5 7/7 nhóm). Bộ tích hợp **95/95 PASS** trên Supabase thật, tự rollback |
+| CLOUDFLARE PREVIEW | **PASS** | https://feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev deploy thành công (check "Cloudflare Pages" xanh). Đã kiểm thử bằng trình duyệt thật |
+| AUTHENTICATION | **BLOCKED** (phần trình duyệt) | Đã kiểm qua API thật: Auth bật email, chưa bật Google, đăng ký cần xác nhận email; khách bị chặn ở mọi RPC cần đăng nhập (401). Phần còn thiếu là luồng đăng nhập thật trên Preview: cần một **tài khoản test** do chủ hệ thống tự tạo. Claude không tạo tài khoản và không nhập mật khẩu |
+| WALLET & UNLOCK | **PASS ở DB** / **BLOCKED ở trình duyệt** | Điểm danh, ví, mở khóa, idempotency, hoàn điểm, hết hạn, cách ly site: PASS trên Supabase thật (giả lập JWT trong transaction). Luồng bấm nút trên Preview cần tài khoản test nói trên |
+| MASTER WEBSITE | **NOT READY** (chờ 1 bước) | Giao diện, database và luồng khách đã chạy thật trên Preview. Chỉ còn nghiệm thu bằng tài khoản thành viên thật |
+| MULTI-SITE PACKAGE | **READY** | 5 site chạy thật trên Preview: đúng logo, đúng site trong sidebar, có nút điểm danh, mọi gọi Supabase trả 200, không lỗi console. Cổng `site-config.test.cjs` PASS |
+| PRODUCTION | **NOT READY** | Chưa merge `main`, chưa deploy Production (đúng yêu cầu). Cần xong nghiệm thu thành viên, bật leaked-password protection, rồi chủ hệ thống duyệt |
+
+### Phân loại bằng chứng (không dùng mock để kết luận Production)
+
+| Loại | Đã chạy | Kết quả |
+|---|---|---|
+| Mock test | Chromium E2E với Supabase giả lập, trên Linux/CI và PC Nhân | 61/61 (PC Nhân lần trước 56/56) |
+| Local browser/DB test | PostgreSQL 16 tạm: chức năng, RLS, tranh chấp đồng thời, gỡ/áp lại migration | 95 + 12 PASS |
+| Staging integration | Supabase `ai-film-network` thật: 95 kiểm thử trong 1 transaction rollback. Gọi REST/RPC thật từ Preview bằng khóa publishable | PASS · không để lại dữ liệu (users=1, t schema không còn, ví/sổ cái = 0) |
+| Preview (trình duyệt thật) | Built-in browser trên PC Nhân, 1280px và 375px: 5 site, mở phim, trình phát, popover điểm danh (đọc quy tắc thật +10…+50), hộp đăng nhập, kho phim, 404, header bảo mật | PASS · 0 lỗi console khi tải sạch |
+| Production acceptance | — | **Chưa thực hiện** (không thuộc phạm vi, không merge `main`) |
+
+### 1. `ai-film-network` không phục vụ Production (đã xác minh lại trước khi thay đổi tiếp)
+
+- `main` (c6dd520) không có `auth-config.js`, không nạp Supabase.
+- Kiểm tra trực tiếp 5 tên miền thật (www.xuongphim.ai … www.ghienphim.ai): chỉ nạp `sites.js, films.js, films-tuong-lai.js, art.js, app.js`. Không có Supabase.
+- Dữ liệu project: 1 tài khoản (chủ hệ thống), 0 phim. Gói Free đã đủ 2 project, nên không tạo được project staging riêng mà không phát sinh phí.
+
+### 2. Migration đã áp và ảnh hưởng
+
+- **Migration đã chạy:** `level4_rewards_unlock_social_v1`, `level4_1_playback_fallback` (sau 6 migration Level 3).
+- **Bảng mới (12, đều bật RLS):** wallets, wallet_ledger, daily_checkins, site_episodes, episode_sources, content_entitlements, site_social_links, content_reports, traffic_events, admin_audit_log, reward_rules (1 dòng mặc định), network_staff (1 dòng: chủ hệ thống, chỉ khi đúng id + email đã xác nhận).
+- **Hàm:** 13 hàm public (RPC), 11 hàm private mới. 2 hàm Level 3 (`notify_followed_release`, `reflect_review_approval`) được giữ nguyên, chỉ bị thu quyền EXECUTE trực tiếp. Trigger vẫn chạy bình thường.
+- **Thay đổi trên bảng Level 3:**
+  - `site_films`: chính sách `site_films_public_published` (lỗi khách bị "permission denied") được thay bằng `site_films_anon_published` + `site_films_member_read`. Đã tái hiện lỗi cũ trên Supabase thật trước khi sửa.
+  - Thêm trigger nhật ký `audit_site_films` và `audit_review_moderation`.
+- **Dữ liệu hiện hữu:** không đổi. Trước và sau đều là auth_users 1, profiles 1, site_memberships 1, site_staff 5, viewer_profiles 1, site_films 0, film_reviews 0.
+- **Rollback:** `db/staging/99_rollback_level4.sql`, được test tự động. Gỡ xong, schema trùng khớp Level 3; áp lại được. Chỉ dùng khi chưa có điểm thật.
+- **Supabase Advisors:** chỉ còn cảnh báo theo thiết kế (RPC SECURITY DEFINER tự kiểm quyền bên trong; `traffic_events` không có policy nghĩa là chặn toàn bộ truy cập trực tiếp). Việc cần chủ tài khoản: bật **Leaked password protection** trong Auth.
+
+### 3. Cloudflare Preview: nguyên nhân và cách sửa
+
+- **Nguyên nhân:** project `web-phim-ai-5sites` (tài khoản Cloudflare Hung2nao) để Preview ở chế độ *Custom branches*. Danh sách chỉ gồm 7 nhánh cũ, nên mọi commit của nhánh Level 4 bị xếp hàng `queued:idle` và không bao giờ build.
+- **Đã sửa:** thêm đúng 1 nhánh `feature/master-site-xuongphim-2026-10-31` vào *Include Preview branches*. Production branch vẫn là `main`, Production deploy vẫn bật, 11 tên miền giữ nguyên, các nhánh Preview cũ giữ nguyên.
+- **Kết quả:** commit `c4c742f` deploy thành công. URL cố định: https://feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev
+
+### 4. Xử lý lỗi video và nguồn phát dự phòng (Level 4.1)
+
+- Mỗi tập có thể có 1 nguồn dự phòng: **YouTube Video ID** hoặc **URL HTTPS** mà chủ site có quyền phát. CSDL chặn mọi định dạng khác (`fallback_valid`).
+- Nguồn dự phòng **chỉ được trả về sau cùng bước kiểm tra quyền xem** như nguồn chính. Tập khóa không lộ cả nguồn chính lẫn nguồn dự phòng.
+- **Trình phát:**
+  - Tự chuyển sang nguồn dự phòng khi YouTube báo lỗi (video đã gỡ, riêng tư, chủ video tắt nhúng 101/150) hoặc khi video HTTPS lỗi tải. Có thông báo cho người xem.
+  - Nếu hết nguồn: hiện "Không phát được… (đã thử cả nguồn dự phòng)" kèm nút **Thử lại** và **Báo lỗi** (mở form báo lỗi).
+  - Không có DRM giả, không vượt giới hạn nền tảng.
+- **Dashboard:**
+  - Thêm ô nguồn dự phòng. Kiểm tra định dạng, bắt buộc xác nhận quyền phát hành; nhập `-` để xóa.
+  - Ô tự ẩn khi CSDL chưa có 4.1.
+  - Mọi thay đổi nguồn đều ghi nhật ký.
+
+### 5. Sửa lỗi giao diện tìm thấy khi rà tablet
+
+Ở 768–860px, danh mục bị đẩy xuống dưới cùng thanh bên thu gọn, do luật header cũ `order:3`. Đã sửa và thêm E2E cho 768px.
+
+### Việc còn lại để kết luận READY
+
+1. Chủ hệ thống tạo **1 tài khoản test**. Ví dụ: đăng ký trên Preview bằng email phụ rồi xác nhận email. Đăng nhập tài khoản này trong trình duyệt của Claude app. Claude sẽ tự nghiệm thu:
+   - điểm danh;
+   - ví;
+   - mở khóa;
+   - hoàn điểm;
+   - Dashboard (nếu cấp quyền admin staging).
+2. Thêm 1 phim/tập thử nghiệm có video được phép phát vào staging, để nghiệm thu trình phát với nguồn thật.
+3. Bật Leaked password protection (Supabase → Auth).
+
+---
+
 ## Cập nhật 31/10/2026 15:30 — Hoàn thiện website mẫu, kiểm thử trên PC Nhân
 
 **Trạng thái website mẫu: HOÀN TẤT ở môi trường kiểm thử.** Có bằng chứng chạy thật trên PC Nhân (Windows) và GitHub Actions. Nghiệm thu trên Supabase thật và Cloudflare Preview vẫn chờ chủ tài khoản (xem cuối mục này).
@@ -252,8 +331,8 @@ Trong quá trình kiểm thử, mình phát hiện và đã sửa 4 lỗi:
 
 ## 18. Known Issues
 
-1. Migration Level 4 **chưa được chạy** trên Supabase. Trước khi chạy, các tab Dashboard mới sẽ báo "chưa áp dụng migration". Trang người xem tự ẩn nút điểm danh, ẩn khối Social và không hiện tập khóa (đã có test kiểm chứng).
-2. **Preview Cloudflare của nhánh mới chưa được tạo** ("Deployment Not Found"). Cần mở Cloudflare → Workers & Pages → `web-phim-ai-5sites` → Settings → Builds → Branch control, rồi cho phép nhánh `feature/master-site-*`.
+1. ~~Migration Level 4 chưa chạy~~ → **đã áp lên staging `ai-film-network` ngày 31/10, 95/95 PASS** (xem mục Cập nhật 16:40). Ghi chú cũ: Trước khi chạy, các tab Dashboard mới sẽ báo "chưa áp dụng migration". Trang người xem tự ẩn nút điểm danh, ẩn khối Social và không hiện tập khóa (đã có test kiểm chứng).
+2. ~~Preview Cloudflare chưa tạo~~ → **đã bật và deploy thành công ngày 31/10** (xem mục Cập nhật 16:40). Ghi chú cũ: **Preview Cloudflare của nhánh mới chưa được tạo** ("Deployment Not Found"). Cần mở Cloudflare → Workers & Pages → `web-phim-ai-5sites` → Settings → Builds → Branch control, rồi cho phép nhánh `feature/master-site-*`.
 3. Vercel vẫn còn nối với kho và vẫn build Preview cho mỗi nhánh. Production hiện chạy trên Cloudflare, nên nên tắt Vercel để tránh nhầm lẫn.
 4. Logic nhận diện thương hiệu đang lặp lại ở 6 file Level 3 cũ. Nên chuyển dần sang `afn-core.js`.
 5. Các hạng mục chưa làm: nguồn phát dự phòng, nhiệm vụ Social có thưởng, thưởng giới thiệu bạn bè. (Lưới 16:9 và sidebar đã xong ngày 31/10.)
