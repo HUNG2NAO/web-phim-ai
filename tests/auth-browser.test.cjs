@@ -60,7 +60,8 @@ function domFor(file,url,user) {
   win.AFN_AUTH_CONFIG={enabled:true,url:"https://testing.supabase.co",publishableKey:"sb_publishable_test_example_long_valid",storageKey:"test-session"};
   const client=fakeClient(user);
   win.supabase={createClient(){return client;}};
-  if(file==="account.html")win.eval(read("assets/sites.js"));
+  // Same order as the real pages: Shared Core (sites.js) always loads before auth/account modules.
+  win.eval(read("assets/sites.js"));
   win.eval(read(file==="account.html"?"assets/account.js":"assets/auth.js"));
   const q=s=>win.document.querySelector(s);
   return {dom,win,client,q,close(){win.close();}};
