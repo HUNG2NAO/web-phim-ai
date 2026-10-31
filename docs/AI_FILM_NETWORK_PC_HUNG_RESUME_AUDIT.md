@@ -1,5 +1,44 @@
 # AI FILM NETWORK — PC HƯNG → PC NHÂN RESUME AUDIT
 
+## CẬP NHẬT 31/10/2026, 12:55 — Rà soát cuối trước khi chạy Setup-Level4-Worktree.ps1
+
+| Hạng mục | Kết luận | Bằng chứng |
+|---|---|---|
+| ORIGINAL SOURCE | **SAFE** | `source` không đổi (main `c6dd520`). Script chỉ đọc `source` và thêm 1 ref Level 4 vào `.git` |
+| LEVEL 4 WORKTREE | **BLOCKED** — chờ chạy script trên PC Nhân | Claude không có shell trên máy, không được ghi `.git`, terminal không cho gõ phím |
+| WINDOWS SCRIPT | **NOT VERIFIED trên Windows** (đã VERIFIED trên PowerShell 7.4.6 cô lập) | 7 tình huống chạy thật bằng PowerShell 7 + Git trên bản sao repo `source` của PC Nhân, tất cả đạt. Hash bản trên máy = bản đã kiểm thử `071b005` |
+| GIT BRANCH | **VERIFIED** (GitHub + mô phỏng) | Nhánh `feature/master-site-xuongphim-2026-10-31` → worktree `dev/pc-nhan-level4` đúng commit vừa fetch |
+| BUILD & TESTS | **NOT RUN trên PC Nhân** (cloud: PASS) | Script sẽ tự chạy `tools/run-level4-tests.ps1` |
+| PC NHÂN DEVELOPMENT | **NOT READY** | Chờ log chạy thật |
+
+**Môi trường PC Nhân** (đọc từ file cài đặt, chỉ đọc):
+- Git for Windows **v2.56.0**.
+- Node.js với npm **11.19.0** (dòng Node 24, đủ yêu cầu ≥ 22).
+- Windows PowerShell 5.1 có sẵn.
+- Thư mục dự án được cấp quyền. Không còn phụ thuộc ổ D trong Level 4.
+
+**Lỗi tìm thấy và đã sửa trong lần rà soát:**
+1. File trên PC Nhân là bản cũ: công cụ ghi lưu đệm theo tên file nguồn. Đã ghi lại bằng tên nguồn mới và xác nhận hash.
+2. BOM UTF-8 bị nhân đôi, khiến PowerShell báo ParserError ngay dòng đầu.
+
+**Gia cố thêm:**
+- `trap` bắt lỗi bất ngờ và giữ cửa sổ mở.
+- Đổi tên thư mục trong `try/catch`.
+- Chỉ tái sử dụng worktree của chính `source`.
+- Dừng nếu nhánh dev đã tồn tại mà mất thư mục.
+- Xác minh `source` không đổi sau khi chạy.
+
+**Các lệnh có thể ghi trong script** (không có lệnh xóa, `reset`, `clean` hay `--force`):
+- `Add-Content` vào log.
+- `Rename-Item` cho thư mục chép dở.
+- `git fetch` một ref.
+- `git worktree add -b`.
+- `git merge --ff-only` khi chạy lại.
+
+**Lưu ý:** worktree dùng chung kho object với `source/.git`. Commit, nhánh và file làm việc hoàn toàn tách biệt (đã kiểm chứng), nhưng **không được xóa thư mục `source`** khi còn dùng `source-level4`.
+
+---
+
 ## CẬP NHẬT 31/10/2026, 12:30 — Thiết lập Level 4 an toàn trên PC Nhân
 
 | Hạng mục | Kết luận | Bằng chứng / lý do |
