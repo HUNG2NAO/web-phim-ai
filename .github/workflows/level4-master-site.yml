@@ -1,0 +1,77 @@
+name: Level 4 master website QA
+
+on:
+  push:
+    branches:
+      - 'feature/master-site-*'
+  pull_request:
+    paths:
+      - 'assets/**'
+      - 'db/**'
+      - 'tests/**'
+      - '*.html'
+      - '_headers'
+      - '_redirects'
+      - 'playwright.master.config.cjs'
+      - '.github/workflows/level4-master-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sql:
+    name: SQL security & concurrency (PostgreSQL 16, throwaway)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Level 3 + Level 4 migrations and tests on a disposable database
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: bash tests/sql/run.sh
+
+  browser:
+    name: Contract + Chromium E2E (mock Supabase, local HTTPS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: for f in assets/*.js tests/*.cjs tests/e2e/*.cjs; do node --check "$f"; done
+      - name: Contract tests
+        run: node --test tests/level4-contract.test.cjs tests/auth-contract.test.cjs tests/auth-account-menu.test.cjs tests/site-config.test.cjs
+      - name: Install pinned Playwright Chromium + jsdom
+        run: |
+          npm install --no-save --no-package-lock @playwright/test@1.64.1 jsdom@26.1.0
+          npx playwright install --with-deps chromium
+      - name: DOM regression suites (auth, Member Hub, 5-brand preview)
+        run: |
+          set -o pipefail
+          node --test tests/auth-browser.test.cjs tests/level3-hub.test.cjs tests/preview-regressions.cjs 2>&1 | tee dom-tests.log || {
+            # Đưa chi tiết lỗi lên annotation để đọc được mà không cần tải log.
+            grep -nE "not ok|AssertionError|Error:|expected|actual|message:" dom-tests.log | head -40 | while IFS= read -r l; do echo "::error title=DOM test::${l}"; done
+            exit 1; }
+      - name: Master website + legacy Level 3 browser suites
+        run: npx playwright test -c playwright.master.config.cjs --reporter=line
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: level4-playwright
+          path: test-results/
+          if-no-files-found: ignore

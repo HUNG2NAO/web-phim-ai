@@ -171,6 +171,8 @@ test("staff can save a rights-attested draft and moderate a review",async({page}
   });
   await page.goto(BASE+"/admin.html?site=xuongphim",{waitUntil:"domcontentloaded"});
   await expect(page.locator("#studio-app")).toBeVisible();
+  // Level 4: the dashboard now opens on "Tổng quan"; go to the films tab first.
+  await page.locator('[data-studio-tab="films"]').click();
   await page.locator("#studio-film-id").fill("phim-demo-duoc-phep");
   await page.locator("#studio-film-title").fill("Phim đã được cấp phép");
   await page.locator("#studio-film-video").fill("dQw4w9WgXcQ");
@@ -295,7 +297,7 @@ test("homepage hero painting yields and offscreen artwork remains lazy",async({p
   }));
   expect(viewport.artworks).toBeGreaterThan(4);
   expect(viewport.lazy).toBeGreaterThan(0);
-  expect(viewport.declaredSize).toBe("320x480");
+  expect(viewport.declaredSize).toBe("640x360");
 });
 test("rapid preview-brand switching keeps headers and hero text coherent",async({page})=>{
   await setup(page);

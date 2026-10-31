@@ -1,5 +1,6 @@
 <!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Kiểm duyệt & phim — AI Film Network</title><link rel="stylesheet" href="assets/level3.css"><link rel="stylesheet" href="assets/studio.css">
-  <link rel="stylesheet" href="assets/premium-ui.css"></head><body class="premium-studio">
+  <link rel="stylesheet" href="assets/premium-ui.css">
+  <link rel="stylesheet" href="assets/master.css"></head><body class="premium-studio">
 <header class="topbar"><div class="shell topbar-inner"><a class="brand" id="studio-home" href="./?site=xuongphim"><span class="brand-mark">AF</span><span>FILM STUDIO<span class="brand-dot">.ADMIN</span></span></a><div class="top-actions"><span class="pilot-label">QUẢN TRỊ · PREVIEW</span><a id="studio-member" class="back-link" href="./member.html?site=xuongphim">Trung tâm thành viên</a></div></div></header>
 <main class="shell studio-main">
 <section class="studio-heading"><p class="eyebrow">KHÔNG GIAN VẬN HÀNH</p><h1>Trung tâm quản trị nội dung</h1><p>Chỉ tài khoản đã được cấp quyền tại Supabase mới có thể thực hiện thao tác ở đây.</p></section>
@@ -8,12 +9,21 @@
 <div id="studio-app" hidden>
   <div class="studio-toolbar"><label for="studio-site">Website quản lý</label><select id="studio-site"></select><button class="btn ghost" id="studio-reload">Tải lại dữ liệu</button><span id="studio-status" role="status" aria-live="polite"></span></div>
   <div class="studio-tabs" role="tablist" aria-label="Nghiệp vụ quản trị">
-    <button class="chip selected" type="button" data-studio-tab="films">Phim & bản quyền</button>
+    <button class="chip selected" type="button" data-studio-tab="overview">Tổng quan</button>
+    <button class="chip" type="button" data-studio-tab="films">Phim & bản quyền</button>
+    <button class="chip" type="button" data-studio-tab="episodes">Tập & quyền xem</button>
+    <button class="chip" type="button" data-studio-tab="wallet">Điểm danh & ví điểm</button>
     <button class="chip" type="button" data-studio-tab="reviews">Kiểm duyệt đánh giá</button>
+    <button class="chip" type="button" data-studio-tab="reports">Báo lỗi phim</button>
+    <button class="chip" type="button" data-studio-tab="chat">Chat cộng đồng</button>
     <button class="chip" type="button" data-studio-tab="notices">Thông báo tập mới</button>
+    <button class="chip" type="button" data-studio-tab="social">Social</button>
+    <button class="chip" type="button" data-studio-tab="traffic">Traffic</button>
+    <button class="chip" type="button" data-studio-tab="audit">Nhật ký</button>
+    <button class="chip" type="button" data-studio-tab="staff">Phân quyền</button>
     <button class="chip" type="button" data-studio-tab="privacy">Yêu cầu dữ liệu</button>
   </div>
-  <section data-studio-panel="films">
+  <section data-studio-panel="films" hidden>
     <div class="two-columns">
       <form id="studio-film-form" class="panel-card stack">
         <h2>Đăng phim có quyền phát hành</h2>
@@ -42,6 +52,112 @@
       <button type="submit" class="btn primary" id="studio-send">Gửi thông báo cho thành viên</button>
     </form><div class="panel-card"><h2>Phạm vi gửi</h2><p id="studio-recipients" class="muted">Đang tải số thành viên…</p><p class="muted small">Không gửi tự động khi chưa có dữ liệu phát hành tập mới thật.</p></div></div>
   </section>
+
+  <section data-studio-panel="overview">
+    <div class="section-top"><h2>Tổng quan website</h2><span class="ops-note" id="ops-overview-time"></span></div>
+    <div id="ops-overview" class="ops-cards"><p class="ops-note">Đang tải số liệu thật…</p></div>
+    <p class="ops-note">Mọi số liệu lấy trực tiếp từ cơ sở dữ liệu, không có số liệu mẫu. "Lượt vào từ chiến dịch" chỉ đếm truy cập có gắn UTM hoặc mã giới thiệu.</p>
+  </section>
+  <section data-studio-panel="episodes" hidden>
+    <div class="ops-grid-2">
+      <form id="ops-episode-form" class="panel-card stack">
+        <h2 id="ops-episode-heading">Thêm tập phim</h2>
+        <label for="ops-ep-film">Phim (đã khai báo ở tab Phim &amp; bản quyền)</label><select id="ops-ep-film" required></select>
+        <label for="ops-ep-no">Số tập</label><input id="ops-ep-no" type="number" min="1" max="10000" required value="1">
+        <label for="ops-ep-title">Tên tập (tùy chọn)</label><input id="ops-ep-title" maxlength="160">
+        <label for="ops-ep-tier">Quyền xem</label>
+        <select id="ops-ep-tier"><option value="free">Miễn phí</option><option value="early">Mở sớm bằng điểm (Early Access)</option><option value="member">Chỉ thành viên đã đăng nhập</option></select>
+        <div id="ops-early-fields" class="stack" hidden>
+          <label for="ops-ep-price">Giá mở khóa (điểm)</label><input id="ops-ep-price" type="number" min="1" max="1000000" value="50">
+          <label for="ops-ep-free">Tự động miễn phí từ (giờ Việt Nam, để trống = luôn cần điểm)</label><input id="ops-ep-free" type="datetime-local">
+          <label for="ops-ep-days">Thời hạn xem sau khi mở khóa (ngày, để trống = vĩnh viễn)</label><input id="ops-ep-days" type="number" min="1" max="3650">
+        </div>
+        <label for="ops-ep-source">Nguồn phát</label><select id="ops-ep-source"><option value="youtube">YouTube (Video ID)</option><option value="native">Video HTTPS (.mp4)</option></select>
+        <label for="ops-ep-video">YouTube ID hoặc URL HTTPS</label><input id="ops-ep-video" placeholder="Để trống khi chỉ sửa quyền xem">
+        <div id="ops-fallback-row"><label for="ops-ep-fallback">Nguồn dự phòng (không bắt buộc): YouTube ID hoặc URL HTTPS bạn có quyền phát</label><input id="ops-ep-fallback" placeholder="Tự dùng khi nguồn chính lỗi · nhập - để xóa"></div>
+        <label class="toggle-row"><input type="checkbox" id="ops-ep-rights"><span>Tôi xác nhận có quyền phát hành nguồn video này (và nguồn dự phòng nếu có).</span></label>
+        <label class="toggle-row"><input type="checkbox" id="ops-ep-published"><span>Phát hành tập này</span></label>
+        <div class="ops-inline"><button type="submit" class="btn primary" id="ops-ep-save">Lưu tập</button><button type="button" class="btn ghost" id="ops-ep-reset">Tạo mới</button></div>
+        <p class="ops-note">Nguồn phát được lưu riêng, người xem chỉ nhận được sau khi máy chủ kiểm tra quyền xem.</p>
+      </form>
+      <div class="panel-card"><h2>Danh sách tập</h2><div id="ops-episodes" class="ops-scroll"></div></div>
+    </div>
+  </section>
+  <section data-studio-panel="wallet" hidden>
+    <div class="ops-grid-2">
+      <form id="ops-rules-form" class="panel-card stack">
+        <h2>Cấu hình điểm danh</h2>
+        <p class="ops-note" id="ops-rules-note">Áp dụng cho toàn bộ 5 website. Chỉ chủ hệ thống được thay đổi.</p>
+        <label class="toggle-row"><input type="checkbox" id="ops-rule-enabled"><span>Bật điểm danh hằng ngày</span></label>
+        <label for="ops-rule-base">Điểm mỗi lần điểm danh</label><input id="ops-rule-base" type="number" min="0" max="100000" required>
+        <label for="ops-rule-step">Thưởng thêm mỗi ngày liên tiếp</label><input id="ops-rule-step" type="number" min="0" max="100000" required>
+        <label for="ops-rule-cap">Số lần cộng thưởng liên tiếp tối đa</label><input id="ops-rule-cap" type="number" min="0" max="365" required>
+        <label for="ops-rule-day7">Thưởng ngày thứ 7</label><input id="ops-rule-day7" type="number" min="0" max="1000000" required>
+        <p class="ops-note" id="ops-rule-preview"></p>
+        <button class="btn primary" type="submit" id="ops-rules-save">Lưu cấu hình</button>
+      </form>
+      <div class="panel-card">
+        <h2>Thành viên &amp; ví điểm</h2>
+        <div id="ops-members" class="ops-scroll"></div>
+      </div>
+    </div>
+    <div class="ops-grid-2">
+      <div class="panel-card"><h2 id="ops-ledger-title">Lịch sử điểm của thành viên</h2><div id="ops-ledger" class="ops-scroll"><p class="ops-note">Chọn một thành viên để xem.</p></div>
+        <form id="ops-adjust-form" class="stack" hidden>
+          <h3>Điều chỉnh điểm (chỉ chủ hệ thống)</h3>
+          <label for="ops-adjust-delta">Số điểm (+ cộng / − trừ)</label><input id="ops-adjust-delta" type="number" required min="-1000000" max="1000000">
+          <label for="ops-adjust-reason">Lý do (bắt buộc, ghi vào nhật ký)</label><input id="ops-adjust-reason" required minlength="5" maxlength="300">
+          <button class="btn primary" type="submit">Xác nhận điều chỉnh</button>
+        </form>
+      </div>
+      <div class="panel-card"><h2>Lượt mở khóa gần đây</h2><div id="ops-ents" class="ops-scroll"></div></div>
+    </div>
+  </section>
+  <section data-studio-panel="reports" hidden><h2>Báo lỗi từ người xem</h2><div class="ops-inline"><label for="ops-report-filter">Trạng thái</label><select id="ops-report-filter"><option value="open">Đang mở</option><option value="resolved">Đã xử lý</option><option value="dismissed">Bỏ qua</option></select></div><div id="ops-reports" class="studio-list"></div></section>
+  <section data-studio-panel="chat" hidden><h2>Kiểm duyệt chat cộng đồng</h2>
+    <p class="ops-note">Báo cáo tin nhắn từ thành viên. Ẩn tin, khôi phục, khóa/mở chat đều được ghi vào Nhật ký. Khóa chat có hiệu lực toàn mạng (chỉ quản trị viên).</p>
+    <div class="ops-inline"><label for="ops-chat-filter">Trạng thái</label><select id="ops-chat-filter"><option value="open">Đang mở</option><option value="resolved">Đã xử lý</option><option value="dismissed">Bỏ qua</option></select></div>
+    <div id="ops-chat-reports" class="studio-list"></div>
+    <h3>Thành viên đang bị khóa chat</h3><div id="ops-chat-mutes" class="ops-scroll"></div>
+  </section>
+  <section data-studio-panel="social" hidden>
+    <div class="ops-grid-2">
+      <form id="ops-social-form" class="panel-card stack">
+        <h2>Thêm liên kết mạng xã hội</h2>
+        <label for="ops-social-platform">Nền tảng</label>
+        <select id="ops-social-platform"><option value="facebook_page">Fanpage Facebook</option><option value="facebook_group">Nhóm Facebook</option><option value="tiktok">TikTok</option><option value="youtube">YouTube</option><option value="telegram">Telegram</option><option value="zalo">Zalo</option><option value="instagram">Instagram</option><option value="other">Khác</option></select>
+        <label for="ops-social-label">Tên hiển thị</label><input id="ops-social-label" required maxlength="60">
+        <label for="ops-social-url">Đường dẫn HTTPS</label><input id="ops-social-url" required type="url" placeholder="https://">
+        <fieldset class="genres-fieldset"><legend>Hiển thị ở</legend><div class="ops-checks">
+          <label><input type="checkbox" value="footer" checked> Chân trang</label><label><input type="checkbox" value="film"> Cửa sổ phim</label>
+          <label><input type="checkbox" value="member" checked> Member Hub</label><label><input type="checkbox" value="header"> Header</label></div></fieldset>
+        <label for="ops-social-sort">Thứ tự</label><input id="ops-social-sort" type="number" min="0" max="999" value="0">
+        <button class="btn primary" type="submit">Thêm liên kết</button>
+        <p class="ops-note">Đường dẫn phải đúng tên miền của nền tảng (ví dụ nút TikTok phải trỏ tới tiktok.com). Không nên hiển thị quá 2 liên kết ở Header.</p>
+      </form>
+      <div class="panel-card"><h2>Liên kết hiện có</h2><div id="ops-social-list" class="studio-list"></div></div>
+    </div>
+  </section>
+  <section data-studio-panel="traffic" hidden>
+    <div class="ops-inline"><h2>Truy cập từ chiến dịch</h2><select id="ops-traffic-days" aria-label="Khoảng thời gian"><option value="7">7 ngày</option><option value="30">30 ngày</option><option value="90">90 ngày</option></select></div>
+    <div id="ops-traffic" class="ops-scroll"></div>
+    <form id="ops-utm-form" class="panel-card stack">
+      <h3>Tạo đường dẫn chia sẻ có UTM</h3>
+      <div class="ops-inline">
+        <label>Phim (mã, tùy chọn)<input id="ops-utm-film" placeholder="vd: tin-hieu-47"></label>
+        <label>Nguồn<input id="ops-utm-source" required placeholder="facebook / tiktok / youtube"></label>
+        <label>Kênh<input id="ops-utm-medium" placeholder="social / group / video"></label>
+        <label>Chiến dịch<input id="ops-utm-campaign" placeholder="ra-mat-tap-5"></label>
+      </div>
+      <button class="btn ghost" type="submit">Tạo đường dẫn</button>
+      <code id="ops-utm-out" class="ops-code" hidden></code>
+    </form>
+  </section>
+  <section data-studio-panel="audit" hidden><h2>Nhật ký hoạt động quản trị</h2><p class="ops-note">Ghi tự động khi thay đổi phim, tập, nguồn phát, Social, kiểm duyệt, báo lỗi, cấu hình điểm, điều chỉnh và hoàn điểm.</p><div id="ops-audit" class="ops-scroll"></div></section>
+  <section data-studio-panel="staff" hidden><h2>Phân quyền quản trị</h2><div id="ops-staff" class="ops-scroll"></div>
+    <p class="ops-note">Cấp hoặc thu hồi quyền chỉ thực hiện trong Supabase (SQL Editor) bởi chủ hệ thống, để tránh tự cấp quyền từ trình duyệt. Mẫu lệnh:</p>
+    <code class="ops-code">insert into public.site_staff(user_id, site_id, role) values ('&lt;user-uuid&gt;', 'xuongphim', 'moderator');</code>
+  </section>
   <section data-studio-panel="privacy" hidden><h2>Yêu cầu quyền riêng tư</h2><p class="muted">Xác minh danh tính và xử lý yêu cầu xóa tài khoản thủ công từ Supabase Dashboard. Đánh dấu hoàn tất chỉ sau khi đã thực sự xử lý.</p><div id="studio-privacy" class="studio-list"></div></section>
 </div>
-</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio.js"></script></body></html>
+</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio.js"></script><script src="assets/afn-core.js"></script><script src="assets/studio-ops.js"></script></body></html>

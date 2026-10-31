@@ -9,7 +9,7 @@
     && cfg.publishableKey.length > 15
     && !/service_role|sb_secret_/i.test(cfg.publishableKey)
     && window.supabase && typeof window.supabase.createClient === "function";
-  var client = ready ? window.supabase.createClient(cfg.url, cfg.publishableKey, {
+  var client = !ready ? null : (window.AFN && window.AFN.client && window.AFN.client()) || window.supabase.createClient(cfg.url, cfg.publishableKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -17,7 +17,7 @@
       flowType: "pkce",
       storageKey: cfg.storageKey || "afn-film-auth-v1"
     }
-  }) : null;
+  });
   var slot = document.createElement("div");
   slot.className = "afn-account-slot";
   var trigger = document.createElement("button");
@@ -41,18 +41,20 @@
   accountMenu.setAttribute("aria-label", "Tùy chọn tài khoản");
   var accountURL = new URL("./account.html", window.location.href);
   var previewBrand = new URL(window.location.href).searchParams.get("site");
-  if (window.location.hostname.endsWith(".pages.dev") && ["xuongphim","khophim","phephim","phimhay","ghienphim"].includes(previewBrand)) {
+  var afnResolved = window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE() : null;   // Shared Core
+  var afnPreview = afnResolved ? afnResolved.preview : window.location.hostname.endsWith(".pages.dev");
+  if (afnPreview && (window.SITES||[]).some(function (s) { return s.id === previewBrand; })) {
     accountURL.searchParams.set("site", previewBrand);
   }
   accountMenu.querySelector("#afn-menu-profile").href = accountURL.href;
   const memberURL = new URL("./member.html", window.location.href);
-  if (window.location.hostname.endsWith(".pages.dev")) {
-    memberURL.searchParams.set("site",previewBrand||"xuongphim");
-  }
   const hostBrand = window.location.hostname.replace(/^www\./,"");
-  const activeBrand = window.location.hostname.endsWith(".pages.dev")
+  const activeBrand = afnResolved ? afnResolved.site : (afnPreview
     ? (window.SITES||[]).find(s=>s.id===(previewBrand||"xuongphim"))
-    : (window.SITES||[]).find(s=>s.domain===hostBrand);
+    : (window.SITES||[]).find(s=>s.domain===hostBrand));
+  if (afnPreview) {
+    memberURL.searchParams.set("site",activeBrand?activeBrand.id:(previewBrand||"xuongphim"));
+  }
   const siteId = activeBrand?.id;
   const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId);
   const memberLink = accountMenu.querySelector("#afn-menu-member");
@@ -195,8 +197,8 @@
   async function refreshUser() {
     if (!client) return;
     try {
-      var result = await client.auth.getUser();
-      currentUser = result.data && result.data.user;
+      currentUser = (window.AFN && window.AFN.getUser && window.AFN.client() === client)
+        ? await window.AFN.getUser(true) : (await client.auth.getUser()).data.user;
       if (currentUser) {
         trigger.textContent = "Tài khoản";
         trigger.setAttribute("aria-haspopup", "menu");

@@ -27,16 +27,17 @@ function offlineEmbed(holder,id,title){
 function playbackClient(){
  const cfg=window.AFN_AUTH_CONFIG||{};
  if(!cfg.enabled||!window.supabase?.createClient||!/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||""))return null;
- return window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
+ return (window.AFN&&window.AFN.client&&window.AFN.client())||window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
   persistSession:true,autoRefreshToken:true,storageKey:cfg.storageKey||"afn-film-auth-v1"
  }});
 }
 function currentSite(){
  const host=location.hostname.replace(/^www\./,""),p=new URLSearchParams(location.search);
  const sites=window.SITES||[];
+ if(window.AFN_RESOLVE_SITE)return window.AFN_RESOLVE_SITE().site?.id;
  return host.endsWith(".pages.dev")?(sites.find(x=>x.id===p.get("site"))||sites[0])?.id:sites.find(x=>x.domain===host)?.id;
 }
-window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
+window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1,onError=null}){
  if(!holder||!/^[A-Za-z0-9_-]{11}$/.test(videoId||"")||!/^[a-z0-9][a-z0-9-]{0,119}$/.test(filmId||""))return;
  if(activeInterval)clearInterval(activeInterval);
  if(activePlayer){try{activePlayer.destroy();}catch(_){}activePlayer=null;}
@@ -46,7 +47,7 @@ window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
  async function prepare(){
   if(!client||!site||!flags.includes(site))return;
   try{
-   const result=await client.auth.getUser();user=result.data?.user;
+   user=(window.AFN&&window.AFN.client&&window.AFN.client()===client)?await window.AFN.getUser():(await client.auth.getUser()).data?.user;
    if(!user)return;
    const current=localStorage.getItem("afn-active-viewer:"+user.id+":"+site);
    if(!current||!/^[0-9a-f-]{36}$/i.test(current))return;
@@ -90,6 +91,8 @@ window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
    playerVars:{playsinline:1,rel:0,origin:location.origin},
    events:{
     onReady:e=>{if(restored>0){try{e.target.seekTo(restored,true);}catch(_){}}},
+    // 2 invalid id · 5 HTML5 error · 100 removed/private · 101/150 embedding not allowed by the owner.
+    onError:e=>{if(typeof onError==="function")onError(e.data);},
     onStateChange:e=>{
      if(e.data===yt.PlayerState.PLAYING){dirty=true;startTimer();}
      if(e.data===yt.PlayerState.PAUSED||e.data===yt.PlayerState.ENDED){if(activeInterval)clearInterval(activeInterval);activeInterval=null;dirty=true;save(true);}

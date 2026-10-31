@@ -8,10 +8,11 @@
   const BRANDS=Array.isArray(window.SITES)?window.SITES:[];
   const params=new URL(window.location.href).searchParams;
   const hostname=window.location.hostname.replace(/^www\./,"");
-  const preview=hostname.endsWith(".pages.dev");
-  const brand=preview
+  const resolved=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE():null;   // Shared Core
+  const preview=resolved?resolved.preview:hostname.endsWith(".pages.dev");
+  const brand=resolved?resolved.site:(preview
     ? (BRANDS.find(b=>b.id===params.get("site"))||BRANDS[0])
-    : BRANDS.find(b=>b.domain===hostname);
+    : BRANDS.find(b=>b.domain===hostname));
   const SITE=brand?.id||"unknown";
   const flags=window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"];
   const isPilot=flags.includes(SITE);
@@ -340,7 +341,7 @@
     setActiveProfile(p);await loadSelected();announce("Đã chuyển sang hồ sơ "+p.nickname);
   }
   function setTab(name){
-    if(!["overview","library","discover","community","profiles","inbox","settings"].includes(name))return;
+    if(!["overview","rewards","library","discover","community","profiles","inbox","settings"].includes(name))return;
     state.tab=name;$$("[data-panel]").forEach(p=>p.hidden=p.dataset.panel!==name);
     $$("[data-tab]").forEach(b=>{const active=b.dataset.tab===name;b.classList.toggle("active",active);if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");});
     if(window.location.hash!=="#"+name)window.history.replaceState(window.history.state,"","#"+name);

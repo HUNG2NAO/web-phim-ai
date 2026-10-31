@@ -12,6 +12,11 @@
  *   { completed: true }       – phim bộ đã chiếu đủ tập
  *   { type: "bo" | "le" | "ngan" }
  *   { genre: "Tu tiên" }      – theo thể loại (viết đúng như trong GENRES)
+ *
+ * social: liên kết mạng xã hội DỰ PHÒNG khi Dashboard chưa cấu hình (bảng site_social_links).
+ *   Mỗi mục: { platform: "facebook_page|facebook_group|tiktok|youtube|telegram|zalo|instagram|other",
+ *              label: "Tên hiển thị", url: "https://…", placements: ["footer","member","film","header"] }
+ *   Để trống [] cho tới khi có tài khoản thật — trang sẽ không hiện khối Social.
  */
 window.SITES = [
   {
@@ -20,6 +25,7 @@ window.SITES = [
     tagline: "Xưởng phim khoa học viễn tưởng AI",
     accent: "#3FD0F5", onAccent: "#03161D",
     featured: "thanh-pho-khong-ngu",
+    social: [],
     rows: [
       { title: "Mới ra lò", filter: { newest: true } },
       { title: "Cyberpunk", filter: { genre: "Cyberpunk" } },
@@ -33,6 +39,7 @@ window.SITES = [
     tagline: "Kho phim cổ trang AI, tìm là có",
     accent: "#4FB08F", onAccent: "#04201A",
     featured: "phuong-te-cung",
+    social: [],
     rows: [
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
       { title: "Cung đấu", filter: { genre: "Cung đấu" } },
@@ -46,6 +53,7 @@ window.SITES = [
     tagline: "Phim hành động tương lai AI xem là phê",
     accent: "#FF4F7B", onAccent: "#2B0410",
     featured: "duong-dua-neon",
+    social: [],
     rows: [
       { title: "Hành động", filter: { genre: "Hành động" } },
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
@@ -59,6 +67,7 @@ window.SITES = [
     tagline: "Tuyển chọn phim cổ trang AI đáng xem",
     accent: "#E8673A", onAccent: "#2A0C02",
     featured: "kiem-khach-vo-danh",
+    social: [],
     rows: [
       { title: "Xem nhiều nhất", filter: { trending: true } },
       { title: "Tâm lý", filter: { genre: "Tâm lý" } },
@@ -72,6 +81,7 @@ window.SITES = [
     tagline: "Phim bộ cổ trang AI cày hoài không chán",
     accent: "#A68BE0", onAccent: "#140A33",
     featured: "ho-ly-nui-tuyet",
+    social: [],
     rows: [
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
       { title: "Phim bộ trọn bộ", filter: { type: "bo", completed: true } },
@@ -80,3 +90,19 @@ window.SITES = [
     ]
   }
 ];
+
+/*
+ * SHARED CORE — nhận diện website (dùng chung cho mọi trang và module).
+ * - Tên miền thật (kể cả www./tên miền con) → website tương ứng, preview=false.
+ * - Mọi host khác (*.pages.dev, Vercel, localhost…) → bản xem thử, chọn site bằng ?site=<id>,
+ *   mặc định site đầu tiên. Thêm website mới: chỉ cần thêm một mục vào window.SITES.
+ */
+window.AFN_RESOLVE_SITE = function (loc) {
+  loc = loc || window.location;
+  var sites = window.SITES || [];
+  var host = String(loc.hostname || "").toLowerCase().replace(/^www\./, "");
+  var real = sites.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); });
+  if (real) return { site: real, preview: false };
+  var wanted = new URLSearchParams(loc.search || "").get("site");
+  return { site: sites.find(function (s) { return s.id === wanted; }) || sites[0] || null, preview: true };
+};

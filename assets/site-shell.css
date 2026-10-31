@@ -1,0 +1,153 @@
+/* ===================== Level 4 · Website mẫu: khung trang (Shared Core UI) =====================
+   Thanh bên thu gọn (desktop/tablet), thanh tab dưới (điện thoại), lưới poster 16:9, cửa sổ xem phim 2 cột.
+   Chỉ nạp ở trang chủ (index.html). Chỉ dùng biến màu của theme nên áp dụng được cho cả 5 thương hiệu (cổ trang & tương lai). */
+body { --side-w: 236px; }
+body[data-side="collapsed"] { --side-w: 76px; }
+.site-header .wrap, .demo-notice .wrap, .preview-bar .wrap { max-width: none; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.side-toggle { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--fg); margin-right: -6px; }
+.side-toggle:hover, .side-toggle:focus-visible { border-color: var(--accent); }
+.shell { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); transition: grid-template-columns .2s ease; }
+.page { min-width: 0; }
+.sidebar { position: sticky; top: calc(var(--hdr-h, 62px) + env(safe-area-inset-top, 0px)); align-self: start;
+  height: calc(100vh - var(--hdr-h, 62px) - env(safe-area-inset-top, 0px)); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
+  border-right: 1px solid var(--line); background: var(--bg); padding: 14px 10px 20px; display: flex; flex-direction: column; gap: 16px; z-index: 15; }
+.sidebar .nav { display: grid; gap: 2px; order: 0; width: auto; overflow: visible; }  /* ghi đè luật header cũ (order:3) ở ≤860px */
+.sidebar .nav button, .side-link, .side-net a {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 10px;
+  background: none; color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14.5px; text-align: left; cursor: pointer; white-space: nowrap; }
+.sidebar .nav button:hover, .side-link:hover, .side-net a:hover { color: var(--fg); background: var(--surface-2); }
+.sidebar .nav button[aria-current="true"] { color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent); border-radius: 10px; }
+.sidebar .nav button[aria-current="true"] .ic { color: var(--accent); }
+.sidebar .ic { flex: none; }
+.side-sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; border-top: 1px solid var(--line); padding-top: 14px; }
+.side-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 14px 6px; white-space: nowrap; }
+.side-net a { min-height: 40px; padding: 7px 14px; font-size: 14px; }
+.side-net a .seal { width: 26px; height: 26px; font-size: 11px; background: var(--c); color: #120E09; border-radius: 6px; box-shadow: none; }
+.side-net a[aria-current="true"] { color: var(--fg); }
+@media (min-width: 700px) {
+  body[data-side="collapsed"] .sidebar { padding-inline: 8px; }
+  body[data-side="collapsed"] .sidebar .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body[data-side="collapsed"] .side-label { display: none; }
+  body[data-side="collapsed"] .sidebar .nav button, body[data-side="collapsed"] .side-link, body[data-side="collapsed"] .side-net a { justify-content: center; padding-inline: 0; }
+}
+
+/* Lưới poster 16:9 */
+.poster { aspect-ratio: 16 / 9; border-radius: 8px; }
+.scroller { grid-auto-columns: clamp(232px, 23.5%, 330px); gap: 18px; }
+.grid { grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 26px 18px; }
+.card .c-title { font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .poster::before { content: ""; position: absolute; inset: 0; z-index: 1; opacity: 0; transition: opacity .2s ease;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 85%, transparent) 0 22px, transparent 23px),
+              linear-gradient(0deg, rgb(0 0 0 / .45), transparent 60%); }
+.card:hover .poster::before, .card:focus-visible .poster::before { opacity: 1; }
+.rank-list { grid-auto-columns: clamp(286px, 31%, 400px); gap: 10px; }
+.rank .num { font-size: clamp(64px, 6vw, 96px); margin-right: -10px; }
+.cw-badge { display: inline-flex; align-items: center; gap: 6px; justify-self: start; font-size: 12px; font-weight: 700; color: var(--accent); }
+
+/* Cửa sổ xem phim */
+dialog.film { width: min(1180px, calc(100% - 32px)); }
+.player-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px;
+  border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.pb-step { min-height: 40px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+  color: var(--fg); cursor: pointer; white-space: nowrap; font-size: 14px; }
+.pb-step:hover:not(:disabled), .pb-step:focus-visible { border-color: var(--accent); color: var(--accent); }
+.pb-step:disabled { opacity: .38; cursor: default; }
+.pb-now { min-width: 0; font-size: 14px; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.film-main { display: grid; gap: 14px; min-width: 0; align-content: start; }
+.film-body.has-eps { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 28px; }
+.film-eps { display: grid; gap: 10px; position: sticky; top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--bg); min-width: 0; }
+.film-eps .ep-legend { margin: 0; }
+.episodes.list { grid-template-columns: 1fr; max-height: 430px; overflow-y: auto; scrollbar-width: thin; }
+.episodes.list button { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; text-align: left; padding: 10px 12px; min-height: 48px; border-radius: 10px; }
+.episodes.list .ep-no { font-weight: 600; }
+.episodes.list .ep-badge { margin-left: auto; }
+.episodes.list .ep-name { flex-basis: 100%; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.episodes.list button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
+.episodes.list button[aria-pressed="true"] .ep-name { color: var(--fg); }
+@media (max-width: 899px) {
+  .film-body.has-eps { grid-template-columns: minmax(0, 1fr); }
+  .film-eps { position: static; }
+  .film-eps { order: -1; }
+}
+
+/* Điện thoại: thanh tab dưới thay cho thanh bên */
+@media (max-width: 699px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side-toggle { display: none; }
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  .sidebar { position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: auto; overflow: visible; z-index: 25;
+    border-right: 0; border-top: 1px solid var(--line); padding: 4px max(6px, env(safe-area-inset-left, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-right, 0px));
+    background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .side-sec { display: none; }
+  .sidebar .nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .sidebar .nav button { flex-direction: column; justify-content: center; gap: 2px; min-height: 54px; padding: 6px 2px; font-size: 11px; text-align: center; }
+  .sidebar .nav button[aria-current="true"] { box-shadow: inset 0 2px 0 var(--accent); border-radius: 0; background: transparent; color: var(--accent); }
+  .scroller { grid-auto-columns: 78%; gap: 12px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 12px; }
+  .rank-list { grid-auto-columns: 84%; }
+  dialog.film { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border: 0; border-radius: 0; }
+  dialog.film .player { position: sticky; top: 0; z-index: 2; }
+  dialog.film .close { position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); }
+  .pb-step span { display: none; }
+  .player-bar { padding: 8px 12px; }
+}
+/* Thể loại: luôn đủ một hàng trên desktop (cuộn ngang nếu nhiều), lưới 2 cột trên điện thoại. */
+@media (min-width: 700px) {
+  .genre-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(132px, 1fr); overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; }
+}
+
+/* ===================== Level 4.2 · Community Chat ===================== */
+.afn-chat { display: grid; gap: 10px; min-width: 0; }
+.afn-chat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.afn-chat-title { margin: 0; font-size: 17px; font-family: var(--font-display); }
+.afn-chat-live { font-size: 12.5px; color: var(--accent); }
+.afn-chat-live.off { color: #e2a33b; }
+.afn-chat-banner { margin: 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, #e2a33b 18%, transparent); border: 1px solid #e2a33b; font-size: 13.5px; }
+.afn-chat-list { list-style: none; margin: 0; padding: 4px 2px; display: grid; gap: 8px; max-height: 360px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; align-content: start; }
+.afn-chat-msg { padding: 8px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); max-width: 92%; justify-self: start; overflow-wrap: anywhere; }
+.afn-chat-msg.mine { justify-self: end; background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.afn-chat-msg.hidden-msg { opacity: .6; border-style: dashed; }
+.afn-chat-meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.afn-chat-who { font-size: 13px; }
+.afn-chat-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.afn-chat-tag { font-size: 11px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); }
+.afn-chat-tag.warn { border-color: #e2a33b; color: #e2a33b; }
+.afn-chat-body { margin: 3px 0 0; font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; }
+.afn-chat-acts, .afn-chat-report { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.afn-chat-act { min-height: 32px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.afn-chat-act:hover, .afn-chat-act:focus-visible { color: var(--fg); border-color: var(--accent); }
+.afn-chat-empty { color: var(--muted); font-size: 14px; padding: 10px 2px; }
+.afn-chat-emoji { display: flex; gap: 4px; flex-wrap: wrap; }
+.afn-chat-emo { min-width: 40px; min-height: 36px; border-radius: 10px; border: 1px solid var(--line); background: transparent; font-size: 17px; cursor: pointer; }
+.afn-chat-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.afn-chat-form textarea { resize: vertical; min-height: 44px; max-height: 140px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; font-size: 15px; }
+.afn-chat-form .afn-btn { min-height: 44px; }
+.afn-chat-count { justify-self: end; font-size: 11.5px; color: var(--muted); margin-top: -6px; }
+.afn-chat-status { margin: 0; min-height: 1em; font-size: 13px; color: var(--muted); }
+.afn-chat-status.bad { color: #ff8a80; }
+.film-chat { border-top: 1px solid var(--line); padding-top: 16px; }
+.afn-chat-drawer { position: fixed; z-index: 40; top: calc(var(--hdr-h, 62px) + env(safe-area-inset-top, 0px)); right: 0; bottom: 0;
+  width: min(420px, 100vw); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -20px 0 50px rgb(0 0 0 / .35);
+  padding: 16px 16px max(16px, env(safe-area-inset-bottom, 0px)); overflow-y: auto; }
+.afn-chat-drawer .afn-chat-list { max-height: calc(100vh - var(--hdr-h, 62px) - 260px); min-height: 200px; }
+.afn-chat-close { position: absolute; top: 10px; right: 12px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--fg); font-size: 20px; cursor: pointer; }
+.afn-chat-drawer .afn-chat-head { padding-right: 44px; }
+.afn-chat-fab { display: none; }
+@media (max-width: 699px) {
+  .afn-chat-fab { display: grid; place-items: center; position: fixed; z-index: 26; right: 14px; bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); font-size: 22px; box-shadow: 0 8px 24px rgb(0 0 0 / .4); cursor: pointer; }
+  body.chat-open .afn-chat-fab { display: none; }
+  /* Nút chat nổi không được che nút "Xem / Thông tin phim" ở hero: chừa cột bên phải cho nút nổi. */
+  .hero .actions { padding-right: 62px; flex-wrap: wrap; }
+  .afn-chat-drawer { top: 0; width: 100vw; z-index: 60; bottom: 0; padding-top: max(16px, env(safe-area-inset-top, 0px)); }
+  .afn-chat-drawer .afn-chat-list { max-height: calc(100dvh - 300px); }
+}
+
+/* Khả năng đọc và vùng chạm (đánh giá UX 31/10): nhãn poster >= 12px, liên kết "Xem tất cả" >= 40px. */
+.badge { font-size: 12px; }
+.row-head .more { min-height: 40px; padding: 8px 4px; margin: -8px -4px; display: inline-flex; align-items: center; }
+.afn-chat-rules { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.afn-chat-rules a { color: var(--accent); }
+.legal-links a { color: var(--muted); display: inline-block; padding: 10px 0; }
