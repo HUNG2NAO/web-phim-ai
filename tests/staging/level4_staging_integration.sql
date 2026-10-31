@@ -25,7 +25,15 @@ create function t.as_user(u text) returns void language sql as $$
 $$;
 grant execute on all functions in schema t to anon, authenticated;
 -- Real projects may already hold real members: counts are asserted relative to this baseline.
-create table t.base as select (select count(*) from public.site_memberships where site_id = 'xuongphim') as xp_members;
+create table t.base as select (select count(*) from public.site_memberships where site_id = 'xuongphim') as xp_members,
+  (select count(*) from public.site_films where published) as pub_films,
+  (select count(*) from public.site_episodes e join public.site_films f on f.site_id = e.site_id and f.film_id = e.film_id
+     where e.site_id = 'xuongphim' and e.published and f.published) as xp_pub_eps,
+  (select count(*) from public.traffic_events) as traffic,
+  (select count(*) from public.admin_audit_log where action = 'wallet.adjust') as audit_wallet,
+  (select count(*) from public.chat_messages where room = 'network' and not hidden) as net_visible,
+  (select count(*) from public.chat_messages where room like 'film:%' and not hidden) as film_visible,
+  (select count(*) from public.admin_audit_log where action in ('chat.hide','chat.restore','chat.mute','chat.unmute')) as audit_chat;
 grant select on t.base to anon, authenticated;
 
 -- ===== seed (fixture users @example.test) =====
@@ -88,8 +96,8 @@ insert into public.site_social_links(site_id, platform, label, url, enabled) val
 
 -- 1. Anonymous visitor -----------------------------------------------------------
 set local role anon;
-select t.ok((select count(*) from public.site_films) = 2, 'anon reads published films only (Level 3 permission bug fixed)');
-select t.ok((select count(*) from public.site_episodes where site_id='xuongphim') = 6, 'anon sees 6 published xuongphim episodes, not the draft');
+select t.ok((select count(*) from public.site_films) = 2 + (select pub_films from t.base), 'anon reads published films only (Level 3 permission bug fixed)');
+select t.ok((select count(*) from public.site_episodes where site_id='xuongphim') = 6 + (select xp_pub_eps from t.base), 'anon sees 6 published xuongphim episodes, not the draft');
 select t.ok((select count(*) from public.site_social_links) = 1, 'anon sees only enabled social links');
 select t.ok((select checkin_base from public.reward_rules) = 10, 'anon can read reward rules');
 select t.err('select * from public.wallets', 'permission denied', 'anon cannot read wallets');
@@ -107,7 +115,7 @@ select public.log_landing('xuongphim', '/', 'tin-hieu-47', 'facebook', 'social',
 select public.log_landing('xuongphim', '/', null, '', '', '', '');
 select public.log_landing('khongco', '/', null, 'x', null, null, null);
 reset role; select set_config('request.jwt.claims', '', true);
-select t.ok((select count(*) from public.traffic_events) = 1, 'only campaign landing on a valid site is recorded');
+select t.ok((select count(*) from public.traffic_events) = 1 + (select traffic from t.base), 'only campaign landing on a valid site is recorded');
 
 -- 2. Check-in --------------------------------------------------------------------
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000001');
@@ -213,7 +221,7 @@ reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000003');
 select t.ok((select checkin_base from public.admin_set_reward_rules(true, 20, 3, 4, 40)) = 20, 'network owner updates reward rules');
 select t.ok((select count(*) from public.admin_audit_log where action = 'reward_rules.update') = 1, 'rule change is audited');
-select t.ok((select count(*) from public.admin_audit_log where action = 'wallet.adjust') = 1, 'manual points adjustment is audited');
+select t.ok((select count(*) from public.admin_audit_log where action = 'wallet.adjust') = 1 + (select audit_wallet from t.base), 'manual points adjustment is audited');
 select t.ok((select count(*) from public.admin_audit_log where action like 'site_episodes.%') >= 1, 'episode changes are audited by trigger');
 reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000004');
@@ -273,7 +281,7 @@ select public.send_chat_message('network', 'tin 5');
 select t.err($$select public.send_chat_message('network', 'tin 6')$$, 'chat_rate_limited', 'more than 5 messages per 30s is rate limited');
 reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000002');
-select t.ok((select count(*) from public.chat_messages where room = 'network') = 4, 'B reads the network room history');
+select t.ok((select count(*) from public.chat_messages where room = 'network') = 4 + (select net_visible from t.base), 'B reads the network room history');
 select t.ok((public.report_chat_message((select id from public.chat_messages where room like 'film:%' limit 1), 'spam', 'thử báo cáo'))->>'status' = 'reported', 'B reports A film-room message');
 select t.ok((public.report_chat_message((select id from public.chat_messages where room like 'film:%' limit 1), 'spam', 'lần 2'))->>'status' = 'reported', 'reporting twice is idempotent');
 select t.ok((select count(*) from public.chat_reports) = 1, 'B sees exactly own single report');
@@ -292,10 +300,10 @@ select t.ok((select count(*) from public.admin_chat_reports('open')) = 0, 'hidin
 select t.err($$select public.chat_set_mute('aaaaaaaa-0000-4000-8000-000000000001', 60, 'spam')$$, 'forbidden', 'moderator (not admin) cannot mute network-wide');
 reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000002');
-select t.ok((select count(*) from public.chat_messages where room like 'film:%') = 0, 'hidden message disappears for other members');
+select t.ok((select count(*) from public.chat_messages where room like 'film:%') = (select film_visible from t.base), 'hidden message disappears for other members');
 reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000001');
-select t.ok((select count(*) from public.chat_messages where room like 'film:%') = 1, 'author still sees own hidden message');
+select t.ok((select count(*) from public.chat_messages where room like 'film:%') = 1 + (select film_visible from t.base), 'author still sees own hidden message');
 reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000003');
 select t.ok((public.chat_set_mute('aaaaaaaa-0000-4000-8000-000000000002', 60, 'Thử khóa chat QA'))->>'status' = 'muted', 'network owner mutes B for 60 minutes');
@@ -308,10 +316,18 @@ reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000003');
 select t.ok((public.chat_set_mute('aaaaaaaa-0000-4000-8000-000000000002', 0, 'Mở khóa sau kiểm tra'))->>'status' = 'unmuted', 'owner restores B chat rights');
 select t.ok((public.chat_moderate_message((select id from public.chat_messages where room like 'film:%' limit 1), false, 'Khôi phục thử'))->>'status' = 'restored', 'owner restores hidden message');
-select t.ok((select count(*) from public.admin_audit_log where action in ('chat.hide','chat.restore','chat.mute','chat.unmute')) = 4, 'chat moderation is fully audited');
+select t.ok((select count(*) from public.admin_audit_log where action in ('chat.hide','chat.restore','chat.mute','chat.unmute')) = 4 + (select audit_chat from t.base), 'chat moderation is fully audited');
 reset role; select set_config('request.jwt.claims', '', true);
 set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000002');
 select t.ok((public.send_chat_message('network', 'Cảm ơn admin')).body = 'Cảm ơn admin', 'B can send again after unmute');
+reset role; select set_config('request.jwt.claims', '', true);
+-- người mới đăng ký chưa có hồ sơ: tên lấy từ lúc đăng ký, không lộ email
+update auth.users set raw_user_meta_data = '{"display_name":"QA TEST 6"}' where id = 'aaaaaaaa-0000-4000-8000-000000000006';
+set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000006');
+select t.ok((public.send_chat_message('network', 'Thành viên mới chào cả nhà')).display_name = 'QA TEST 6', 'new member without profile shows signup display name');
+reset role; select set_config('request.jwt.claims', '', true);
+set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000007');
+select t.ok((public.send_chat_message('network', 'Không có tên')).display_name = 'Thành viên', 'member without any name shows neutral label, never the e-mail');
 reset role; select set_config('request.jwt.claims', '', true);
 
 -- 6. Invariants -------------------------------------------------------------------

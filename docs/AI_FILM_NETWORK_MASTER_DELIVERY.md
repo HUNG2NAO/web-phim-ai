@@ -13,6 +13,126 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 02:00 — LEVEL 4 PRODUCTION RELEASE PREPARATION (Xưởng Phim)
+
+> **Chưa merge `main`, chưa deploy Production, chưa sửa DNS, chưa xóa dữ liệu QA, chưa phát sinh chi phí.** Dừng ở cổng phê duyệt.
+
+### 1. Phiên bản (Release Candidate)
+
+| Mục | Giá trị |
+|---|---|
+| Repo / nhánh phát triển | `HUNG2NAO/web-phim-ai` · `feature/master-site-xuongphim-2026-10-31` (git status sạch, HEAD = origin) |
+| **RC1 (mã nguồn)** | commit **`27760a4`**, ghim bằng nhánh **`release/xuongphim-l4-rc1`**. Proxy chặn đẩy tag, nên dùng nhánh thay tag. Commit sau RC chỉ sửa tài liệu |
+| Preview của RC | `https://b2cb38aa.web-phim-ai-5sites.pages.dev` và alias `feature-master-site-xuongphi…`, deploy `success` |
+| Khớp mã nguồn ↔ Preview | SHA-256 của `app.js`, `auth.js`, `community-chat.js`, `afn-core.js`, `rewards.js`, `studio-ops.js` tải từ Preview **trùng 100%** với `git show 27760a4` |
+| CI trên RC | Cloudflare Pages ✓, SQL security & concurrency ✓, Contract + Chromium E2E ✓ |
+| So với Production (`main` `c6dd520`) | 164 commit, 99 tệp (+12.100 / −54 dòng) |
+| Chuỗi PR | #3 → #4 → #5 → #6 → #7 → #8 → #9 (đều draft), **tất cả đã nằm trong RC**. PR #1 (`ops/cloudflare-pages-migration`) chỉ thêm `DEPLOY_CLOUDFLARE.md`, không ảnh hưởng phát hành |
+| Shared Core | `sites.js` (5 thương hiệu), `afn-core.js` (một client Supabase dùng chung), site-config test 7/7 (đã thêm kiểm tra cổng lập chỉ mục) |
+
+### 2. Sửa lỗi an toàn trong RC (commit `27760a4`)
+
+1. **Canonical sai tên miền.** Cloudflare có Redirect Rule "Canonical www HTTPS for xuongphim.ai" chuyển 301 từ `xuongphim.ai` sang `https://www.xuongphim.ai`. Canonical, og:url và sitemap trước đây trỏ về apex, tức là trỏ vào một địa chỉ chuyển hướng. Nay dùng `https://www.<domain>`, trùng với `AFN.filmUrl`.
+2. **Cổng lập chỉ mục.** `functions/_site.js` có `INDEXABLE = new Set([])`. Khi chưa được duyệt, tên miền thật trả robots `Disallow: /` và sitemap có `X-Robots-Tag: noindex`. Thẻ `noindex` trong `index.html` giữ nguyên; test sẽ fail nếu ai mở cổng mà không gỡ noindex.
+3. **Lượt xem giả.** Kho phim mẫu không còn hiển thị "2,6 triệu lượt xem". Mục "Bảng xếp hạng · Theo lượt xem" đổi thành "Phim nổi bật · Gợi ý của biên tập"; sắp xếp "Xem nhiều" đổi thành "Nổi bật". Lượt xem chỉ hiện khi dữ liệu có `viewsVerified: true`.
+4. **Sao lưu QA:** thêm `db/staging/58_qa_backup.sql`. `59_qa_cleanup.sql` nay bao gồm cả `+signup1`.
+
+### 3. Dữ liệu QA (chỉ đọc, chưa xóa)
+
+| Tài khoản | Loại | Dữ liệu |
+|---|---|---|
+| `90b8b707` hung…@gmail.com | **CHỦ: giữ** | ví 10, 1 điểm danh, admin 5 site, network owner |
+| `01143faf` ngos…@gmail.com | **Không phải QA: giữ, chờ anh quyết** | tạo bằng Dashboard 22:55, chưa đăng nhập, không có dữ liệu |
+| `0e41cb4f` +qa1 | QA | ví 30, ledger 3, 1 điểm danh, 1 quyền xem, 7 tin chat, 1 báo cáo |
+| `c4bdb583` +qa2 | QA | ví 10, 1 điểm danh, 3 tin chat, 2 báo cáo |
+| `ca41544b` +qaadmin | QA | ví 10, 1 điểm danh, `site_staff(xuongphim, admin)` |
+| `f183e257` +signup1 | QA | chưa có ví hay dữ liệu |
+
+- Nội dung QA: phim `qa-test-blender-open-movies` (đã phát hành, 3 tập, 3 nguồn video Blender CC BY), 10 tin chat, 3 báo cáo chat.
+- `admin_audit_log` có 15 dòng (QA + seed). **Giữ lại** vì là nhật ký kiểm toán.
+- **Sao lưu:** đã chạy thử `58_qa_backup.sql` trên staging (rollback). Sẽ chép 4 tài khoản QA, ví, ledger, điểm danh, quyền xem, staff, hồ sơ người xem, 10 tin chat, 3 báo cáo, phim, tập và nguồn QA vào schema `qa_backup`. Đã xác nhận sau khi chạy thử không còn schema `qa_backup`.
+- **Dọn:** `59_qa_cleanup.sql` mặc định chỉ chạy thử. Script dừng nếu có dữ liệu của người không phải QA dính vào. Xóa 4 tài khoản QA trong Dashboard sẽ tự xóa ví, ledger và điểm danh (FK cascade).
+
+### 4. Kiểm toán Supabase (`ai-film-network`, Singapore, gói Free)
+
+| Hạng mục | Kết quả |
+|---|---|
+| Có phục vụ Production? | **Không.** Nhật ký API 24 giờ: 100% referer là `*.pages.dev` (Preview), supabase.com và mail.google.com (link email). 5 tên miền thật không gọi Supabase; `main` không chứa chuỗi `supabase` |
+| Auth | Email bật, cho đăng ký mới, **Confirm email bật**, ẩn danh tắt, manual linking tắt, Google tắt |
+| Custom SMTP Resend | Bật; `no-reply@mail.xuongphim.ai` qua `smtp.resend.com:465`; giới hạn 30 email/giờ. Đăng ký, xác minh và đặt lại mật khẩu thật: PASS |
+| Mẫu email | Tiếng Việt, liên kết token_hash (dùng được trên mọi trình duyệt) |
+| Site URL | Vẫn là Preview cũ `feature-auth-first-pilot-202…`, **không đổi sang Preview** theo chỉ thị. Đổi sang `https://www.xuongphim.ai` lúc phát hành (bước R4) |
+| Redirect URLs | 6 URL Preview. **Thiếu** `https://www.xuongphim.ai/?auth=confirm\|recovery\|callback`, cần thêm lúc phát hành |
+| Leaked Password Protection | Tắt. Trang Attack Protection ghi "Configure in email provider"; nhiều khả năng chỉ có ở gói trả phí (cần xác nhận). Không bật được trên Free nếu đúng vậy |
+| CAPTCHA | Tắt. Đề xuất bật Cloudflare Turnstile sau phát hành (P1) |
+| RLS | 27/27 bảng public bật RLS; `anon` chỉ SELECT dữ liệu công khai, không INSERT được bảng nào |
+| Schema đã kiểm thử ↔ staging | Fingerprint **35 hàm** public/private và **59 policy** trên staging **trùng md5** với CSDL kiểm thử cục bộ đã qua 133 + 13 bài SQL. 11 migration đã áp |
+| Phân quyền | network owner: chủ. Site admin: chủ (5 site) + qaadmin (xuongphim, sẽ gỡ khi dọn QA) |
+| Advisor | Security: các RPC SECURITY DEFINER là có chủ đích (tự kiểm tra `auth.uid()` và quyền, đã test); `traffic_events` không có policy (chỉ ghi qua RPC). Performance: 8 index chưa dùng, 1 bảng có 2 policy SELECT. Mức INFO/WARN, không chặn phát hành |
+| Check-in, Wallet, Entitlements, Chat, Audit | Real User PASS trên Preview (mục 31/10 23:30 và 01/11). Bất biến balance = tổng ledger đúng với mọi ví |
+
+### 5. Kiểm toán Cloudflare
+
+| Hạng mục | Kết quả |
+|---|---|
+| Pages project | `web-phim-ai-5sites`, production branch **`main`** (`c6dd520`, 28/10), không có build, output `.` |
+| Tên miền | 10 tên miền (5 apex + 5 www) **cùng gắn vào một project**, đều active, SSL active |
+| Hệ quả | **Merge `main` sẽ cập nhật cả 5 website cùng lúc**, trái với yêu cầu chỉ phát hành Xưởng Phim. Xem kế hoạch R ở mục 7 |
+| Production hiện tại | Không có CSP/HSTS/X-Frame-Options; `robots.txt` trả về HTML của SPA. RC bổ sung đầy đủ header (`_headers`) và robots/sitemap theo tên miền |
+| Preview đã QA | `b2cb38aa` (RC1), có CSP, HSTS, nosniff, XFO, Referrer-Policy, Permissions-Policy; `/admin`, `/account` no-store; 404 đúng |
+| Zone `xuongphim.ai` | SSL Full; Always Use HTTPS tắt, nhưng Redirect Rule đã ép `http://www` → `https://www`; TLS tối thiểu 1.0 (đề xuất 1.2) |
+| DNS | Website: `xuongphim.ai` và `www` là CNAME (proxied) tới `web-phim-ai-5sites.pages.dev`. Email: 3 bản ghi Resend (DNS only), domain Verified. Không có MX hay DMARC |
+| Rollback | Production cũ `c6dd520` (deployment `4f786bd6`) và trước đó `7fb08dc` vẫn còn trong lịch sử Pages, có thể rollback 1 click |
+
+### 6. SEO và nội dung
+
+| Hạng mục | Kết quả |
+|---|---|
+| URL riêng | Trang chủ `/`; phim `/phim/<id>` (302 sang `/?film=<id>`); tập `/phim/<id>/tap/<n>` |
+| Canonical, OG | `https://www.xuongphim.ai/...` theo trang và theo phim (E2E và đo trên RC) |
+| Sitemap | `/sitemap.xml` theo tên miền, 17 URL, dùng www; test chặn sitemap lỗi thời |
+| Robots | Preview và tên miền thật đều `Disallow: /` cho tới khi mở cổng lập chỉ mục |
+| 404 | `404.html` (noindex, nút về trang chủ), trả 404 thật |
+| Lượt xem giả | Đã gỡ (mục 2) |
+| Demo và nội dung thật | Banner "DEMO · Phim mẫu do AI tạo, chưa có video để phát" luôn hiện; `noindex` giữ nguyên |
+| Quyền khai thác | Phim mẫu là ảnh AI, không có video. Phim QA dùng video Blender (CC BY) và **sẽ bị gỡ khi dọn QA**. Chưa có phim thật nào cần quyền phát hành |
+| Chính sách và quy tắc | `chinh-sach.html` là **bản nháp**, còn trống email liên hệ, cần anh điền và cần pháp lý duyệt |
+
+### 7. Kế hoạch phát hành CHỈ Xưởng Phim
+
+**Cách làm đề xuất:** tạo **Pages project riêng** cho Xưởng Phim, rồi chuyển 2 tên miền `xuongphim.ai` và `www` sang project mới. Bốn website kia vẫn chạy `main` cũ, không bị ảnh hưởng. `main` chưa cần merge.
+
+| Bước | Việc | Ai làm / phê duyệt |
+|---|---|---|
+| R0 | Anh phê duyệt kế hoạch và các mục ở dưới | Anh |
+| R1 | Sao lưu và dọn dữ liệu QA: chạy `58_qa_backup.sql`, `59_qa_cleanup.sql` (chạy thử rồi mới chạy thật), xóa 4 tài khoản QA trong Dashboard | Claude chạy SQL sau khi anh duyệt; anh xóa tài khoản |
+| R2 | Điền email liên hệ trong `chinh-sach.html` → RC2 (chỉ đổi tệp này) | Anh cung cấp email, Claude commit |
+| R3 | Tạo Pages project `xuongphim-ai` (Git `HUNG2NAO/web-phim-ai`, production branch `release/xuongphim-l4-rc1`, không build, output `.`), kiểm tra `xuongphim-ai.pages.dev` (smoke) | Claude qua giao diện Cloudflare (miễn phí) |
+| R4 | Supabase: thêm Redirect URLs `https://www.xuongphim.ai/?auth=confirm\|recovery\|callback`; đổi Site URL thành `https://www.xuongphim.ai`; sửa tên người gửi thành "Xưởng Phim" | Claude sau khi anh duyệt |
+| R5 | **Chuyển tên miền:** gỡ `xuongphim.ai` và `www.xuongphim.ai` khỏi `web-phim-ai-5sites` rồi thêm vào `xuongphim-ai`. Cloudflare tự trỏ CNAME về `xuongphim-ai.pages.dev`. Có thể gián đoạn vài phút khi cấp chứng chỉ | **Thay đổi Production/DNS: cần anh duyệt riêng** |
+| R6 | Smoke test trên `https://www.xuongphim.ai` (danh sách dưới) | Claude + anh đăng nhập tài khoản thật |
+| R7 | Theo dõi 24 giờ: nhật ký Supabase, Resend, lỗi console | Claude |
+
+**Smoke test sau R5:**
+1. `https://xuongphim.ai` và `http://www…` chuyển 301 về `https://www.xuongphim.ai/`.
+2. Header có CSP, HSTS, XFO.
+3. `/robots.txt` là `Disallow: /`; trang có `noindex`.
+4. Không lỗi console; ảnh và banner DEMO hiện.
+5. Tìm kiếm, lọc, mở phim; canonical là www.
+6. Đăng ký mới → nhận thư (`no-reply@mail.xuongphim.ai`) → xác minh → đăng nhập.
+7. Quên mật khẩu → đặt lại.
+8. Điểm danh +10, bấm lần 2 bị chặn.
+9. Chat chung: gửi, nhận Realtime; báo cáo.
+10. Dashboard `/admin` bằng tài khoản chủ; khophim.ai và 3 site còn lại **không đổi** (vẫn bản `c6dd520`).
+
+**Rollback:**
+- **Website (vài phút):** gỡ 2 tên miền khỏi `xuongphim-ai`, gắn lại vào `web-phim-ai-5sites`, CNAME trỏ lại `web-phim-ai-5sites.pages.dev`. Xưởng Phim trở về bản `c6dd520` như hiện nay.
+- **CSDL:** bản `c6dd520` không dùng Supabase, nên rollback website không cần đụng CSDL. Migration Level 4 chỉ thêm, không sửa dữ liệu cũ. `99_rollback_level4.sql` (đã test) chỉ dùng khi chưa có điểm hay quyền xem thật.
+- **Email:** tắt Custom SMTP; bản ghi DNS của Resend để nguyên, vô hại.
+
+**Chi phí:** 0đ (Cloudflare Pages Free, Supabase Free, Resend Free khoảng 3.000 email/tháng). Không tạo dịch vụ trả phí.
+
+
 ## Cập nhật 31/10/2026 23:55 — DNS email Resend cho `mail.xuongphim.ai`
 
 **Phạm vi anh duyệt:** 3 bản ghi bắt buộc của Resend (TXT DKIM và 2 CNAME). Không thêm DMARC.
