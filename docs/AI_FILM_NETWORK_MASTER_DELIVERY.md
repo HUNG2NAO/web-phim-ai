@@ -13,6 +13,92 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 02:10 (vòng 2) — RC1 QA Admin, alias ổn định, sao lưu, chính sách
+
+### Alias Preview ổn định (anh đã đồng ý)
+- Thêm nhánh `release/xuongphim-l4-rc1` vào danh sách Preview của `web-phim-ai-5sites`. Production branch vẫn là `main` (đã đọc lại cấu hình), Production deployment vẫn `c6dd520`.
+- Alias cố định: **`https://release-xuongphim-l4-rc1.web-phim-ai-5sites.pages.dev`**, luôn trỏ vào commit mới nhất của nhánh RC. qaadmin đăng nhập ở đây **một lần** và giữ được phiên qua các vòng RC.
+- Nhánh này là **kênh Release Candidate cố định**; số RC được xác định bằng commit (RC1 = `27760a4`, RC2 = `ffb68f8`).
+
+### Phiên QA vòng này
+- Tái sử dụng **3 phiên hợp lệ**: signup1 (alias Level 4), qa2 (`0d8d5ae6`), qaadmin (alias RC sau khi đăng nhập). **0 phiên hết hạn.**
+- Anh đăng nhập **1 lần** (qaadmin), vì không còn phiên qaadmin ở bất kỳ origin nào.
+
+### RC1 QA Admin (mã RC1 `27760a4` trên alias RC, hash 6 tệp JS khớp)
+
+| Kiểm thử | Kết quả | Bằng chứng |
+|---|---|---|
+| Nút kiểm duyệt trong khung chat | PASS | Tin của qa2 có "Báo cáo · Ẩn · Khóa chat 24h"; "3 người đang xem" |
+| Ẩn tin trong khung chat | **PASS** | Toast "Đã ẩn tin nhắn."; qaadmin thấy nhãn "Đã ẩn"; khung chat của signup1 mất tin sau **1,16 giây** |
+| Khóa chat trong khung chat (dòng mã mới của RC1) | **PASS** | Toast "Đã khóa chat…"; khung chat của qa2 bị khóa sau **1,22 giây**, banner "tạm khóa chat đến 01:59 02-11"; gửi qua RPC → `chat_muted` |
+| Mở khóa từ Dashboard | PASS phía máy chủ | "Đã mở khóa chat."; bảng khóa rỗng. **Phát hiện:** qa2 đang ở **phòng phim** nên phải chờ **13,6 giây** (lần đồng bộ định kỳ) mới mở lại |
+| Nhật ký kiểm duyệt | **PASS** | `chat.hide` (xuongphim) 01:59:25, `chat.mute` 01:59:39, `chat.unmute` 02:00:01, đúng actor qaadmin và lý do. Site admin chỉ đọc được dòng của site mình (`chat.hide`); dòng cấp mạng do chủ đọc |
+| Giới hạn quyền qaadmin | **PASS** | khóa chat chủ → `forbidden`; tự khóa → `cannot_mute_self`; cộng điểm → `forbidden`; đổi quy tắc điểm danh → `forbidden`; xem tổng quan hay ví khophim → `forbidden`; tự thêm `network_staff` hay `site_staff` → `permission denied`; tổng quan xuongphim → ok |
+
+### Lỗi mới và bản sửa → RC2 `ffb68f8`
+- **Lỗi:** khóa và mở khóa trên Dashboard chỉ báo cho phòng chung, nên thành viên đang chat ở **phòng phim** bị trễ tới 45 giây.
+- **Sửa:** thêm kênh kiểm duyệt toàn mạng `chat:moderation`. Mọi khung chat đều nghe kênh này; Dashboard và nút khóa trong khung chat đều phát lên đó.
+- **Kiểm thử tự động:** thêm 1 E2E (đã xác nhận **thất bại trên mã RC1**); E2E **76/76**; contract 11/11; site-config 8/8; CI xanh.
+- **Kiểm chứng thật trên RC2** (alias RC và alias Level 4 đều chạy `ffb68f8`, hash khớp):
+  - qaadmin bấm "Khóa chat 24h" trên Dashboard → khung chat **phòng phim** của signup1 bị khóa sau **2,7 giây**.
+  - Bấm "Mở khóa" → mở lại sau **1,0 giây**.
+- RC2 khác RC1 ở `community-chat.js`, `studio-ops.js`, `chinh-sach.html` (thêm Resend và các ô chủ website cần điền), công cụ và test. `app.js`, `auth.js`, `rewards.js`, `afn-core.js` giữ nguyên, nên điểm danh, mở khóa và email đã nghiệm thu không bị ảnh hưởng.
+
+### Sao lưu Supabase bằng pg_dump (PC Nhân)
+- **Supabase là PostgreSQL 17.11** (CSDL 14 MB, extensions: plpgsql, pg_stat_statements, uuid-ossp, pgcrypto, supabase_vault). Cần **pg_dump 17**.
+- **PC Nhân chưa có PostgreSQL client** (`C:\Program Files` không có thư mục PostgreSQL).
+- **Công cụ:** `tools/Backup-Supabase.cmd` → `tools/backup-supabase.ps1`.
+  - Tìm pg_dump 17 trong `tools\pgsql\bin` (gói zip chính thức của EDB, giải nén tại chỗ, đã nằm trong `.gitignore`) hoặc trong PATH; dừng nếu phiên bản thấp hơn 17.
+  - Mật khẩu nhập qua ô ẩn, chỉ đặt `PGPASSWORD` cho tiến trình rồi xóa; dùng `PGSSLMODE=require`; không ghi chuỗi kết nối ra log hay tệp.
+  - Kết quả trong `backups\afn_<thời điểm>\`:
+    - `schema_app.sql` (public và private)
+    - `data_app.dump` (định dạng custom)
+    - `data_auth.dump` (`auth.users`, `auth.identities`)
+    - `row_counts.txt`
+    - `SHA256SUMS.txt`
+  - Tự kiểm tra bằng `pg_restore --list`.
+- **Diễn tập khôi phục (cục bộ, PG16, CSDL kiểm thử Level 4):** dump bằng đúng các lệnh của script, khôi phục vào CSDL trống có shim Supabase.
+  - Khôi phục được 27 bảng dữ liệu, **RLS 27/27, 59 policy**, số dòng ledger, users và films **khớp tuyệt đối**.
+  - Lỗi duy nhất là `schema "public" already exists`, vô hại.
+- **Phạm vi:**
+  - Có: schema và dữ liệu app (public, private), tài khoản (auth.users, auth.identities).
+  - Không có trong dump, đã lưu ở nơi khác:
+    - Migration: thư mục `db/` trong repo.
+    - Mẫu email: `docs/email-templates/`.
+    - Cấu hình Auth (SMTP, Site URL, Redirect URLs, rate limit): danh sách giá trị ở mục 01/11 02:00.
+    - Publication Realtime của `chat_messages`: nằm trong migration 4.2.
+    - DNS Resend: Cloudflare.
+- **Khôi phục khi có sự cố:**
+  1. Tạo project mới.
+  2. Áp migration trong `db/` theo thứ tự (hoặc `schema_app.sql`).
+  3. `pg_restore --data-only data_auth.dump`, rồi `pg_restore --data-only --disable-triggers data_app.dump`.
+  4. Đối chiếu `row_counts.txt`.
+  5. Cấu hình lại Auth theo danh sách.
+- **Chưa VERIFIED trên Supabase thật:** cần anh tải gói pg_dump 17 và chạy script một lần với mật khẩu CSDL. Claude không có mật khẩu CSDL và không được nhập.
+
+### Chính sách riêng tư (`chinh-sach.html`)
+- Đã rà nội dung đối chiếu với hệ thống thật. **Đã bổ sung** việc gửi email qua Resend (từ `no-reply@mail.xuongphim.ai`), trước đây chưa nêu.
+- Đánh dấu **chính xác 3 thông tin chủ website phải cung cấp** (`data-owner-input`, có test chặn):
+  1. **`controller`**: tên cá nhân hoặc đơn vị chịu trách nhiệm xử lý dữ liệu.
+  2. **`contact-email`**: email hỗ trợ và yêu cầu về dữ liệu.
+  3. **`retention`**: số ngày lưu nhật ký giao dịch điểm và kiểm duyệt sau khi xóa tài khoản.
+- Trang vẫn là **bản nháp, giữ noindex**. Khuyến nghị nhờ tư vấn pháp lý duyệt (Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân).
+
+### Kế hoạch phát hành độc lập (đã rà lại)
+- Không thay đổi: project riêng `xuongphim-ai`, production branch là nhánh RC (nay ở `ffb68f8`), chuyển đúng 2 tên miền xuongphim, 4 site còn lại giữ `c6dd520` trên project cũ.
+- Đã xác minh: 4 zone kia (khophim, phephim, phimhay, ghienphim) không có redirect rule hay DNS liên quan tới xuongphim, nên chuyển tên miền xuongphim không chạm vào chúng.
+- Điều kiện tự dừng ở mục 02:10 §D vẫn áp dụng. Thêm điều kiện: hash JS trên `xuongphim-ai.pages.dev` phải khớp commit RC đã duyệt.
+
+### Kết luận vòng này
+
+| Hạng mục | Trạng thái |
+|---|---|
+| **RC1 QA ADMIN** | **PASS** (ẩn tin, khóa/mở khóa, audit, giới hạn quyền trên mã RC1; độ trễ mở khóa ở phòng phim đã sửa ở RC2 và kiểm chứng thật) |
+| **BACKUP** | **NOT VERIFIED**: công cụ pg_dump 17 sẵn sàng và đã diễn tập khôi phục cục bộ, nhưng chưa chạy với Supabase thật (cần gói pg_dump 17 và mật khẩu CSDL do anh nhập) |
+| **PRIVACY POLICY** | **BLOCKED**: thiếu 3 thông tin chủ website (người chịu trách nhiệm, email liên hệ, thời hạn lưu) |
+| **PRODUCTION RELEASE** | **NOT READY**: chờ BACKUP VERIFIED và PRIVACY POLICY READY; sau đó tạo RC3 (chỉ đổi `chinh-sach.html`) và smoke trên alias RC |
+
+
 ## Cập nhật 01/11/2026 02:10 — FINAL RELEASE CANDIDATE AUDIT (`release/xuongphim-l4-rc1`)
 
 ### A. Đối chiếu RC1
