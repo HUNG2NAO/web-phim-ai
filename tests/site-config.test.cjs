@@ -87,3 +87,21 @@ test("no source file hardcodes the list of five site ids outside sites.js and th
     assert.ok(hits < 3, f + " lists " + hits + " site ids; read them from window.SITES instead");
   }
 });
+
+test("SEO: functions/_site.js domains match SITES and sitemaps are up to date", async () => {
+  const src = fs.readFileSync(path.join(ROOT, "functions/_site.js"), "utf8");
+  const mod = await import("data:text/javascript," + encodeURIComponent(src));
+  assert.deepEqual(Object.fromEntries(SITES.map(s => [s.domain, s.id])), mod.DOMAINS);
+  for (const s of SITES) {
+    const xml = fs.readFileSync(path.join(ROOT, "sitemaps", s.id + ".xml"), "utf8");
+    const world = s.world || "co-trang";
+    const films = FILMS.filter(f => (f.world || "co-trang") === world && (!f.sites || f.sites.includes(s.id)));
+    assert.ok(xml.includes("<loc>https://" + s.domain + "/</loc>"), s.id + " home");
+    for (const f of films) assert.ok(xml.includes("https://" + s.domain + "/phim/" + encodeURIComponent(f.id) + "<"), s.id + " missing " + f.id + " — run node tools/build-sitemaps.cjs");
+    assert.equal((xml.match(/<url>/g) || []).length, films.length + 1, s.id + " stale sitemap — run node tools/build-sitemaps.cjs");
+  }
+  const req = u => ({ url: u });
+  assert.deepEqual(mod.siteFor(req("https://www.khophim.ai/x")), { id: "khophim", domain: "khophim.ai", real: true });
+  assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=phephim")).real, false);
+  assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=evil")).id, "xuongphim");
+});

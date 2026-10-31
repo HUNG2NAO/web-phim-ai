@@ -360,5 +360,6 @@
       updateUser: async function (x) { if (user && x.data) Object.assign(user.user_metadata, x.data); save(); return { data: { user: user }, error: null }; }
     }
   };
-  window.supabase = { createClient: function () { return client; } };
+  window.__afnMock = { clients: 0 };
+  window.supabase = { createClient: function () { window.__afnMock.clients++; return client; } };
 })();

@@ -85,6 +85,7 @@
     root.setProperty("--on-accent", site.onAccent);
     document.title = site.name + ".ai · " + site.tagline;
     var meta = $('meta[name="description"]'); if (meta) meta.setAttribute("content", site.name + ".ai: " + site.tagline + ".");
+    setSeo(typeof dlg !== "undefined" && dlg && dlg.open ? current : null);
     $("#logo").innerHTML = '<span class="seal" aria-hidden="true">' + site.seal + '</span><span class="name">' +
       esc(site.name.replace(/\s+/g, "")) + '<span class="tld">.ai</span></span>';
     $("#logo").setAttribute("aria-label", site.name + ".ai, về trang chủ");
@@ -284,6 +285,31 @@
       history.replaceState(history.state, "", u.href);
     } catch (e) {}
   }
+  // SEO: canonical + Open Graph theo trang đang xem. Canonical luôn trỏ về tên miền thật của site
+  // (apex, không www), dạng /phim/<id> — trùng đường dẫn đẹp trong _redirects và sitemap.
+  function setMeta(attr, key, value) {
+    var m = document.head.querySelector("meta[" + attr + '="' + key + '"]');
+    if (!m) { m = document.createElement("meta"); m.setAttribute(attr, key); document.head.appendChild(m); }
+    m.setAttribute("content", value);
+  }
+  function setSeo(f) {
+    var base = "https://" + site.domain;
+    var url = f ? base + "/phim/" + encodeURIComponent(f.id) : base + "/";
+    var title = f ? f.title + " · " + site.name + ".ai" : site.name + ".ai · " + site.tagline;
+    var desc = f ? String(f.synopsis || "").slice(0, 160) : site.name + ".ai: " + site.tagline + ".";
+    document.title = title;
+    var d = $('meta[name="description"]'); if (d) d.setAttribute("content", desc);
+    var link = document.head.querySelector('link[rel="canonical"]');
+    if (!link) { link = document.createElement("link"); link.rel = "canonical"; document.head.appendChild(link); }
+    link.href = url;
+    setMeta("property", "og:type", f ? "video.movie" : "website");
+    setMeta("property", "og:site_name", site.name + ".ai");
+    setMeta("property", "og:locale", "vi_VN");
+    setMeta("property", "og:title", title);
+    setMeta("property", "og:description", desc);
+    setMeta("property", "og:url", url);
+    setMeta("name", "twitter:card", "summary");
+  }
   function openFilm(id, autoplay, startEp) {
     var f = byId(id); if (!f) return;
     current = f;
@@ -331,6 +357,7 @@
     if (window.AFN_SOCIAL) window.AFN_SOCIAL.render($("#film-social"), "film", { title: "Bàn luận phim cùng cộng đồng" });
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
     setFilmUrl(f.id, selectedEpisode());
+    setSeo(f);
     window.dispatchEvent(new CustomEvent("afn-film-opened", { detail: { site: site.id, film: f.id } }));
     if (autoplay) play();
   }
@@ -542,7 +569,7 @@
     playToken++;
     if (typeof dlg.close === "function") dlg.close(); else dlg.removeAttribute("open");
   }
-  dlg.addEventListener("close", function () { playToken++; setFilmUrl(null); window.dispatchEvent(new CustomEvent("afn-film-closed")); });
+  dlg.addEventListener("close", function () { playToken++; setFilmUrl(null); setSeo(null); window.dispatchEvent(new CustomEvent("afn-film-closed")); });
 
   /* ---------- 6. Sự kiện ---------- */
   document.addEventListener("click", function (e) {

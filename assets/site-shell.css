@@ -139,6 +139,15 @@ dialog.film { width: min(1180px, calc(100% - 32px)); }
   .afn-chat-fab { display: grid; place-items: center; position: fixed; z-index: 26; right: 14px; bottom: calc(76px + env(safe-area-inset-bottom, 0px));
     width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); font-size: 22px; box-shadow: 0 8px 24px rgb(0 0 0 / .4); cursor: pointer; }
   body.chat-open .afn-chat-fab { display: none; }
+  /* Nút chat nổi không được che nút "Xem / Thông tin phim" ở hero: chừa cột bên phải cho nút nổi. */
+  .hero .actions { padding-right: 62px; flex-wrap: wrap; }
   .afn-chat-drawer { top: 0; width: 100vw; z-index: 60; bottom: 0; padding-top: max(16px, env(safe-area-inset-top, 0px)); }
   .afn-chat-drawer .afn-chat-list { max-height: calc(100dvh - 300px); }
 }
+
+/* Khả năng đọc và vùng chạm (đánh giá UX 31/10): nhãn poster >= 12px, liên kết "Xem tất cả" >= 40px. */
+.badge { font-size: 12px; }
+.row-head .more { min-height: 40px; padding: 8px 4px; margin: -8px -4px; display: inline-flex; align-items: center; }
+.afn-chat-rules { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.afn-chat-rules a { color: var(--accent); }
+.legal-links a { color: var(--muted); display: inline-block; padding: 10px 0; }

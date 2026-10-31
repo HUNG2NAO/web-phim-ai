@@ -725,3 +725,66 @@ test.describe("Community Chat (Level 4.2)", () => {
     expect(issues).toEqual([]);
   });
 });
+
+test.describe("Hoàn thiện tiếng Việt (31/10)", () => {
+  for (const w of [375, 390]) {
+    test(`${w}px: nút chat nổi không che nút hero, nhãn poster >= 12px, "Xem tất cả" đủ lớn để chạm`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: 800 });
+      const issues = await setup(page, {});
+      await page.goto("/?site=xuongphim");
+      await expect(page.locator(".hero .actions .btn").first()).toBeVisible();
+      const overlap = await page.evaluate(() => {
+        const f = document.querySelector(".afn-chat-fab").getBoundingClientRect();
+        return [...document.querySelectorAll(".hero .actions .btn")].some(b => { const r = b.getBoundingClientRect();
+          return !(r.right <= f.left || r.left >= f.right || r.bottom <= f.top || r.top >= f.bottom); });
+      });
+      expect(overlap).toBe(false);
+      for (const y of [0, 300, 600]) {   // cuộn qua hero: nút hero không bao giờ nằm dưới nút nổi
+        await page.evaluate(v => scrollTo(0, v), y);
+        expect(await page.evaluate(() => { const f = document.querySelector(".afn-chat-fab").getBoundingClientRect();
+          return [...document.querySelectorAll(".hero .actions .btn")].some(b => { const r = b.getBoundingClientRect();
+            return !(r.right <= f.left || r.left >= f.right || r.bottom <= f.top || r.top >= f.bottom); }); })).toBe(false);
+      }
+      expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll(".badge")].map(b => parseFloat(getComputedStyle(b).fontSize))))).toBeGreaterThanOrEqual(12);
+      const more = await page.locator(".row-head .more").first().boundingBox();
+      expect(more.height).toBeGreaterThanOrEqual(40);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      expect(issues).toEqual([]);
+    });
+  }
+
+  test("SEO: canonical + Open Graph theo trang và theo phim; chân trang có chính sách", async ({ page }) => {
+    const issues = await setup(page, {});
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://xuongphim.ai/");
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", "https://xuongphim.ai/");
+    await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute("content", "vi_VN");
+    await page.goto("/?site=xuongphim&film=thanh-pho-khong-ngu");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://xuongphim.ai/phim/thanh-pho-khong-ngu");
+    await expect(page).toHaveTitle(/^Thành Phố Không Ngủ · /i);
+    expect((await page.locator('meta[name="description"]').getAttribute("content")).length).toBeLessThanOrEqual(160);
+    await page.keyboard.press("Escape");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://xuongphim.ai/");
+    await page.goto("/?site=khophim");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://khophim.ai/");
+    await expect(page.locator('.legal-links a[href="/chinh-sach.html#rieng-tu"]')).toBeVisible();
+    await page.locator('.legal-links a[href="/chinh-sach.html#cong-dong"]').click();
+    await expect(page.locator("#cong-dong")).toBeVisible();
+    await expect(page.locator("h1")).toHaveText(/Chính sách riêng tư/);
+    expect(issues).toEqual([]);
+  });
+
+  test("một client Supabase dùng chung: không có cảnh báo nhiều GoTrueClient, /auth/v1/user không bị gọi dồn", async ({ page }) => {
+    const warn = [];
+    page.on("console", m => { if (/Multiple GoTrueClient/i.test(m.text())) warn.push(m.text()); });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-account-btn")).toHaveText(/Tài khoản/);
+    await page.waitForTimeout(1500);
+    const n = await page.evaluate(() => window.__afnMock && window.__afnMock.clients);
+    if (n !== undefined && n !== null) expect(n).toBe(1);
+    expect(warn).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+});

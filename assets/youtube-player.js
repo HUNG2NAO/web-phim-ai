@@ -27,7 +27,7 @@ function offlineEmbed(holder,id,title){
 function playbackClient(){
  const cfg=window.AFN_AUTH_CONFIG||{};
  if(!cfg.enabled||!window.supabase?.createClient||!/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||""))return null;
- return window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
+ return (window.AFN&&window.AFN.client&&window.AFN.client())||window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
   persistSession:true,autoRefreshToken:true,storageKey:cfg.storageKey||"afn-film-auth-v1"
  }});
 }
@@ -47,7 +47,7 @@ window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1,onError=
  async function prepare(){
   if(!client||!site||!flags.includes(site))return;
   try{
-   const result=await client.auth.getUser();user=result.data?.user;
+   user=(window.AFN&&window.AFN.client&&window.AFN.client()===client)?await window.AFN.getUser():(await client.auth.getUser()).data?.user;
    if(!user)return;
    const current=localStorage.getItem("afn-active-viewer:"+user.id+":"+site);
    if(!current||!/^[0-9a-f-]{36}$/i.test(current))return;

@@ -77,7 +77,10 @@
     });
     var status = el("p", "afn-chat-status"); status.setAttribute("role", "status");
     form.append(input, send);
-    box.append(head, banner, list, emo, form, count, status);
+    var rules = el("p", "afn-chat-rules");
+    var rl = el("a", "", "Quy tắc cộng đồng"); rl.href = "/chinh-sach.html#cong-dong"; rl.target = "_blank"; rl.rel = "noopener";
+    rules.append("Tôn trọng nhau, không spam, không đăng thông tin cá nhân. ", rl);
+    box.append(head, banner, list, emo, form, count, rules, status);
 
     function setStatus(t, bad) { status.textContent = t || ""; status.classList.toggle("bad", !!bad); }
     function render() {

@@ -9,7 +9,7 @@
     && cfg.publishableKey.length > 15
     && !/service_role|sb_secret_/i.test(cfg.publishableKey)
     && window.supabase && typeof window.supabase.createClient === "function";
-  var client = ready ? window.supabase.createClient(cfg.url, cfg.publishableKey, {
+  var client = !ready ? null : (window.AFN && window.AFN.client && window.AFN.client()) || window.supabase.createClient(cfg.url, cfg.publishableKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -17,7 +17,7 @@
       flowType: "pkce",
       storageKey: cfg.storageKey || "afn-film-auth-v1"
     }
-  }) : null;
+  });
   var slot = document.createElement("div");
   slot.className = "afn-account-slot";
   var trigger = document.createElement("button");
@@ -197,8 +197,8 @@
   async function refreshUser() {
     if (!client) return;
     try {
-      var result = await client.auth.getUser();
-      currentUser = result.data && result.data.user;
+      currentUser = (window.AFN && window.AFN.getUser && window.AFN.client() === client)
+        ? await window.AFN.getUser(true) : (await client.auth.getUser()).data.user;
       if (currentUser) {
         trigger.textContent = "Tài khoản";
         trigger.setAttribute("aria-haspopup", "menu");

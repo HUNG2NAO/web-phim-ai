@@ -30,17 +30,26 @@
     if (!configured) return null;
     if (!clientInstance) {
       clientInstance = window.supabase.createClient(cfg.url, cfg.publishableKey, { auth: {
-        persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: "pkce",
+        persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce",
         storageKey: cfg.storageKey || "afn-film-auth-v1"
       } });
     }
     return clientInstance;
   }
-  var userPromise = null;
+  // Một lần hỏi /auth/v1/user cho mọi module: yêu cầu "force" trong 1,5 giây dùng lại kết quả vừa hỏi;
+  // mọi thay đổi phiên (đăng nhập, đăng xuất, đổi người dùng) xóa bộ nhớ đệm ngay.
+  var userPromise = null, userAt = 0, authWatched = false;
   function getUser(force) {
     var c = client();
     if (!c) return Promise.resolve(null);
-    if (!userPromise || force) {
+    if (!authWatched) {
+      authWatched = true;
+      c.auth.onAuthStateChange(function (event) {
+        if (event !== "INITIAL_SESSION" && event !== "TOKEN_REFRESHED") { userPromise = null; userAt = 0; }
+      });
+    }
+    if (!userPromise || (force && Date.now() - userAt > 1500)) {
+      userAt = Date.now();
       userPromise = c.auth.getUser().then(function (r) { return (r && r.data && r.data.user) || null; })
         .catch(function () { return null; });
     }

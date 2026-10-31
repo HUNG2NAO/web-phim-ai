@@ -12,7 +12,7 @@
   const SITE=site?.id||"unknown";
   const pilot=(window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(SITE);
   if(!pilot||!cfg.enabled||!window.supabase||!/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||""))return;
-  const client=window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
+  const client=(window.AFN&&window.AFN.client&&window.AFN.client())||window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
     persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:"pkce",
     storageKey:cfg.storageKey||"afn-film-auth-v1"
   }});
@@ -26,7 +26,7 @@
     let viewer=null,user=null,enabled=false,busy=false,lastSaved=0;
     (async function(){
       try{
-        const a=await client.auth.getUser();
+        const a=(window.AFN&&window.AFN.client&&window.AFN.client()===client)?{data:{user:await window.AFN.getUser()}}:await client.auth.getUser();
         if(a.error||!a.data?.user)return;
         user=a.data.user;
         let profileId;try{profileId=localStorage.getItem("afn-active-viewer:"+user.id+":"+SITE);}catch(_){return;}
