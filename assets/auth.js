@@ -354,7 +354,8 @@
       if (result.error) throw result.error;
       resetPasswords();
       if (mode === "recover") message("Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.", false);
-      else if (mode === "signup" && !result.data.session) message("Kiểm tra email để xác minh tài khoản trước khi đăng nhập.", false);
+      // Supabase trả thành công giả cho email đã đăng ký (chống dò tài khoản) và KHÔNG gửi thư → báo trung lập cả hai khả năng.
+      else if (mode === "signup" && !result.data.session) message("Nếu email này chưa có tài khoản, thư xác minh sẽ đến trong vài phút (xem cả mục Spam). Nếu email đã được đăng ký, hãy chọn Đăng nhập hoặc Quên mật khẩu.", false);
       else if (mode === "update") {
         postResetSuccess = true;
         recovering = false;

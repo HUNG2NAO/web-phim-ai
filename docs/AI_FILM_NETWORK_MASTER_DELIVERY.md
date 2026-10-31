@@ -68,6 +68,14 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 Làm xong các bước này mới đóng được mục "Đăng ký mới qua email xác minh: BLOCKED".
 
+**Kiểm tra SMTP (01/11, chỉ đọc):** Custom SMTP đã bật. Sender `no-reply@mail.xuongphim.ai`, host `smtp.resend.com:465`, user `resend`, mật khẩu đã lưu (ẩn). Rate limit email đổi từ 2/giờ thành 30/giờ (nhật ký Auth 00:32). Site URL vẫn là Preview cũ.
+
+**Lần đăng ký thử 00:59 bằng `hung2nao@gmail.com`:**
+- Email này **đã là tài khoản chủ**. Nhật ký Auth ghi 2 sự kiện `user_repeated_signup`, HTTP 200.
+- Supabase cố ý trả thành công giả để chống dò tài khoản và **không gửi thư, không tạo tài khoản mới**. Không có dòng mới trong `auth.users`; tài khoản chủ không bị đổi.
+- Giao diện báo "Kiểm tra email để xác minh…" là gây hiểu nhầm. Đã sửa trong DEV: thông báo trung lập, nêu cả hai khả năng (chưa có tài khoản thì chờ thư; đã có thì Đăng nhập hoặc Quên mật khẩu). E2E 71/71.
+- Kết quả: **chưa kiểm thử được gửi thư**. Cần đăng ký bằng một địa chỉ **chưa có** trong hệ thống, ví dụ `hung2nao+signup1@gmail.com`.
+
 **Đề xuất (chưa làm):** sau khi gửi ổn định, thêm `_dmarc.mail.xuongphim.ai` TXT `v=DMARC1; p=none;`. Không đụng `_dmarc.xuongphim.ai`.
 
 ## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)
