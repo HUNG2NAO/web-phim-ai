@@ -13,6 +13,111 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 19:00 — Đánh giá trải nghiệm Đông Nam Á (Việt Nam · Thái Lan · Indonesia)
+
+**Phạm vi bằng chứng:**
+- *Kiểm thử thật:* trình duyệt trên PC Nhân, mạng Việt Nam, Cloudflare Preview `6c43730b` / `41633f19` và alias `feature-master-site-xuongphi`.
+- *Mô phỏng:* đánh giá theo chân dung người dùng Thái Lan và Indonesia. **Không** kiểm thử từ IP Thái Lan hay Indonesia.
+- Chưa có tài khoản QA, nên các bước cần đăng nhập là **BLOCKED**. Tài khoản đang đăng nhập trên alias là tài khoản thật của chủ (Hungcreator), nên **không** dùng để điểm danh, mở khóa hay chat.
+
+### Hành trình người dùng (Preview, thật)
+
+| # | Bước | Kết quả | Bằng chứng / lý do |
+|---|---|---|---|
+| 1 | Vào lần đầu | PASS | TTFB 61 ms, DOMContentLoaded ~675 ms (mạng VN); 0 lỗi console |
+| 2 | Tìm kiếm | PASS (tiếng Việt) | "blender" → 1, "cyber" → 5. Từ khóa Thái/Indonesia ("ภาพยนตร์", "ไซเบอร์", "fiksi ilmiah", "kota", "film") → 0 kết quả |
+| 3 | Lọc thể loại | PASS | Cyberpunk → 5 phim |
+| 4 | Thông tin phim | PASS | Hộp thoại phim, player 16:9, danh sách tập, chat theo phim |
+| 5 | Đăng nhập QA | BLOCKED | Chưa có tài khoản QA (auth.users = 1, là chủ) |
+| 6 | Điểm danh | BLOCKED | Cần tài khoản QA |
+| 7 | Mở khóa | BLOCKED | Cần tài khoản QA |
+| 8 | Phát video | PASS (tập miễn phí) | YouTube trạng thái PLAYING sau 5,2 s |
+| 9 | Chuyển tập | PASS phần khách | Nút trước/sau và cổng khóa hiện đúng; tập bị khóa cần tài khoản |
+| 10 | Community Chat | BLOCKED gửi tin | Khách thấy "Đăng nhập để trò chuyện" đúng thiết kế; gửi tin thật cần QA |
+| 11 | Lưu yêu thích | BLOCKED | Cần tài khoản QA |
+| 12 | Quay lại xem tiếp | PASS (local) | "Xem tiếp" lưu theo trình duyệt (`afn-cw:<site>`); đồng bộ đa thiết bị chưa có |
+
+### Mobile first (đo thật, giả lập viewport)
+
+| Kích thước | Cuộn ngang | Popup phim | Player | Chat | Ghi chú |
+|---|---|---|---|---|---|
+| 375 | Không | Toàn màn hình 375×812 | 375×211 | Nút nổi → toàn màn hình | Nút chat nổi che một phần nút "Thông tin phim" ở hero |
+| 390 | Không | 390×844 | 390×219 | Toàn màn hình | Như trên |
+| 768 | Không | 717×1000 | 700×394 | Ngăn kéo 420 px | Sidebar dạng rail 76 px |
+| 1366 | Không | 1180×744 | 1163×654 | Ngăn kéo 420 px | — |
+| 1920 | Không | 1180×1056 | 1163×654 | Ngăn kéo 420 px | Hộp thoại giới hạn 1180 px, hợp lý |
+
+- **Chữ nhỏ:** cỡ chữ nhỏ nhất là 10,5 px, có khoảng 110 phần tử chữ dưới 12 px (nhãn, meta). Cần tăng lên ≥12 px trên điện thoại.
+- **Vùng chạm nhỏ:** 15 vùng chạm cao dưới 32 px. Gồm thanh "Xem thử giao diện" (29 px, chỉ có trên Preview) và các liên kết "Vào kho phim" / "Xem tất cả" (22 px).
+- **Ô tìm kiếm:** placeholder bị cắt ở 375 px.
+- **Điểm danh trên mobile:** BLOCKED, cần tài khoản để mở popover.
+
+### Lỗi đã sửa trong DEV (nhỏ, đã xác minh)
+
+**Trang chủ gọi Supabase lặp:** `rewards.js` tải lại ví, quy tắc và điểm danh mỗi lần nút tài khoản đổi DOM.
+- Commit `44df4cb`: chỉ tải lại khi nhãn tài khoản thực sự đổi, có debounce.
+- E2E 67/67, contract test đạt.
+- Đo lại trên Preview: wallets/reward_rules/daily_checkins giảm từ 5× xuống 2× mỗi bảng; tổng request Supabase giảm từ 29 xuống 19.
+- **Còn lại:** `/auth/v1/user` vẫn 9 lần, vì nhiều module tự gọi `auth.getUser()`. Ghi là P1, cần gom về `AFN.getUser()` dùng chung, không sửa vội trong lượt này.
+
+### SEO đa ngôn ngữ (đánh giá, chưa triển khai)
+
+| Hạng mục | Hiện trạng (đo trên Preview) |
+|---|---|
+| URL `/vi/` `/th/` `/id/` | Cả ba trả 404 — NOT IMPLEMENTED |
+| `<html lang>` | Luôn `vi` |
+| Title / description | Có, chỉ tiếng Việt |
+| hreflang | 0 thẻ |
+| canonical, og:* | Không có |
+| sitemap.xml | 404 |
+| robots | Preview đặt `noindex` (đúng cho DEMO); robots.txt là bản mặc định của Cloudflare |
+| URL phim | `?film=<id>` trên Preview; `/phim/<id>` chuyển hướng (302) trên domain thật |
+| Nội dung phim bản địa hóa | Không có (tên, mô tả chỉ tiếng Việt) |
+| Phụ đề, audio theo ngôn ngữ | Không có (chỉ YouTube embed hoặc MP4; không có track VTT) |
+
+**Thiết kế đề xuất (chưa làm):**
+- Đường dẫn dạng `/{lang}/phim/{slug}`, với `vi` là mặc định và `x-default`.
+- Bảng `film_translations(film_id, lang, title, synopsis, slug)` và `episode_tracks(episode_id, lang, kind[subtitle|audio], url)`.
+- File chuỗi giao diện `i18n/{vi,th,id}.json`.
+- Sitemap theo từng ngôn ngữ, có `xhtml:link hreflang`.
+- Pages Functions hoặc pre-render để mỗi URL có title/description/og riêng, vì site hiện render bằng JS.
+
+### Community Chat theo thị trường
+
+- **Tìm phòng:** PASS. Có nút "Trò chuyện" ở sidebar, nút nổi trên mobile, và chat trong cửa sổ phim.
+- **Ô nhập, emoji:** đã kiểm thử bằng E2E mock (67/67). Chữ Thái và Indonesia lưu được vì dùng UTF-8 và giới hạn 500 ký tự. **Chưa kiểm thử với tài khoản thật.**
+- **Phòng theo ngôn ngữ:** NOT IMPLEMENTED. Chỉ có `network` và `film:<site>:<film>`.
+- **Chống spam:**
+  - Đã có: giới hạn 5 tin/30 giây, chặn tin trùng trong 60 giây, khóa chat.
+  - Chưa có: lọc từ ngữ xấu tiếng Thái và Indonesia.
+  - Thông báo spam chỉ bằng tiếng Việt.
+- **Báo cáo vi phạm:** có (lý do bằng tiếng Việt), Dashboard xử lý được.
+- **Quyền riêng tư:**
+  - Chỉ hiện tên hiển thị, không hiện email.
+  - Khách không đọc được tin, do RLS.
+  - Chưa có trang chính sách hoặc điều khoản cộng đồng. Thái Lan có PDPA, Indonesia có UU PDP, nên cần trang đồng ý xử lý dữ liệu.
+
+### Bảng kết luận
+
+| Hạng mục | Việt Nam | Thái Lan | Indonesia | Đề xuất |
+|---|---|---|---|---|
+| Giao diện, ngôn ngữ | PASS | NOT IMPLEMENTED | NOT IMPLEMENTED | P1 — tách chuỗi ra i18n, thêm th/id |
+| Font, hiển thị chữ | PASS | NEEDS IMPROVEMENT (Be Vietnam Pro không có chữ Thái → font hệ thống) | PASS (Latin) | P1 — thêm Noto Sans Thai |
+| Tìm kiếm | PASS | NOT IMPLEMENTED (0 kết quả) | NOT IMPLEMENTED (0 kết quả) | P1 — tìm theo bản dịch, chuẩn hóa Unicode |
+| Tốc độ tải | PASS (đo thật VN) | Chưa đo thật (Supabase Singapore, CDN Cloudflare: kỳ vọng tốt) | Chưa đo thật (như Thái Lan) | P2 — đo từ TH/ID bằng WebPageTest |
+| Số request Supabase | NEEDS IMPROVEMENT → đã giảm 29→19 | như VN | như VN | P1 — gom `auth.getUser` |
+| Mobile 375/390 | NEEDS IMPROVEMENT (chữ 10,5 px, vùng chạm 22 px, nút chat che CTA) | như VN | như VN | P1 |
+| Tablet / Desktop | PASS | PASS | PASS | — |
+| Đăng nhập, đăng ký | BLOCKED (chưa có QA; email giới hạn 2/giờ) | BLOCKED | BLOCKED | **P0** — Custom SMTP + tài khoản QA |
+| Điểm danh | BLOCKED | BLOCKED; ngày theo UTC+7 trùng giờ Thái | BLOCKED; WIB trùng, WITA/WIT lệch 1–2 giờ | P2 — múi giờ theo site |
+| Mở khóa, ví điểm | BLOCKED | BLOCKED | BLOCKED | P0 — nghiệm thu với QA |
+| Phát video | PASS | NEEDS IMPROVEMENT (không phụ đề Thái) | NEEDS IMPROVEMENT (không phụ đề Indonesia) | P1 — track VTT theo ngôn ngữ |
+| Community Chat | BLOCKED gửi tin thật | NOT IMPLEMENTED (phòng, thông báo tiếng Thái) | NOT IMPLEMENTED (như Thái Lan) | P1 sau nghiệm thu P0 |
+| Kiểm duyệt, an toàn | PASS (mock + staging) | NEEDS IMPROVEMENT (không lọc từ Thái) | NEEDS IMPROVEMENT (không lọc từ Indonesia) | P2 |
+| Quyền riêng tư, pháp lý | NEEDS IMPROVEMENT (chưa có trang chính sách) | NEEDS IMPROVEMENT (PDPA) | NEEDS IMPROVEMENT (UU PDP) | P1 |
+| SEO đa ngôn ngữ | NEEDS IMPROVEMENT (không có sitemap, canonical, og) | NOT IMPLEMENTED | NOT IMPLEMENTED | P1 (sitemap, canonical cho VN); P2 cho th/id |
+| Thanh toán, thói quen | Ngoài phạm vi (không thay đổi cấu hình thanh toán) | — | — | — |
+
 ## Cập nhật 31/10/2026 17:30 — QA người dùng thật, Community Chat
 
 ### Kết luận
