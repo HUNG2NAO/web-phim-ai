@@ -55,10 +55,12 @@ jobs:
         run: for f in assets/*.js tests/*.cjs tests/e2e/*.cjs; do node --check "$f"; done
       - name: Contract tests
         run: node --test tests/level4-contract.test.cjs tests/auth-contract.test.cjs tests/auth-account-menu.test.cjs tests/site-config.test.cjs
-      - name: Install pinned Playwright Chromium
+      - name: Install pinned Playwright Chromium + jsdom
         run: |
-          npm install --no-save --no-package-lock @playwright/test@1.64.1
+          npm install --no-save --no-package-lock @playwright/test@1.64.1 jsdom@26.1.0
           npx playwright install --with-deps chromium
+      - name: DOM regression suites (auth, Member Hub, 5-brand preview)
+        run: node --test tests/auth-browser.test.cjs tests/level3-hub.test.cjs tests/preview-regressions.cjs
       - name: Master website + legacy Level 3 browser suites
         run: npx playwright test -c playwright.master.config.cjs --reporter=line
       - name: Upload artifacts on failure
