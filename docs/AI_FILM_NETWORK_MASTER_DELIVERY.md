@@ -39,7 +39,36 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 **Resend:** đã bấm "Verify DNS records" lúc 23:53.
 - Trạng thái lúc 23:54: domain `pending`; DKIM `pending`; `rsend.mail` `pending`; `send.mail` `not_started`; không có `failed_reasons`.
-- Resend kiểm tra DNS định kỳ. Kết quả cuối ghi ở dòng dưới.
+- Kết quả theo dòng thời gian sự kiện của Resend:
+  - 23:54: `send.mail` verified.
+  - 23:54: "DNS verified".
+  - 23:55: DKIM và `rsend.mail` verified.
+  - **23:55: "Domain verified — Your domain is ready to send emails."**
+- Trạng thái domain trong Resend: **Verified**, Resend Forge Enabled, TLS Opportunistic.
+
+**Chuẩn bị kết nối SMTP cho Supabase Auth** (chưa thực hiện, chờ anh duyệt):
+
+| Mục | Giá trị |
+|---|---|
+| Nơi cấu hình | Supabase → project `ai-film-network` → Authentication → Emails → SMTP Settings → Enable custom SMTP |
+| Sender email | `no-reply@mail.xuongphim.ai` |
+| Sender name | `Xưởng Phim` |
+| Host | `smtp.resend.com` |
+| Port | `465` (SSL) |
+| Username | `resend` |
+| Password | API key Resend mới, quyền **Sending access**, chỉ cho domain `mail.xuongphim.ai`. **Anh tự tạo và tự dán.** Không ghi key vào báo cáo, repo hay chat |
+| Giới hạn | Đặt Authentication → Rate Limits khoảng 30 email/giờ. Gói Free của Resend khoảng 100 email/ngày, 3.000/tháng |
+
+**Sau khi bật SMTP:**
+1. Đổi Site URL sang alias Preview.
+2. Bật Leaked password protection.
+3. Dán mẫu email tiếng Việt (mục 2, cập nhật 21:00).
+4. Đăng ký thử một tài khoản thật bằng địa chỉ ngoài nhóm. Kiểm tra thư đến hộp thư chính, header có `dkim=pass` cho `mail.xuongphim.ai`, link xác minh đưa về `/?auth=confirm`.
+5. Thử đặt lại mật khẩu.
+
+Làm xong các bước này mới đóng được mục "Đăng ký mới qua email xác minh: BLOCKED".
+
+**Đề xuất (chưa làm):** sau khi gửi ổn định, thêm `_dmarc.mail.xuongphim.ai` TXT `v=DMARC1; p=none;`. Không đụng `_dmarc.xuongphim.ai`.
 
 ## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)
 
