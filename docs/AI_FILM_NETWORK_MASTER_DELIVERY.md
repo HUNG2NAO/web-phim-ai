@@ -13,6 +13,78 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 17:30 — QA người dùng thật, Community Chat
+
+### Kết luận
+
+| Hạng mục | Kết luận | Bằng chứng / lý do |
+|---|---|---|
+| AUTHENTICATION | **BLOCKED** | Chưa có tài khoản QA. Claude không tự tạo tài khoản và không vượt bước xác minh email. Đã kiểm qua API thật: Auth bật email, bắt buộc xác nhận email, khách bị chặn ở mọi RPC cần đăng nhập |
+| DAILY CHECK-IN | **BLOCKED** (UI) · PASS (DB staging) | 131/131 kiểm thử trên PostgreSQL và staging, gồm cả 30 yêu cầu điểm danh đồng thời → đúng 1 lần |
+| WALLET | **BLOCKED** (UI) · PASS (DB staging) | Ví chỉ đọc; không tự cộng được; sổ cái khớp số dư |
+| MOVIE UNLOCK | **BLOCKED** (UI) · PASS (DB staging) | Trừ điểm đúng 1 lần, không đủ điểm không bị trừ, hết hạn, hoàn điểm |
+| VIDEO PLAYBACK | **PASS** cho khách xem tập miễn phí · BLOCKED cho tập khóa/thành viên | Trên Preview thật: tập 1 phim QA phát YouTube chính thức của Blender, trình phát báo `PLAYING`, đã chạy 5,2 giây. Tập 2/3 hiện đúng cổng "Đăng nhập để xem", không lộ nguồn |
+| COMMUNITY CHAT | **Đã xây** · BLOCKED nghiệm thu đa tài khoản thật | Trước đây **NOT IMPLEMENTED**. Nay có Realtime + Presence thật trên Supabase. Staging 36/36 PASS. Mock đa tab 6/6. Còn cần ≥ 2 tài khoản QA để thử Realtime thật giữa người dùng |
+| ADMIN MODERATION | **BLOCKED** (UI) · PASS (DB staging + mock) | Ẩn/khôi phục, khóa/mở chat, phân quyền theo site, nhật ký |
+| REAL USER JOURNEY | **BLOCKED** | Phụ thuộc tài khoản QA |
+
+### Môi trường thử nghiệm
+
+- **Preview:** https://feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev. Lưu ý: Cloudflare cắt tên nhánh còn 28 ký tự, nên `…xuongphim.web-phim-ai-5sites…` **không tồn tại**.
+- **Supabase staging:** `ai-film-network`, đã xác minh lại không phục vụ Production. Migration đã chạy: 4, 4.1, 4.2 + 2 bản sửa nhỏ. Mã hàm và policy trên staging khớp md5 với bản đã kiểm thử.
+- **Dữ liệu QA:** `db/staging/50_qa_seed.sql` tạo phim **"QA TEST · Phim mở Blender"** với 3 tập:
+  - Tập 1: Big Buck Bunny, miễn phí, có nguồn dự phòng MP4.
+  - Tập 2: Sintel, mở sớm 30 điểm, có nguồn dự phòng.
+  - Tập 3: Tears of Steel, dành cho thành viên.
+  Video thuộc Blender Foundation, giấy phép CC BY. Gỡ bằng `59_qa_cleanup.sql`.
+- **Số tài khoản QA đã tạo: 0.** Đang chờ chủ hệ thống tự đăng ký 3 thành viên + 1 admin bằng alias Gmail (`+qa1`, `+qa2`, `+qa3`, `+qaadmin`) và tự xác minh email.
+
+### Khách lần đầu trên Preview thật (Phase 2, phần không cần tài khoản): PASS
+
+- Trang chủ hiện phim QA. Tìm "blender" ra đúng 1 phim, "cyber" ra 5 phim. Lọc thể loại Cyberpunk ra 5 phim.
+- Mở chi tiết phim: hiện thanh tập trước/tiếp; danh sách tập có tên và nhãn Sớm 30 / TV.
+- Chat theo phim mời đăng nhập; khách không đọc được tin.
+- 0 lỗi console. Mọi lệnh gọi REST Supabase trả 200.
+
+### Community Chat (Level 4.2)
+
+| Hạng mục | Thiết kế đã triển khai |
+|---|---|
+| Phòng | `network` chung cho 5 site · `film:<site>:<phim>` theo từng phim |
+| Đọc/gửi | Chỉ thành viên đã đăng nhập. Gửi **chỉ** qua RPC; tên người gửi do máy chủ gắn: hồ sơ → tên lúc đăng ký → "Thành viên"; không bao giờ dùng email |
+| Realtime | Supabase Realtime `postgres_changes` (vẫn tuân RLS), cộng Presence để đếm **người đang xem thật** (không có số giả). Tự đồng bộ lại sau khi mất mạng và mỗi 45 giây, để gỡ tin vừa bị ẩn |
+| Chống lạm dụng | Tối đa 500 ký tự · 5 tin / 30 giây · chặn tin trùng trong 60 giây. Có khóa tư vấn (advisory lock) theo người, nên 20 yêu cầu đồng thời vẫn chỉ ghi 5 tin. Báo cáo tối đa 30 lần/ngày |
+| An toàn hiển thị | Luôn dùng textContent: HTML/script hiển thị như chữ thường. Đã test với `<img onerror>` |
+| Kiểm duyệt | Ẩn/khôi phục tin (nhân sự đúng site; phòng chung cần admin) · khóa/mở chat toàn mạng (chỉ admin, không khóa được chủ mạng) · tab **Chat cộng đồng** trong Dashboard · mọi thao tác ghi `admin_audit_log` |
+| Giao diện | Nút "Trò chuyện" ở sidebar · nút nổi 💬 trên điện thoại (khung chat toàn màn hình) · khung "Bàn luận về phim" trong cửa sổ phim · emoji · trạng thái Trực tiếp / Mất kết nối |
+
+### Lỗi tìm thấy và đã sửa trong đợt này
+
+1. **Chưa có chat:** đã xây Level 4.2 như trên.
+2. **Lỗi bảo mật được test chặn lại trước khi phát hành:** policy RLS của chat gọi hàm trong schema `private` → thành viên sẽ gặp lỗi "permission denied". Đã viết lại policy theo kiểu inline, và thêm contract test cấm lặp lại lỗi này.
+3. **Người mới đăng ký chat hiện "Thành viên"** thay vì tên đã nhập, do hồ sơ chỉ được tạo khi vào trang Tài khoản. Đã sửa: lấy tên từ lúc đăng ký. Có test.
+4. **Phim mở bằng link trực tiếp không gắn được chat phim** (module nạp sau). Đã sửa. Có E2E.
+5. **Contract test chỉ đọc migration Level 4 gốc:** đã mở rộng sang 4.1 và 4.2. Nhờ đó bắt được RPC `admin_chat_reports` chưa được khai báo trong phạm vi kiểm tra.
+
+### Kiểm thử đợt này
+
+| Loại | Kết quả |
+|---|---|
+| SQL cục bộ (chức năng + đồng thời + gỡ/áp lại) | 133 + 13 PASS |
+| Staging thật (transaction tự rollback) | Chat 36/36 PASS. Trước đó toàn bộ suite 95/95 PASS |
+| Contract | 30/30 |
+| E2E mock (Chromium) | 67/67, có 6 kịch bản chat nhiều tab/nhiều tài khoản |
+| Preview thật | Khách lần đầu PASS · phát video thật PASS |
+
+### Việc còn lại, cần chủ hệ thống
+
+1. Đăng ký và xác minh email cho 4 tài khoản QA. Nếu link xác minh mở ra trang lỗi hoặc localhost, cần thêm URL Preview vào **Supabase → Auth → URL Configuration → Redirect URLs**.
+2. Đăng nhập QA1 trong trình duyệt của Claude app. Claude sẽ nghiệm thu điểm danh, ví, mở khóa, phát tập khóa, chat.
+3. Đăng nhập QA2 trong Chrome. Khi đó có 2 người thật để nghiệm thu Realtime.
+4. Báo khi QA ADMIN đã xác minh. Claude sẽ cấp quyền admin **chỉ trên staging** để nghiệm thu kiểm duyệt; gỡ bằng `59_qa_cleanup.sql`.
+
+---
+
 ## Cập nhật 31/10/2026 16:40 — Nghiệm thu tích hợp Staging/Preview
 
 ### Kết luận
