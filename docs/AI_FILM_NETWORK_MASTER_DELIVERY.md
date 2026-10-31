@@ -76,6 +76,22 @@ Làm xong các bước này mới đóng được mục "Đăng ký mới qua em
 - Giao diện báo "Kiểm tra email để xác minh…" là gây hiểu nhầm. Đã sửa trong DEV: thông báo trung lập, nêu cả hai khả năng (chưa có tài khoản thì chờ thư; đã có thì Đăng nhập hoặc Quên mật khẩu). E2E 71/71.
 - Kết quả: **chưa kiểm thử được gửi thư**. Cần đăng ký bằng một địa chỉ **chưa có** trong hệ thống, ví dụ `hung2nao+signup1@gmail.com`.
 
+**Đăng ký thật bằng `hung2nao+signup1@gmail.com` (01:09): PASS gửi thư và xác minh**
+
+| Bước | Bằng chứng |
+|---|---|
+| Đăng ký trên Preview alias | Auth log `user_confirmation_requested` (`/signup`, 200) lúc 01:09:06. Tạo tài khoản `f183e257` (tên hiển thị "hungcreator"), `confirmation_sent_at` 01:09:04 |
+| Gửi thư qua Resend | Resend Emails: tới `hung2nao+signup1@gmail.com`, **Delivered**, tiêu đề "Confirm your email address" |
+| Nhận thư | Gmail **Hộp thư đến** (không phải Spam), người gửi `xưởng phim <no-reply@mail.xuongphim.ai>`, 01:09 (ảnh anh gửi) |
+| Bấm link xác minh | Auth log `user_signedup` (`/verify`, 303) lúc 01:09:25; `email_confirmed_at` = 01:09:25 |
+| Lần bấm thứ hai (01:09:32) | `403: Email link is invalid or has expired`, đúng vì link chỉ dùng 1 lần |
+
+**Còn lại:**
+1. Chưa có lần đăng nhập đầu (`last_sign_in_at` trống) và chưa có dòng `profiles`. Link được mở ở trình duyệt khác với nơi đăng ký; luồng PKCE cần cùng trình duyệt để tự đăng nhập. Người dùng cần đăng nhập bằng mật khẩu sau khi xác minh.
+2. Thư dùng **mẫu tiếng Anh mặc định** của Supabase; nên dán mẫu tiếng Việt.
+3. Tên người gửi đang viết thường "xưởng phim".
+4. Chưa kiểm tra header DKIM của thư (Gmail → "Hiện thư gốc") và chưa thử thư đặt lại mật khẩu.
+
 **Đề xuất (chưa làm):** sau khi gửi ổn định, thêm `_dmarc.mail.xuongphim.ai` TXT `v=DMARC1; p=none;`. Không đụng `_dmarc.xuongphim.ai`.
 
 ## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)
