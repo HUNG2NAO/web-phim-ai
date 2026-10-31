@@ -1,5 +1,50 @@
 # AI FILM NETWORK — PC HƯNG → PC NHÂN RESUME AUDIT
 
+## CẬP NHẬT 31/10/2026, 12:30 — Thiết lập Level 4 an toàn trên PC Nhân
+
+| Hạng mục | Kết luận | Bằng chứng / lý do |
+|---|---|---|
+| **SOURCE ORIGINAL** | **SAFE** | `source/` được liệt kê lại trước và sau phiên: cùng file, kích thước, thời gian sửa. Vẫn ở `main` `c6dd520`, không có thay đổi thật. Không có lệnh ghi nào nhắm vào `source/` |
+| **LEVEL 4 WORKTREE** | **BLOCKED** (đã chuẩn bị đủ, chờ 1 thao tác của bạn) | Công cụ từ xa **cấm ghi vào `.git` và `.github`**; terminal chỉ cho bấm chuột, không cho gõ. Vì vậy Claude không tự tạo được repo/worktree trên máy. Đã ghi `Setup-Level4-Worktree.ps1` vào thư mục dự án; script đã được mô phỏng trên bản sao repo `source` của PC Nhân: tạo worktree đúng `1927ba0`, status sạch, `source` không đổi, test PASS |
+| **GITHUB SYNC** | **VERIFIED** | `feature/master-site-xuongphim-2026-10-31` = `1927ba0` (đã chứa `ebd36c7`). CI GitHub: SQL ✓, Contract + Chromium ✓ |
+| **BUILD & TESTS** | **PASS** (chạy trên cloud, cùng commit) | Không có bước build (site tĩnh). SQL: 88 chức năng + 10 tranh chấp/staging. Node: 23/23. Chromium E2E: 47/47. Chưa chạy trên chính PC Nhân; script sẽ tự chạy `tools/run-level4-tests.ps1` |
+| **SUPABASE STAGING** | **BLOCKED** (script đã sẵn sàng và đã kiểm thử) | Phiên này không có quyền vào Supabase, và chưa có project staging riêng. `db/staging/00_preflight_readonly.sql` (chỉ đọc) và `90_verify_after_level4.sql` (BEGIN…ROLLBACK) đều PASS trên PostgreSQL tạm và có trong CI |
+| **CLOUDFLARE PREVIEW** | **BLOCKED** | Alias `feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev` vẫn báo "Deployment Not Found". Trình duyệt tích hợp chưa đăng nhập Cloudflare, và Claude không nhập mật khẩu. Cần bật Preview cho nhánh `feature/master-site-*` trong Branch control |
+| **DEVELOPMENT RESUME** | **NOT READY trên PC Nhân** → thành READY ngay sau khi chạy script | Phát triển trên GitHub/cloud vẫn tiếp tục (Shared Core đã xong trong phiên này). Trên máy, chỉ thiếu bước tạo worktree |
+
+### Đã thực hiện trong phiên
+
+1. **Đường dẫn ổ D (chỉ trong Level 4):**
+   - `tests/README.md` và `tools/check-local-copy.ps1` không còn đường dẫn cứng.
+   - Thêm `tools/run-level4-tests.ps1`: mọi đường dẫn tính từ repo; Playwright cài vào `..\temp\qa-level4`, ngoài repo.
+   - Các file vận hành cũ (`Enter-Project.ps1`, `AGENTS.md`) nằm ngoài Level 4 nên **không sửa**.
+2. **Shared Core:**
+   - Thêm `window.AFN_RESOLVE_SITE` trong `sites.js`, là nguồn duy nhất để nhận diện website.
+   - 6 module dùng chung: `level3.js`, `live-catalog.js`, `level3-video.js`, `youtube-player.js`, `account.js`, `auth.js`.
+   - Hành vi trên 5 tên miền thật và `*.pages.dev` giữ nguyên. Nay chạy đúng cả trên localhost và preview của Vercel.
+   - Có test chống tên miền giả mạo (ví dụ `evilxuongphim.ai`) và test thứ tự nạp script.
+   - Thêm website mới chỉ cần thêm một mục vào `window.SITES`.
+3. **Supabase Staging:** 2 script ở trên, kèm 3 kiểm tra tự động trong `tests/sql/run.sh`. Đánh giá migration Level 4:
+   - Chỉ thêm, không xóa dữ liệu; chạy lại nhiều lần vẫn an toàn.
+   - Có thay chính sách `site_films` (sửa lỗi khách không đọc được phim).
+   - Hàm đổi điểm dùng `SECURITY DEFINER`, cố định `search_path`, khóa ví khi giao dịch.
+4. **PC Nhân:**
+   - Ghi `C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI\Setup-Level4-Worktree.ps1` (bản gốc ở `tools/setup-level4-worktree.ps1`).
+   - Trong lần thử ghi bản clone đầy đủ, 28 file mã nguồn (không có `.git`) đã vào thư mục mới `source-level4`. Script sẽ **đổi tên** thư mục này sang `source-level4.partial-<thời gian>` (không xóa) trước khi tạo worktree thật.
+
+### Cách hoàn tất (khoảng 1 phút)
+
+Chuột phải `Setup-Level4-Worktree.ps1` → **Run with PowerShell**. Script sẽ:
+1. Kiểm tra `source` (chỉ đọc).
+2. Đổi tên thư mục chép dở.
+3. `git fetch` nhánh Level 4.
+4. `git worktree add ..\source-level4 -b dev/pc-nhan-level4`.
+5. Xác minh commit, chạy test và ghi `Setup-Level4-Worktree.log`.
+
+Script không dùng `reset --hard`, `clean`, force push hay xóa nhánh. Nếu có bất thường, nó dừng an toàn.
+
+---
+
 ## CẬP NHẬT 31/10/2026, 11:45 — Đã xác minh bản sao chuyển sang PC Nhân
 
 **Kết luận mới: READY TO RESUME — WITH CONDITIONS.** Phần "BLOCKED" ở bản 11:30 (bên dưới) đã được gỡ.
