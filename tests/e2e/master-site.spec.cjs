@@ -746,6 +746,8 @@ test.describe("Hoàn thiện tiếng Việt (31/10)", () => {
             return !(r.right <= f.left || r.left >= f.right || r.bottom <= f.top || r.top >= f.bottom); }); })).toBe(false);
       }
       expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll(".badge")].map(b => parseFloat(getComputedStyle(b).fontSize))))).toBeGreaterThanOrEqual(12);
+      expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll("#network a")].map(a => a.getBoundingClientRect().height)))).toBeGreaterThanOrEqual(40);
+      expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll(".sidebar .nav button")].map(b => parseFloat(getComputedStyle(b).fontSize))))).toBeGreaterThanOrEqual(12);
       const more = await page.locator(".row-head .more").first().boundingBox();
       expect(more.height).toBeGreaterThanOrEqual(40);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);

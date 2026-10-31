@@ -13,6 +13,52 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 21:40 — Nghiệm thu vòng 3 (không dùng tài khoản)
+
+**Phạm vi:** anh chọn "chỉ nghiệm thu không cần tài khoản". Staging vẫn chỉ có 1 tài khoản là tài khoản chủ Hungcreator (`network_staff: owner`, admin cả 5 site). Chưa có tài khoản QA. Kết luận vẫn **CHƯA READY**.
+
+### Điểm danh và ví điểm: anh tự thao tác bằng tài khoản chủ, 20:44 giờ VN
+
+Đây là **Real User PASS cho lần điểm danh đầu tiên**, có bằng chứng chỉ đọc từ staging:
+- 1 dòng `daily_checkins` ngày 2026-10-31, +10 điểm, chuỗi 1 ngày.
+- 1 dòng `wallet_ledger`: `checkin`, `delta 10`, `balance_after 10`, có idempotency key. Dòng `daily_checkins.ledger_id` trỏ đúng tới dòng ledger này.
+- Ví: `balance 10 = tổng ledger 10`, `earned 10`, `spent 0`.
+- Mở lại trang Thành viên (tải lại trang): nút hiện "Đã điểm danh hôm nay ✓ (+10)" và bị **vô hiệu hóa**.
+
+Phần chưa có Real User:
+
+| Hạng mục | Kết quả | Căn cứ |
+|---|---|---|
+| Không điểm danh trùng ngày | Staging DB PASS · Real User **chưa thử** | Khóa chính `(user_id, checkin_date)`, RPC trả `already` cả khi đổi site (bộ staging 95/95). Giao diện khóa nút sau khi tải lại. Chưa gửi yêu cầu điểm danh lần 2 thật |
+| Số dư đúng sau khi đăng nhập lại | **BLOCKED** | Phải đăng xuất rồi đăng nhập lại tài khoản; tôi không nhập mật khẩu |
+| Mở khóa bằng điểm, chống trừ 2 lần, quyền xem sau mở khóa | Staging DB PASS · Real User **BLOCKED** | Tập QA rẻ nhất cần 30 điểm, ví hiện có 10. Cộng điểm hoặc dùng tài khoản chủ không nằm trong phạm vi được duyệt |
+| Chat chung và chat theo phim giữa 2 tài khoản | Mock + Staging DB PASS · Real User **BLOCKED** | Cần 2 tài khoản QA |
+| Báo cáo, chống spam, kiểm duyệt | Mock + Staging DB PASS · Real User **BLOCKED** | Cần tài khoản QA. Tài khoản kiểm duyệt có thể là tài khoản chủ |
+
+### Giao diện desktop/mobile: Real User PASS (khách, Preview `d05fc4d1`, đo trên PC Nhân)
+
+| Kiểm tra | 375 px | 768 px | 1366 px |
+|---|---|---|---|
+| Cuộn ngang | Không | Không | Không |
+| Tìm "cyber" | 5 kết quả | 5 | 5 |
+| Cửa sổ phim | 375×812, không tràn, có nút đóng, nút ≥ 36 px | 717×1000 | 1180×744 |
+| Canonical khi mở phim | `xuongphim.ai/phim/thanh-pho-khong-ngu` | như 375 px | như 375 px |
+| Chat theo phim (khách) | Hiện "Đăng nhập miễn phí để đọc và tham gia…" | như 375 px | như 375 px |
+| Ngăn kéo chat | Toàn màn hình, Esc đóng | 420 px | 420 px |
+| Nút chat nổi che nút hero | Không, ở cả 3 vị trí cuộn | (không có nút nổi) | (không có nút nổi) |
+| Hộp đăng nhập | 339 px, ô nhập cao 46 px | 440 px | 440 px |
+| Thanh điều hướng | 54 px | 44 px | 44 px |
+| Chân trang | Liên kết chính sách nằm trên thanh tab, không bị che | — | — |
+
+**Lỗi thực tế đã sửa trong DEV:**
+- Nhãn thanh tab dưới cùng tăng từ 11 lên 12 px.
+- Liên kết 5 site ở chân trang tăng chiều cao từ 30 lên 40 px.
+- Thêm assert vào E2E. E2E **71/71**.
+
+Ký hiệu "seal" 10,5–11 px là biểu tượng trang trí (`aria-hidden`), giữ nguyên.
+
+**Cần anh làm để hoàn tất:** tạo 2 tài khoản QA. Cách nhanh: Supabase → Authentication → Users → Add user + Auto Confirm cho `hung2nao+qa1@gmail.com` và `hung2nao+qa2@gmail.com`. Đăng nhập mỗi tài khoản ở một tab Preview, rồi báo "QA sẵn sàng". Để kiểm thử mở khóa, anh cần đồng ý cho tài khoản chủ cộng điểm QA vào tài khoản qa1 (có ghi nhật ký và lý do "QA TEST").
+
 ## Cập nhật 31/10/2026 21:00 — Level 4 Finalization (Xưởng Phim)
 
 **Kết luận: CHƯA đạt MASTER WEBSITE READY.**
