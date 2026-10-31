@@ -312,11 +312,21 @@
   load();
   // auth.js owns sign-in/out UI; watch its account button to refresh the wallet chip.
   var accountBtn = null;
-  var watcher = new MutationObserver(function () { load(); });
+  // Only reload when the account label really changes (sign-in/out), coalescing bursts of DOM updates:
+  // auth.js rewrites the button several times while restoring a session (was 5 reloads per page view).
+  var lastLabel = null, reloadTimer = 0;
+  var watcher = new MutationObserver(function () {
+    var label = accountBtn ? accountBtn.textContent : "";
+    if (label === lastLabel) return;
+    lastLabel = label;
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(load, 250);
+  });
   (function attach() {
     accountBtn = document.querySelector(".afn-account-btn");
     if (!accountBtn) return setTimeout(attach, 300);
     mountChip();
+    lastLabel = accountBtn.textContent;
     watcher.observe(accountBtn, { childList: true, characterData: true, subtree: true });
   })();
 })();
