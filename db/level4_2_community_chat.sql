@@ -113,7 +113,9 @@ begin
              and created_at > now() - interval '60 seconds') then
     raise exception 'chat_duplicate' using errcode = 'P0001';
   end if;
-  select left(coalesce(nullif(btrim(p.display_name), ''), 'Thành viên'), 60) into v_name from public.profiles p where p.id = uid;
+  -- Tên hiển thị: hồ sơ (profiles) → tên đã nhập khi đăng ký (user_metadata) → "Thành viên". Không bao giờ dùng email.
+  select left(coalesce(nullif(btrim(p.display_name), ''), nullif(btrim(u.raw_user_meta_data ->> 'display_name'), ''), 'Thành viên'), 60)
+    into v_name from auth.users u left join public.profiles p on p.id = u.id where u.id = uid;
   insert into public.chat_messages(room, user_id, display_name, body)
   values (p_room, uid, coalesce(v_name, 'Thành viên'), v_body) returning * into r;
   return r;

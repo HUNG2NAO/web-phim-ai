@@ -233,6 +233,14 @@ commit;
 begin; set local role authenticated; select t.as_user(:B);
 select t.ok((public.send_chat_message('network', 'Cảm ơn admin')).body = 'Cảm ơn admin', 'B can send again after unmute');
 commit;
+-- người mới đăng ký chưa có hồ sơ: tên lấy từ lúc đăng ký, không lộ email
+update auth.users set raw_user_meta_data = '{"display_name":"QA TEST 6"}' where id = 'aaaaaaaa-0000-4000-8000-000000000006';
+begin; set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000006');
+select t.ok((public.send_chat_message('network', 'Thành viên mới chào cả nhà')).display_name = 'QA TEST 6', 'new member without profile shows signup display name');
+commit;
+begin; set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000007');
+select t.ok((public.send_chat_message('network', 'Không có tên')).display_name = 'Thành viên', 'member without any name shows neutral label, never the e-mail');
+commit;
 
 -- 6. Invariants -------------------------------------------------------------------
 select t.ok(not exists (select 1 from public.wallets w where w.balance <> (select coalesce(sum(delta),0) from public.wallet_ledger l where l.user_id = w.user_id)), 'every wallet balance equals the sum of its ledger');
