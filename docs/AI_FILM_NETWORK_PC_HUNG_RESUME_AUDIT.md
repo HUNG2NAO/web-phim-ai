@@ -1,8 +1,80 @@
-# AI FILM NETWORK — PC HƯNG RESUME AUDIT
+# AI FILM NETWORK — PC HƯNG → PC NHÂN RESUME AUDIT
+
+## CẬP NHẬT 31/10/2026, 11:45 — Đã xác minh bản sao chuyển sang PC Nhân
+
+**Kết luận mới: READY TO RESUME — WITH CONDITIONS.** Phần "BLOCKED" ở bản 11:30 (bên dưới) đã được gỡ.
+
+- **Bản sao kiểm tra:** `C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI`, chép nguyên từ `D:\HUNG_PROJECTS\WEB_PHIM_AI` trên PC Hưng.
+- **Cách kiểm tra:** chỉ đọc qua cầu nối thiết bị. Repo Git được chép lên cloud để chạy git; không có file nào trên máy bị sửa, xóa hay di chuyển.
+
+### A. Bản sao trên PC Nhân
+
+| # | Câu hỏi | Kết quả | Bằng chứng |
+|---|---|---|---|
+| 1 | Thư mục tồn tại? | Có. Bên trong có thêm một thư mục `WEB_PHIM_AI` | `device_list_dir` |
+| 2 | Đủ frontend/backend? | Frontend tĩnh có đủ ở mức **Production `main`** (`index.html`, 6 file `assets`, `tests`). Không có backend riêng. **Không có** file Level 3/4: `account.html`, `member.html`, `admin.html`, `db/`, `auth.js`, `level3.js`… | Danh sách `source/` |
+| 3 | Có `.git`? | Có, **duy nhất** ở `source/.git`. Đây là shallow clone, mốc nông `7fb08dc` | `.git/shallow` |
+| 4 | Remote | `https://github.com/HUNG2NAO/web-phim-ai.git`. Chỉ fetch 2 nhánh: `main` và `qa/visual-2026-10-28` | `.git/config` |
+| 5 | Branch / commit | `main` @ **`c6dd520`**, trùng `main` trên GitHub và Production | `.git/HEAD`, `refs/heads/main` |
+| 6 | File chưa commit? | **Không có thay đổi thật.** Git liệt kê 10 file "modified", nhưng chỉ khác ký tự xuống dòng CRLF/LF; nội dung giống hệt `c6dd520` (đã so hash sau khi bỏ `\r`). Không có stash, không có file untracked | `git diff --ignore-cr-at-eol` rỗng |
+| 7 | File ignored/untracked quan trọng | `source/AGENTS.md` bị loại khỏi Git bằng `.git/info/exclude`. Đây là quy tắc làm việc trên máy local | `.git/info/exclude` |
+| 8 | Dữ liệu riêng từ PC Hưng | **Có**, nhưng là **tài sản vận hành**, không phải mã nguồn (xem mục B) | Danh sách thư mục |
+| 9 | Còn tham chiếu ổ D? | **Có**: `Enter-Project.ps1` (gán cứng `D:\HUNG_PROJECTS\WEB_PHIM_AI` và báo lỗi nếu không thấy), `AGENTS.md`, `temp/qa/smoke-v6.cjs`, `reports/HOW_TO_UPDATE_WEBSITES.md`. Vì vậy `Run-Verification.ps1` **sẽ báo lỗi trên PC Nhân** | `grep` |
+| 10 | Module/tài liệu/migration chưa lên GitHub? | **Mã nguồn và migration: không có.** Chỉ có công cụ QA, báo cáo và nhật ký ở mục B | Như trên |
+
+**Mốc thời gian:** mọi file trong bản sao có thời gian sửa từ **28/10, 10:07 đến 12:20** (giờ Việt Nam). Level 3 bắt đầu từ 29/10 01:28, tức **sau** mốc này. Bản sao là ảnh chụp không gian làm việc trên PC Hưng ở giai đoạn V4–V6 (QA, chuyển Cloudflare, DNS).
+
+### B. Tài sản chỉ có ở local (giữ nguyên, không đưa lên GitHub)
+
+| Thư mục / file | Nội dung | Có trên GitHub? | Đề xuất |
+|---|---|---|---|
+| `AGENTS.md`, `Enter-Project.ps1`, `Run-Verification.ps1` | Quy tắc làm việc, biến môi trường, wrapper QA V5 (trỏ ổ D) | Không | Giữ. Muốn dùng trên PC Nhân thì đổi đường dẫn sang `C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI` |
+| `temp/qa/` (43 script + `package.json`: jsdom, playwright, @napi-rs/canvas) | Bộ QA giai đoạn V4–V6: visual, contrast, DNS, smoke | Không | Giữ làm lưu trữ. Level 3/4 đã có bộ test riêng trong repo |
+| `reports/` (57 file) | Báo cáo QA, chuyển Cloudflare, DNS V4–V6, rollback, hướng dẫn cập nhật | Không | Giữ. Phần trạng thái DNS trong đó **đã cũ** (DNS hiện đã xanh) |
+| `backups/` (34 file) | Ảnh chụp DNS 5 domain, manifest chuyển dữ liệu, script trước khi sửa | Không | **Giữ.** Hữu ích khi cần rollback DNS |
+| `logs/` (~2,4 GB), `screenshots/` (~340 MB) | Bằng chứng kiểm thử V4–V6 | Không | Giữ hoặc lưu trữ ngoài. Không đưa vào Git |
+| `temp/browsers`, `runtime`, `cache` (~720 MB) | Trình duyệt Playwright và cache | Không | Có thể xóa sau này nếu bạn đồng ý; mình không tự xóa |
+
+- Không tìm thấy secret: các chữ "token" chỉ là câu chữ trong báo cáo.
+- Danh sách đệ quy dừng ở 2.000 mục. Các thư mục lớn (`logs`, `screenshots`, `temp`) đã được kiểm tra riêng ở cấp 1–2.
+
+### C. Đối chiếu Level 4
+
+| | Bản PC Nhân (`source/`) | GitHub Level 4 (`36da1d7` → nay `df4caf1`) |
+|---|---|---|
+| Production `main` (`c6dd520`) | ✓ | ✓ (tổ tiên) |
+| Level 3 (PR #3–#8) | ✗ | ✓ (đủ, 31/31 test cũ PASS) |
+| Level 4 (PR #9) | ✗ | ✓ |
+| 7 migration `db/` | ✗ | ✓ |
+| Bộ test SQL / contract / E2E | ✗ (chỉ có `preview-regressions.cjs`) | ✓ (88+7 SQL, 21 Node, 47 Chromium) |
+
+→ GitHub Level 4 **chứa toàn bộ** mã nguồn của bản PC Nhân. **Không có code nào cần tích hợp ngược** từ PC Nhân vào Level 4.
+
+### D. Môi trường phát triển chính trên PC Nhân
+
+Tạo worktree Level 4 **bên cạnh** `source/`. Thư mục gốc không bị ghi đè; `.git` chỉ được thêm thông tin nhánh và worktree. Chạy trong PowerShell:
+
+```powershell
+cd C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI\source
+git fetch origin feature/master-site-xuongphim-2026-10-31:refs/remotes/origin/feature/master-site-xuongphim-2026-10-31
+git worktree add ..\source-level4 -b dev/pc-nhan-level4 origin/feature/master-site-xuongphim-2026-10-31
+```
+
+- **Thư mục làm việc chính:** `C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI\source-level4`.
+- Nếu `git status` trong `source/` hiện 10 file "modified", đó chỉ là ký tự xuống dòng. **Không commit, không reset.**
+
+**Điều kiện còn lại để hoàn tất website mẫu** (không thay đổi so với báo cáo bàn giao):
+1. Chạy migration Level 4 trên Supabase.
+2. Bật Preview Cloudflare cho nhánh `feature/master-site-*`.
+3. Nghiệm thu bằng tài khoản thật.
+
+---
+
+## Bản 11:30 (lưu lại làm lịch sử)
 
 - **Ngày:** 31/10/2026, 11:30 (giờ Việt Nam)
 - **Phạm vi:** chỉ đọc. Không xóa, reset, pull hay merge. Không đụng `main` và Production.
-- **Kết luận: BLOCKED — MISSING DATA OR SAFETY ISSUE.**
+- **Kết luận lúc đó: BLOCKED — MISSING DATA OR SAFETY ISSUE.**
   - Phía GitHub đã được xác minh đầy đủ.
   - Phía PC Hưng **chưa truy cập được**, nên chưa thể khẳng định máy đó không có dữ liệu riêng chưa đưa lên GitHub.
   - Muốn gỡ chặn: chạy script `tools/check-local-copy.ps1` trên PC Hưng (xem mục 12).
