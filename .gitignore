@@ -4,3 +4,4 @@ test-results/
 
 # Bản sao lưu CSDL (chứa dữ liệu người dùng) — không bao giờ commit
 backups/
+tools/pgsql/

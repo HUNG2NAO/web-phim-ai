@@ -109,3 +109,16 @@ test("SEO: functions/_site.js domains match SITES and sitemaps are up to date", 
   assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=phephim")).real, false);
   assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=evil")).id, "xuongphim");
 });
+
+test("privacy policy: owner-supplied fields are explicit placeholders until filled; release must replace them", () => {
+  const html = fs.readFileSync(path.join(ROOT, "chinh-sach.html"), "utf8");
+  const fields = [...html.matchAll(/data-owner-input="([a-z-]+)">([^<]*)</g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(fields.map(f => f[0]).sort(), ["contact-email", "controller", "retention"]);
+  for (const [k, v] of fields) {
+    // Either still an explicit placeholder, or a real value (email must look like an email).
+    if (/^\[CẦN CHỦ WEBSITE CUNG CẤP/.test(v)) continue;
+    if (k === "contact-email") assert.match(v.trim(), /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i, "contact email");
+    else assert.ok(v.trim().length > 3, k);
+  }
+  assert.match(html, /<meta name="robots" content="noindex/, "policy stays noindex while it is a draft");
+});
