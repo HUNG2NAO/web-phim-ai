@@ -350,10 +350,20 @@
       })));
     } catch (e) { empty(box, explain(e)); empty(mbox, ""); }
   }
+  // Báo phòng chat tải lại ngay (người xem khác không nhận được tin bị ẩn qua Realtime vì RLS).
+  function pingRoom(room) {
+    if (!room || !/^(network|film:[a-z0-9]+:[a-z0-9-]+)$/.test(room)) return;
+    var ch = db.channel("chat:" + room);
+    ch.subscribe(function (st) {
+      if (st !== "SUBSCRIBED") return;
+      ch.send({ type: "broadcast", event: "moderated", payload: {} }).finally(function () { db.removeChannel(ch); });
+    });
+    setTimeout(function () { db.removeChannel(ch); }, 8000);
+  }
   async function chatModerate(x, hide, b) {
     b.disabled = true;
     try { await rpc("chat_moderate_message", { p_message_id: x.message_id, p_hide: hide, p_reason: hide ? "Vi phạm quy định cộng đồng" : "Khôi phục sau xem xét" });
-      status(hide ? "Đã ẩn tin nhắn." : "Đã khôi phục tin nhắn."); loadChat(); loadAudit(); }
+      status(hide ? "Đã ẩn tin nhắn." : "Đã khôi phục tin nhắn."); loadChat(); loadAudit(); pingRoom(x.room); }
     catch (e) { status(explain(e), true); b.disabled = false; }
   }
   async function chatDismiss(x, b) {
@@ -364,7 +374,7 @@
   async function chatMute(user, minutes, b) {
     b.disabled = true;
     try { await rpc("chat_set_mute", { p_user: user, p_minutes: minutes, p_reason: minutes ? "Vi phạm quy định cộng đồng (24 giờ)" : "Mở khóa sau xem xét" });
-      status(minutes ? "Đã khóa chat 24 giờ." : "Đã mở khóa chat."); loadChat(); loadAudit(); }
+      status(minutes ? "Đã khóa chat 24 giờ." : "Đã mở khóa chat."); loadChat(); loadAudit(); pingRoom("network"); }
     catch (e) { status(explain(e), true); b.disabled = false; }
   }
 

@@ -312,7 +312,7 @@
     if (row.hidden && (!user || row.user_id !== user.id)) return;       // RLS: others never receive hidden rows
     channels.forEach(function (ch) { ch._pg.forEach(function (h) { if (!h.room || h.room === row.room) h.cb({ eventType: type, new: clone(row) }); }); });
   }
-  var PRES = "__AFN_MOCK_PRESENCE";
+  var PRES = "__AFN_MOCK_PRESENCE", BC = "__AFN_MOCK_BROADCAST";
   function presence() { try { return JSON.parse(localStorage.getItem(PRES) || "{}"); } catch (e) { return {}; } }
   window.addEventListener("storage", function (e) {
     if (e.key === KEY) {
@@ -322,6 +322,8 @@
         var type = seenChat[m.id] ? "UPDATE" : "INSERT"; emitChat(type, m);
       });
     }
+    if (e.key === BC) { var m = {}; try { m = JSON.parse(e.newValue || "{}"); } catch (x) {}
+      channels.forEach(function (ch) { if (ch.name === m.name) (ch._bc || []).forEach(function (h) { if (h.event === m.event) h.cb({ event: m.event, payload: {} }); }); }); }
     if (e.key === PRES) channels.forEach(function (ch) { ch._pres.forEach(function (cb) { cb(); }); });
   });
   function channel(name, opts) {
@@ -330,12 +332,14 @@
       on: function (type, filter, cb) {
         if (type === "postgres_changes") ch._pg.push({ room: (filter.filter || "").replace(/^room=eq\./, ""), cb: cb });
         if (type === "presence") ch._pres.push(cb);
+        if (type === "broadcast") (ch._bc = ch._bc || []).push({ event: filter && filter.event, cb: cb });
         return ch;
       },
       subscribe: function (cb) { channels.push(ch); setTimeout(function () { cb && cb("SUBSCRIBED"); }, 10); return ch; },
       track: function () { var p = presence(); p[name + "|" + key] = Date.now(); localStorage.setItem(PRES, JSON.stringify(p)); ch._pres.forEach(function (f) { f(); }); return Promise.resolve("ok"); },
       presenceState: function () { var p = presence(), out = {}; Object.keys(p).forEach(function (k) { if (k.indexOf(name + "|") === 0) out[k] = [{}]; }); return out; },
-      unsubscribe: function () { return Promise.resolve("ok"); }
+      unsubscribe: function () { return Promise.resolve("ok"); },
+      send: function (m) { localStorage.setItem(BC, JSON.stringify({ name: name, event: m && m.event, t: Date.now() + Math.random() })); return Promise.resolve("ok"); }
     };
     return ch;
   }

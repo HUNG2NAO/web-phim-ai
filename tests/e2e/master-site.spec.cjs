@@ -674,6 +674,8 @@ test.describe("Community Chat (Level 4.2)", () => {
     await expect(rep).toContainText("Spam");
     await rep.getByRole("button", { name: "Ẩn tin" }).click();
     await expect(page.locator("#studio-status")).toContainText("Đã ẩn tin nhắn");
+    // Người xem đang mở khung chat thấy tin biến mất ngay (tín hiệu "moderated"), không phải chờ đồng bộ 45 giây.
+    await expect(spam).toHaveCount(0, { timeout: 5000 });
     await page.locator("#ops-chat-filter").selectOption("resolved");
     await page.locator("#ops-chat-reports .studio-item").first().getByRole("button", { name: "Khóa chat 24h" }).click();
     await expect(page.locator("#studio-status")).toContainText("Đã khóa chat 24 giờ");
@@ -687,6 +689,9 @@ test.describe("Community Chat (Level 4.2)", () => {
 
     await page.locator("#ops-chat-mutes").getByRole("button", { name: "Mở khóa" }).click();
     await expect(page.locator("#studio-status")).toContainText("Đã mở khóa chat");
+    // Khung chat đang mở của thành viên được mở khóa ngay, không cần tải lại trang.
+    await expect(pageB.locator("#chat-drawer textarea")).toBeEnabled({ timeout: 5000 });
+    await expect(pageB.locator("#chat-drawer .afn-chat-banner")).toBeHidden();
     await pageB.reload(); await pageB.locator("#side-me [data-chat-open]").click();
     await expect(pageB.locator("#chat-drawer textarea")).toBeEnabled();
     const acts = (await mock(page)).admin_audit_log.map(x => x.action);

@@ -56,7 +56,7 @@
   /* ------------------------------------------------------------------ một khung chat */
   function mount(box, room, opts) {
     opts = opts || {};
-    var c = AFN.client(), alive = true, channel = null, uid = null, msgs = {}, resync = 0;
+    var c = AFN.client(), alive = true, channel = null, uid = null, msgs = {}, resync = 0, modReload = 0;
     box.replaceChildren(); box.classList.add("afn-chat"); box.dataset.room = room;
     var head = el("div", "afn-chat-head");
     var title = el("h3", "afn-chat-title", opts.title || "Trò chuyện");
@@ -139,6 +139,7 @@
       c.rpc("chat_moderate_message", { p_message_id: m.id, p_hide: hide, p_reason: reason }).then(function (r) {
         if (r.error) { setStatus(explain(r.error), true); return; }
         m.hidden = hide; render(); AFN.toast(hide ? "Đã ẩn tin nhắn." : "Đã khôi phục tin nhắn.");
+        if (channel) channel.send({ type: "broadcast", event: "moderated", payload: {} });
       });
     }
     function mute(m) {
@@ -163,6 +164,12 @@
           if (!alive) return;
           var row = p.new && p.new.id ? p.new : null;
           if (row) { upsert(row); render(); }
+        })
+        // Tin bị ẩn không tới người xem khác qua postgres_changes (RLS chặn) → kiểm duyệt viên phát tín hiệu,
+        // mọi người trong phòng tải lại danh sách ngay thay vì chờ lần đồng bộ 45 giây.
+        .on("broadcast", { event: "moderated" }, function () {
+          if (!alive) return;
+          clearTimeout(modReload); modReload = setTimeout(function () { checkMute().then(load); }, 300 + Math.random() * 700);
         })
         .on("presence", { event: "sync" }, function () {
           var n = Object.keys(channel.presenceState() || {}).length;
@@ -208,11 +215,11 @@
       }
       uid = u.id;
       loadRoles(c, uid).then(function () { return checkMute(); }).then(function () { return load(); }).then(subscribe);
-      resync = setInterval(function () { if (navigator.onLine) load(); }, 45000);   // gỡ tin bị ẩn mà Realtime không gửi (RLS)
+      resync = setInterval(function () { if (navigator.onLine) { checkMute(); load(); } }, 45000);   // gỡ tin bị ẩn mà Realtime không gửi (RLS); cập nhật khóa/mở khóa chat
     });
 
     return { destroy: function () {
-      alive = false; clearInterval(resync);
+      alive = false; clearInterval(resync); clearTimeout(modReload);
       window.removeEventListener("online", onNet); window.removeEventListener("offline", onNet);
       if (channel) { try { c.removeChannel(channel); } catch (e) {} channel = null; }
     } };
