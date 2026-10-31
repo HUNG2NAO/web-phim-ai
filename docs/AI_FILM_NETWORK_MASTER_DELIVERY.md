@@ -36,7 +36,44 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 | Mở khóa tập | **PASS** | Màn khóa "Tập 2 đang mở sớm với 30 điểm. Số dư của bạn: 30 điểm."; bấm 3 lần → trừ **đúng 1 lần** (30 → 0); 5 yêu cầu đồng thời → `already_unlocked:0`; 1 quyền xem, 1 dòng `unlock −30` |
 | Quyền xem sau mở khóa | **PASS** | Nguồn `ok` (Sintel kèm nguồn dự phòng); player phát thật (`currentTime` 5,77 → 6,56 giây) |
 | Xác thực email (đăng ký, xác minh, đặt lại mật khẩu) | **PASS** | Thực hiện 01:09–01:25 trên chính mã `auth.js` của RC1 (mục 01/11 01:09) |
-| Chat 2 người, kiểm duyệt | **Chờ đăng nhập** | Cần qa2 (tab b2cb38aa) và qaadmin (tab d14d6d23) |
+| Chat theo phim 2 người (signup1 trên **RC1** ↔ qa2) | **PASS** | Hiện "2 người đang xem"; tin của signup1 tới qa2 sau **0,52 giây**; qa2 trả lời, signup1 nhận trên RC1 sau **0,76 giây**; tên hiển thị lấy từ lúc đăng ký ("hungcreator") |
+| Báo cáo tin (giao diện RC1) | **PASS** | signup1 báo cáo tin của qa2 với lý do Spam, toast "Đã gửi báo cáo…"; 1 báo cáo `open` |
+| Quyền thành viên trên RC1 | **PASS** | ẩn tin, khóa chat, xem danh sách báo cáo → `forbidden`; insert giả mạo → `permission denied`; tin người khác chỉ có nút "Báo cáo" |
+| Chống spam trên RC1 | **PASS** | trùng → `chat_duplicate`; trống → `empty_message`; quá 5 tin/30 giây → `chat_rate_limited` |
+| Kiểm duyệt (qaadmin) trên RC1 | **Chờ 1 lần đăng nhập** | Xem mục E |
+
+### E. Quản lý phiên QA (tái sử dụng, không bắt đăng nhập lại)
+
+**Kiểm kê thực tế** (dùng `auth.getUser()` phía máy chủ, không đọc hay in token):
+
+| Origin | Mã | Tài khoản | Trạng thái |
+|---|---|---|---|
+| alias `feature-master-site-xuongphi` | **RC1** (hash khớp) | `+signup1` | AUTHENTICATED (còn khoảng 52 phút, tự refresh) → **đã dùng làm thành viên A trên RC1** |
+| `0d8d5ae6` | 0897e31 (chat cũ) | `+qa2` | AUTHENTICATED → **đã dùng làm thành viên B** |
+| `c2c36a78` | ca130ed | `+qa2` | AUTHENTICATED (dự phòng) |
+| `a674307d`, `1d159f95`, `d05fc4d1` | bản cũ | `+qa1` | AUTHENTICATED (không cần cho RC1) |
+| `b2cb38aa` (RC1), `d14d6d23` (= RC1) | RC1 | — | NO SESSION |
+| (mọi origin) | — | `+qaadmin` | **NO SESSION**: phiên qaadmin nằm ở alias và đã bị thay khi anh đăng nhập signup1 ở tab đó |
+
+**Nguyên nhân kỹ thuật** khiến phải đăng nhập lại nhiều lần:
+- Phiên Supabase lưu theo **origin** (localStorage, `storageKey afn-film-auth-v1`).
+- Mỗi lần deploy, Cloudflare tạo một origin mới (`<hash>.pages.dev`), nên phiên cũ không theo sang.
+- Chỉ alias của nhánh giữ nguyên origin, nhưng một origin chỉ chứa được một tài khoản.
+- Chuyển token giữa các origin là **giả mạo phiên**, nên không làm.
+
+**Cách giảm thao tác cho các vòng sau** (đề xuất, chưa làm):
+- Tạo 3 nhánh alias cố định `qa/member-a`, `qa/member-b`, `qa/admin`, cùng trỏ vào commit cần kiểm thử, và thêm vào danh sách Preview. Mỗi tài khoản QA có một origin ổn định; mỗi vòng chỉ cần push nhánh, phiên được giữ nguyên.
+- Thay đổi này là cấu hình Preview của Cloudflare, không đụng Production, nhưng cần anh đồng ý.
+
+**Thống kê vòng này:**
+- Tái sử dụng **2 phiên hợp lệ** (signup1, qa2).
+- **0 phiên hết hạn.**
+- Cần anh xác thực đúng **1 lần** (qaadmin), vì không còn phiên qaadmin nào và không được dùng tài khoản chủ thay thế.
+
+**Phạm vi phải kiểm lại trên RC1:**
+- `studio-ops.js` (Dashboard kiểm duyệt) của RC1 **trùng hash** với bản đã nghiệm thu thật lúc 23:30 (`46d1de7a…`).
+- `community-chat.js` của RC1 chỉ thêm **1 dòng** so với bản đã nghiệm thu: phát tín hiệu khi khóa chat **ngay trong khung chat**.
+- Vì vậy chỉ cần kiểm lại kiểm duyệt với **mã RC1**: ẩn tin, khóa và mở khóa (cả trong khung chat và trong Dashboard), audit log, giới hạn quyền của qaadmin.
 
 ### C. Phát hiện mới
 
