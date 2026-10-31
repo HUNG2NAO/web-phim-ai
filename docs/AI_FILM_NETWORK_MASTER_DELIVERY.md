@@ -108,6 +108,17 @@ Làm xong các bước này mới đóng được mục "Đăng ký mới qua em
   - Liên kết đã lưu: `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email` (xác minh) và `…&type=recovery` (đặt lại mật khẩu).
   - Các mẫu khác giữ nguyên. Preview alias đã chạy `auth.js` mới (có `verifyOtp`).
 
+**Kiểm chứng lại với mẫu token_hash (01:24, thật, link mở bằng Chrome): PASS**
+
+| Thời điểm | Sự kiện (Auth log) |
+|---|---|
+| 01:24:22 | `user_recovery_requested` (`/recover`, 200) cho `+signup1` |
+| 01:24:41 | `/verify` **POST 200**, action `login`: `verifyOtp(token_hash)` từ web tạo phiên ngay trên Chrome, không cần đúng trình duyệt đã yêu cầu |
+| 01:24:49 | Một yêu cầu `/verify` thứ hai bị từ chối `One-time token not found` (403). Link chỉ dùng 1 lần; không ảnh hưởng kết quả |
+| 01:24:59 | `user_modified` (`PUT /user`, 200): **đổi mật khẩu thành công**. Anh xác nhận giao diện báo "Đặt lại mật khẩu thành công" |
+
+→ **Đăng ký, xác minh email, đăng nhập lần đầu và đặt lại mật khẩu qua email thật (Resend, `mail.xuongphim.ai`): Real User PASS.** Mục BLOCKED cuối cùng đã đóng.
+
 **Đề xuất (chưa làm):** sau khi gửi ổn định, thêm `_dmarc.mail.xuongphim.ai` TXT `v=DMARC1; p=none;`. Không đụng `_dmarc.xuongphim.ai`.
 
 ## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)
@@ -179,7 +190,7 @@ Thêm commit sau kiểm chứng: nút "Khóa chat" ngay trong khung chat của k
 |---|---|
 | Khách: tìm kiếm, lọc, xem thông tin, phát video | Real User PASS |
 | Đăng nhập, đăng xuất, đăng nhập lại (tài khoản QA tạo bằng Dashboard) | Real User PASS |
-| Đăng ký mới qua email xác minh | **BLOCKED**: chưa bật Custom SMTP (email mặc định 2/giờ, chỉ gửi trong nhóm) |
+| Đăng ký mới qua email xác minh, đặt lại mật khẩu | Real User PASS (01/11 01:09–01:25: Resend `mail.xuongphim.ai` Verified, thư vào Hộp thư đến, link token_hash dùng được trên mọi trình duyệt) |
 | Điểm danh, chống điểm danh trùng, ví điểm | Real User PASS |
 | Mở khóa tập, chống trừ điểm hai lần, quyền xem sau mở khóa | Real User PASS |
 | Community Chat: phòng chung và theo phim, Realtime, số người đang xem | Real User PASS |
@@ -187,7 +198,7 @@ Thêm commit sau kiểm chứng: nút "Khóa chat" ngay trong khung chat của k
 | Giao diện desktop/mobile | Real User PASS (đo ở 375/768/1366 px) |
 | RLS, Production không bị ảnh hưởng | PASS |
 
-**MASTER WEBSITE: READY cho toàn bộ hành trình đã kiểm thử, trừ đăng ký mới qua email xác minh.** Bước này cần bật Custom SMTP (chủ dự án làm), rồi đăng ký 1 tài khoản thật để đóng mục BLOCKED cuối cùng.
+**MASTER WEBSITE READY (Xưởng Phim, trên Preview + Supabase staging):** cập nhật 01/11 01:30, toàn bộ hành trình người dùng đã có Real User PASS, gồm đăng ký và đặt lại mật khẩu qua email thật.
 - Chưa merge `main`, chưa đồng bộ 4 website còn lại.
 - `main` vẫn là `c6dd520`, Production và DNS không đổi.
 
