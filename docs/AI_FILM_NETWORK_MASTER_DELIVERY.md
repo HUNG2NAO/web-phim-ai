@@ -13,6 +13,34 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 23:10 — Xác minh môi trường trước khi chạy script QA
+
+**Project `ai-film-network` không phục vụ Production.** Bằng chứng (chỉ đọc):
+- Code `main` (`c6dd520`, đang chạy Production) không có chuỗi `supabase` hay `jurvphonehknrxjpowoe` trong `.js`, `.html` hay `_headers`.
+- 5 tên miền thật (xuongphim.ai, khophim.ai, phephim.ai, phimhay.ai, ghienphim.ai): tải HTML và cả 5 script của mỗi trang lúc 23:00 → không trang nào tham chiếu Supabase.
+- Nhật ký API Supabase 24 giờ qua (476 request): toàn bộ referer là `*.web-phim-ai-5sites.pages.dev` (Preview, từ VN). Số còn lại không có referer, đến từ SG (Dashboard/MCP). Không có request nào từ tên miền thật.
+
+**Đã rà lại script QA** (commit `0b1ca59`):
+- `51_qa_roles.sql` chỉ khớp **đúng** email `hung2nao+qaadmin@gmail.com`. Script dừng nếu:
+  - không thấy phim đánh dấu QA (dấu hiệu không phải staging);
+  - số tài khoản khớp khác 1;
+  - email chưa xác minh;
+  - tài khoản đã là network staff.
+- `51_qa_roles.sql` chỉ cấp `site_staff(xuongphim, admin)` và ghi audit `qa.grant_site_admin` với lý do "QA TEST". Script **chưa chạy** vì tài khoản chưa tồn tại.
+- `59_qa_cleanup.sql` chỉ khớp 3 email QA cố định (trước đây là regex `+qa*`) và mặc định **chạy thử**: chỉ đếm bản ghi rồi dừng.
+- Khi đặt `v_apply := true`, `59_qa_cleanup.sql` vẫn dừng nếu có quyền xem phim QA hoặc báo cáo thuộc người không phải QA.
+- `59_qa_cleanup.sql` không xóa tài khoản và không đụng audit log.
+- Chạy thử `59_qa_cleanup.sql` trên staging lúc 23:05 (rollback):
+  - 0 tài khoản QA khớp; dữ liệu người khác liên quan: 0.
+  - Bản ghi sẽ xóa: 1 phim QA, 3 tập, 0 quyền xem, 0 staff, 0 tin chat, 0 khóa chat.
+  - **Không xóa gì.**
+
+**Tài khoản hiện có trên staging:**
+- Tài khoản chủ (hung…, owner).
+- Một tài khoản **mới tạo lúc 22:55 bằng địa chỉ Gmail cá nhân `ngos…@gmail.com`**, không phải 3 email QA đã thống nhất, chưa đăng nhập lần nào. Script QA không áp vào tài khoản này. Tôi không dùng nó cho kiểm thử khi chưa có xác nhận.
+
+**Trạng thái nghiệm thu:** điểm danh trùng, đăng nhập lại, cấp điểm QA, mở khóa, chat 2 tài khoản, báo cáo/spam và kiểm duyệt đều vẫn **BLOCKED**, chờ 3 tài khoản QA.
+
 ## Cập nhật 31/10/2026 21:40 — Nghiệm thu vòng 3 (không dùng tài khoản)
 
 **Phạm vi:** anh chọn "chỉ nghiệm thu không cần tài khoản". Staging vẫn chỉ có 1 tài khoản là tài khoản chủ Hungcreator (`network_staff: owner`, admin cả 5 site). Chưa có tài khoản QA. Kết luận vẫn **CHƯA READY**.
