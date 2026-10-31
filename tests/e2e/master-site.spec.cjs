@@ -581,3 +581,147 @@ test.describe("Nguồn phát dự phòng (Level 4.1)", () => {
     expect(issues).toEqual([]);
   });
 });
+
+test.describe("Community Chat (Level 4.2)", () => {
+  const USER_B = { id: "00000000-0000-4000-8000-0000000000bb", email: "qa-b@example.test", created_at: "2026-10-01T00:00:00Z",
+    email_confirmed_at: "2026-10-01T00:05:00Z", user_metadata: { display_name: "QA TEST 2" }, app_metadata: { providers: ["email"] } };
+  async function withProfiles(page) {
+    await page.addInitScript(() => { const s = window.__AFN_MOCK_SEED; if (s) s.tables.profiles.push({ id: "00000000-0000-4000-8000-0000000000bb", display_name: "QA TEST 2" }); });
+  }
+  test("khách: mở chat được mời đăng nhập, không đọc được tin", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    await expect(page.locator("#chat-drawer")).toBeVisible();
+    await expect(page.locator("#chat-drawer")).toContainText("Đăng nhập miễn phí để đọc");
+    await page.locator("#chat-drawer").getByRole("button", { name: "Đăng nhập để trò chuyện" }).click();
+    await expect(page.locator(".afn-auth-dialog")).toBeVisible();
+    expect(issues).toEqual([]);
+  });
+
+  test("hai thành viên trò chuyện trực tiếp: thấy tin nhau không cần tải lại, đúng tên, emoji, lịch sử còn sau refresh, không chèn HTML", async ({ page, context }) => {
+    const issuesA = await setup(page, { user: VIEWER });
+    await withProfiles(page);
+    await page.goto("/?site=xuongphim");
+    const pageB = await context.newPage();
+    await withProfiles(pageB);
+    const issuesB = await setup(pageB, { user: USER_B });
+    await pageB.goto("/?site=khophim");                       // khác site, cùng phòng chung toàn mạng
+    for (const p of [page, pageB]) { await p.locator("#side-me [data-chat-open]").click(); await expect(p.locator("#chat-drawer .afn-chat-live")).toContainText("Trực tiếp"); }
+    await page.locator("#chat-drawer textarea").fill("Xin chào mọi người");
+    await page.locator("#chat-drawer .afn-chat-emo").first().click();
+    await page.locator("#chat-drawer textarea").press("Enter");
+    await expect(page.locator("#chat-drawer .afn-chat-msg.mine")).toContainText("Xin chào mọi người 👍");
+    const fromA = pageB.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "Xin chào mọi người" });
+    await expect(fromA).toBeVisible();
+    await expect(fromA.locator(".afn-chat-who")).toHaveText("Khán giả thử");
+    await pageB.locator("#chat-drawer textarea").fill('<img src=x onerror="window.__xss=1"> chào bạn!');
+    await pageB.locator("#chat-drawer").getByRole("button", { name: "Gửi" }).click();
+    const fromB = page.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "chào bạn!" });
+    await expect(fromB).toBeVisible();
+    await expect(fromB.locator(".afn-chat-who")).toHaveText("QA TEST 2");
+    expect(await page.locator("#chat-drawer .afn-chat-msg img").count()).toBe(0);
+    expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+    await expect(page.locator("#chat-drawer .afn-chat-live")).toContainText("2 người đang xem");
+    await pageB.reload();
+    await pageB.locator("#side-me [data-chat-open]").click();
+    await expect(pageB.locator("#chat-drawer .afn-chat-msg")).toHaveCount(2);
+    expect(issuesA).toEqual([]); expect(issuesB).toEqual([]);
+  });
+
+  test("chống spam: tin trùng và quá 5 tin/30 giây bị chặn với thông báo rõ; báo cáo tin người khác", async ({ page, context }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    const box = page.locator("#chat-drawer");
+    await box.locator("textarea").fill("tin 1"); await box.locator("textarea").press("Enter");
+    await expect(box.locator(".afn-chat-msg")).toHaveCount(1);
+    await box.locator("textarea").fill("tin 1"); await box.locator("textarea").press("Enter");
+    await expect(box.locator(".afn-chat-status")).toContainText("trùng");
+    for (const n of [2, 3, 4, 5]) { await box.locator("textarea").fill("tin " + n); await box.locator("textarea").press("Enter"); await expect(box.locator(".afn-chat-msg")).toHaveCount(n); }
+    await box.locator("textarea").fill("tin 6"); await box.locator("textarea").press("Enter");
+    await expect(box.locator(".afn-chat-status")).toContainText("quá nhanh");
+    await expect(box.locator(".afn-chat-msg")).toHaveCount(5);
+    // Người khác báo cáo một tin
+    const pageB = await context.newPage(); await withProfiles(pageB); await setup(pageB, { user: USER_B });
+    await pageB.goto("/?site=xuongphim"); await pageB.locator("#side-me [data-chat-open]").click();
+    const msg = pageB.locator("#chat-drawer .afn-chat-msg").first();
+    await msg.getByRole("button", { name: "Báo cáo" }).click();
+    await msg.getByRole("button", { name: "Spam" }).click();
+    await expect(pageB.locator(".afn-toast, [role=status]").filter({ hasText: "Đã gửi báo cáo" }).first()).toBeVisible();
+    expect((await mock(pageB)).chat_reports).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("quản trị: xử lý báo cáo trong Dashboard, ẩn tin, khóa chat → thành viên không gửi được, mở khóa, nhật ký", async ({ page, context }) => {
+    const pageB = await context.newPage(); await withProfiles(pageB);
+    const issuesB = await setup(pageB, { user: USER_B });
+    await pageB.goto("/?site=xuongphim"); await pageB.locator("#side-me [data-chat-open]").click();
+    await pageB.locator("#chat-drawer textarea").fill("Quảng cáo rác xyz"); await pageB.locator("#chat-drawer textarea").press("Enter");
+    await expect(pageB.locator("#chat-drawer .afn-chat-msg.mine")).toHaveCount(1);
+    await page.addInitScript(() => {});
+    const viewer = await context.newPage(); await setup(viewer, { user: VIEWER });
+    await viewer.goto("/?site=xuongphim"); await viewer.locator("#side-me [data-chat-open]").click();
+    const spam = viewer.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "Quảng cáo rác" });
+    await spam.getByRole("button", { name: "Báo cáo" }).click(); await spam.getByRole("button", { name: "Spam" }).click();
+    await expect.poll(async () => (await mock(viewer)).chat_reports.length).toBe(1);
+
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    const rep = page.locator("#ops-chat-reports .studio-item").first();
+    await expect(rep).toContainText("Quảng cáo rác xyz");
+    await expect(rep).toContainText("Spam");
+    await rep.getByRole("button", { name: "Ẩn tin" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã ẩn tin nhắn");
+    await page.locator("#ops-chat-filter").selectOption("resolved");
+    await page.locator("#ops-chat-reports .studio-item").first().getByRole("button", { name: "Khóa chat 24h" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã khóa chat 24 giờ");
+    await expect(page.locator("#ops-chat-mutes tbody tr")).toHaveCount(1);
+
+    await pageB.reload(); await pageB.locator("#side-me [data-chat-open]").click();
+    await expect(pageB.locator("#chat-drawer .afn-chat-banner")).toContainText("tạm khóa chat");
+    await expect(pageB.locator("#chat-drawer textarea")).toBeDisabled();
+    await viewer.reload(); await viewer.locator("#side-me [data-chat-open]").click();
+    await expect(viewer.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "Quảng cáo rác" })).toHaveCount(0);
+
+    await page.locator("#ops-chat-mutes").getByRole("button", { name: "Mở khóa" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã mở khóa chat");
+    await pageB.reload(); await pageB.locator("#side-me [data-chat-open]").click();
+    await expect(pageB.locator("#chat-drawer textarea")).toBeEnabled();
+    const acts = (await mock(page)).admin_audit_log.map(x => x.action);
+    expect(acts).toEqual(expect.arrayContaining(["chat.hide", "chat.mute", "chat.unmute"]));
+    expect(issues).toEqual([]); expect(issuesB).toEqual([]);
+  });
+
+  test("chat theo phim trong cửa sổ phim, tách riêng phòng chung", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    const fc = page.locator("#film-chat");
+    await expect(fc).toBeVisible();
+    await expect(fc).toContainText("Bàn luận về phim");
+    await fc.locator("textarea").fill("Tập 1 hay quá");
+    await fc.getByRole("button", { name: "Gửi" }).click();
+    await expect(fc.locator(".afn-chat-msg.mine")).toContainText("Tập 1 hay quá");
+    const db = await mock(page);
+    expect(db.chat_messages.find(m => m.body === "Tập 1 hay quá").room).toBe("film:xuongphim:tin-hieu-47");
+    await page.locator("#close-film").click();
+    await page.locator("#side-me [data-chat-open]").click();
+    await expect(page.locator("#chat-drawer .afn-chat-msg")).toHaveCount(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("điện thoại 375px: nút chat nổi, khung chat toàn màn hình, không cuộn ngang", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-chat-fab").click();
+    const d = await page.locator("#chat-drawer").boundingBox();
+    expect(Math.round(d.width)).toBe(375);
+    await expect(page.locator("#chat-drawer textarea")).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#chat-drawer")).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+});

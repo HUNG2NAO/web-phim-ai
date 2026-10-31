@@ -319,6 +319,55 @@
     } catch (e) { status(explain(e), true); b.disabled = false; }
   }
 
+  // ---------------------------------------------------------------- community chat moderation (Level 4.2)
+  var CHAT_REASON = { spam: "Spam", harassment: "Quấy rối", spoiler: "Tiết lộ nội dung", inappropriate: "Không phù hợp", other: "Khác" };
+  async function loadChat() {
+    var box = $("#ops-chat-reports"), mbox = $("#ops-chat-mutes"), filter = $("#ops-chat-filter").value;
+    try {
+      var r = await db.rpc("admin_chat_reports", { p_status: filter });
+      if (r.error) throw r.error;
+      var list = r.data || [];
+      if (!list.length) empty(box, filter === "open" ? "Không có báo cáo chat đang mở." : "Không có mục nào.");
+      else {
+        box.replaceChildren();
+        list.forEach(function (x) {
+          var a = el("article", "studio-item");
+          a.append(el("h3", "", (x.room === "network" ? "Phòng chung" : "Phim " + x.room.split(":").slice(1).join(" / ")) + " — " + (CHAT_REASON[x.reason] || x.reason)),
+            el("p", "muted", AFN.vnDateTime(x.created_at) + " · người viết: " + x.author_name + (x.hidden ? " · ĐÃ ẨN" : "")),
+            el("blockquote", "", x.body));
+          var acts = [btn(x.hidden ? "Khôi phục tin" : "Ẩn tin", function (ev) { chatModerate(x, !x.hidden, ev.currentTarget); }, x.hidden ? "" : "primary")];
+          if (x.status === "open") acts.push(btn("Bỏ qua", function (ev) { chatDismiss(x, ev.currentTarget); }));
+          if (ctx.siteAdmin) acts.push(btn("Khóa chat 24h", function (ev) { chatMute(x.author, 1440, ev.currentTarget); }));
+          a.append(group.apply(null, acts));
+          box.append(a);
+        });
+      }
+      var mutes = await rows(db.from("chat_mutes").select("*"));
+      if (!mutes.length) empty(mbox, "Không có ai bị khóa chat.");
+      else mbox.replaceChildren(table(["Thành viên", "Đến", "Lý do", ""], mutes.map(function (m) {
+        return [short(m.user_id), m.muted_until ? AFN.vnDateTime(m.muted_until) : "Đến khi mở", m.reason,
+          ctx.siteAdmin ? btn("Mở khóa", function (ev) { chatMute(m.user_id, 0, ev.currentTarget); }) : "–"];
+      })));
+    } catch (e) { empty(box, explain(e)); empty(mbox, ""); }
+  }
+  async function chatModerate(x, hide, b) {
+    b.disabled = true;
+    try { await rpc("chat_moderate_message", { p_message_id: x.message_id, p_hide: hide, p_reason: hide ? "Vi phạm quy định cộng đồng" : "Khôi phục sau xem xét" });
+      status(hide ? "Đã ẩn tin nhắn." : "Đã khôi phục tin nhắn."); loadChat(); loadAudit(); }
+    catch (e) { status(explain(e), true); b.disabled = false; }
+  }
+  async function chatDismiss(x, b) {
+    b.disabled = true;
+    try { await rpc("chat_dismiss_report", { p_report_id: x.report_id }); status("Đã bỏ qua báo cáo."); loadChat(); }
+    catch (e) { status(explain(e), true); b.disabled = false; }
+  }
+  async function chatMute(user, minutes, b) {
+    b.disabled = true;
+    try { await rpc("chat_set_mute", { p_user: user, p_minutes: minutes, p_reason: minutes ? "Vi phạm quy định cộng đồng (24 giờ)" : "Mở khóa sau xem xét" });
+      status(minutes ? "Đã khóa chat 24 giờ." : "Đã mở khóa chat."); loadChat(); loadAudit(); }
+    catch (e) { status(explain(e), true); b.disabled = false; }
+  }
+
   // ---------------------------------------------------------------- social
   async function loadSocial() {
     var box = $("#ops-social-list");
@@ -425,7 +474,7 @@
       var mine = await rows(db.from("site_staff").select("role").eq("user_id", ctx.uid).eq("site_id", ctx.site));
       ctx.siteAdmin = ctx.owner || mine.some(function (x) { return x.role === "admin"; });
     } catch (e) { ctx.siteAdmin = ctx.owner; }
-    await Promise.all([loadOverview(), loadEpisodes(), loadWallet(), loadReports(), loadSocial(), loadTraffic(), loadAudit(), loadStaff()]);
+    await Promise.all([loadOverview(), loadEpisodes(), loadWallet(), loadReports(), loadChat(), loadSocial(), loadTraffic(), loadAudit(), loadStaff()]);
     resetEpisodeForm();
   }
   $("#ops-ep-tier").addEventListener("change", syncTier);
@@ -456,6 +505,7 @@
     } catch (e) { status(explain(e), true); }
   });
   $("#ops-report-filter").addEventListener("change", loadReports);
+  $("#ops-chat-filter").addEventListener("change", loadChat);
   $("#ops-social-form").addEventListener("submit", addSocial);
   $("#ops-traffic-days").addEventListener("change", loadTraffic);
   $("#ops-utm-form").addEventListener("submit", buildUtm);

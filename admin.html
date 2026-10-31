@@ -15,6 +15,7 @@
     <button class="chip" type="button" data-studio-tab="wallet">Điểm danh & ví điểm</button>
     <button class="chip" type="button" data-studio-tab="reviews">Kiểm duyệt đánh giá</button>
     <button class="chip" type="button" data-studio-tab="reports">Báo lỗi phim</button>
+    <button class="chip" type="button" data-studio-tab="chat">Chat cộng đồng</button>
     <button class="chip" type="button" data-studio-tab="notices">Thông báo tập mới</button>
     <button class="chip" type="button" data-studio-tab="social">Social</button>
     <button class="chip" type="button" data-studio-tab="traffic">Traffic</button>
@@ -113,6 +114,12 @@
     </div>
   </section>
   <section data-studio-panel="reports" hidden><h2>Báo lỗi từ người xem</h2><div class="ops-inline"><label for="ops-report-filter">Trạng thái</label><select id="ops-report-filter"><option value="open">Đang mở</option><option value="resolved">Đã xử lý</option><option value="dismissed">Bỏ qua</option></select></div><div id="ops-reports" class="studio-list"></div></section>
+  <section data-studio-panel="chat" hidden><h2>Kiểm duyệt chat cộng đồng</h2>
+    <p class="ops-note">Báo cáo tin nhắn từ thành viên. Ẩn tin, khôi phục, khóa/mở chat đều được ghi vào Nhật ký. Khóa chat có hiệu lực toàn mạng (chỉ quản trị viên).</p>
+    <div class="ops-inline"><label for="ops-chat-filter">Trạng thái</label><select id="ops-chat-filter"><option value="open">Đang mở</option><option value="resolved">Đã xử lý</option><option value="dismissed">Bỏ qua</option></select></div>
+    <div id="ops-chat-reports" class="studio-list"></div>
+    <h3>Thành viên đang bị khóa chat</h3><div id="ops-chat-mutes" class="ops-scroll"></div>
+  </section>
   <section data-studio-panel="social" hidden>
     <div class="ops-grid-2">
       <form id="ops-social-form" class="panel-card stack">

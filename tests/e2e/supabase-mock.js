@@ -10,8 +10,10 @@
   try { db = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) {}
   if (!db) { db = JSON.parse(JSON.stringify(seed.tables || {})); }
   var user = null;
-  try { var u = localStorage.getItem(AUTH); user = u === null ? (seed.user || null) : JSON.parse(u); } catch (e) { user = seed.user || null; }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); localStorage.setItem(AUTH, JSON.stringify(user)); } catch (e) {} }
+  // The signed-in user is kept per TAB (sessionStorage) so one test can drive several accounts in
+  // several pages that share the same fake database (localStorage) — like real users on one server.
+  try { var u = sessionStorage.getItem(AUTH); user = u === null ? (seed.user || null) : JSON.parse(u); } catch (e) { user = seed.user || null; }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); sessionStorage.setItem(AUTH, JSON.stringify(user)); } catch (e) {} }
   save();
   function list(t) { return db[t] || (db[t] = []); }
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -46,6 +48,11 @@
       var all = list(t), data = null, error = null;
       if (op === "select") {
         data = all.filter(match).map(clone);
+        if (t === "chat_messages") data = data.filter(function (m) {      // RLS chat_read
+          if (!user) return false;
+          var site = m.room === "network" ? null : m.room.split(":")[1], r = staffOf(site || "__none");
+          return !m.hidden || m.user_id === user.id || r === "owner" || (site && !!r);
+        });
         orders.slice().reverse().forEach(function (o) {
           data.sort(function (a, b) { var x = a[o[0]], y = b[o[0]]; return (x > y ? 1 : x < y ? -1 : 0) * (o[1] ? 1 : -1); });
         });
@@ -224,6 +231,65 @@
       ledger(a.p_user, null, a.p_delta > 0 ? "admin_credit" : "admin_debit", a.p_delta, "admin:" + a.p_key, a.p_reason);
       save(); return { data: { status: "ok", balance: w.balance } };
     },
+    send_chat_message: function (a) {
+      if (!user) return err("login_required");
+      var body = String(a.p_body || "").replace(/\s+/g, " ").trim();
+      if (!/^(network|film:(xuongphim|khophim|phephim|phimhay|ghienphim):[a-z0-9][a-z0-9-]{0,119})$/.test(a.p_room || "")) return err("invalid_room");
+      if (!body) return err("empty_message");
+      if (body.length > 500) return err("message_too_long");
+      var m = list("chat_mutes").find(function (x) { return x.user_id === user.id; });
+      if (m && (!m.muted_until || new Date(m.muted_until) > new Date())) return err("chat_muted");
+      var mine = list("chat_messages").filter(function (x) { return x.user_id === user.id; });
+      if (mine.filter(function (x) { return Date.now() - Date.parse(x.created_at) < 30000; }).length >= 5) return err("chat_rate_limited");
+      if (mine.some(function (x) { return x.room === a.p_room && x.body === body && Date.now() - Date.parse(x.created_at) < 60000; })) return err("chat_duplicate");
+      var prof = list("profiles").find(function (x) { return x.id === user.id; });
+      var row = { id: uuid(), room: a.p_room, user_id: user.id, display_name: (prof && prof.display_name) || "Thành viên", body: body, created_at: new Date().toISOString(), hidden: false };
+      list("chat_messages").push(row); save(); emitChat("INSERT", row);
+      return { data: clone(row) };
+    },
+    report_chat_message: function (a) {
+      if (!user) return err("login_required");
+      var m = list("chat_messages").find(function (x) { return x.id === a.p_message_id && !x.hidden; });
+      if (!m) return err("message_not_found");
+      if (m.user_id === user.id) return err("cannot_report_own");
+      if (!list("chat_reports").some(function (x) { return x.message_id === m.id && x.reporter === user.id; }))
+        list("chat_reports").push({ id: uuid(), message_id: m.id, reporter: user.id, reason: a.p_reason, note: a.p_note || "", status: "open", created_at: new Date().toISOString() });
+      save(); return { data: { status: "reported" } };
+    },
+    chat_moderate_message: function (a) {
+      var m = list("chat_messages").find(function (x) { return x.id === a.p_message_id; });
+      if (!m) return err("message_not_found");
+      var site = m.room === "network" ? null : m.room.split(":")[1];
+      var r = staffOf(site || "xuongphim");
+      if (!(r === "owner" || (site ? !!r : r === "admin"))) return err("forbidden");
+      m.hidden = !!a.p_hide;
+      list("chat_reports").forEach(function (x) { if (x.message_id === m.id && x.status === "open") x.status = "resolved"; });
+      list("admin_audit_log").push({ id: Date.now(), actor: user.id, site_id: site, action: a.p_hide ? "chat.hide" : "chat.restore", target: m.room, details: {}, created_at: new Date().toISOString() });
+      save(); emitChat("UPDATE", m); return { data: { status: a.p_hide ? "hidden" : "restored" } };
+    },
+    chat_set_mute: function (a) {
+      var r = staffOf("xuongphim");
+      if (r !== "owner" && r !== "admin") return err("forbidden");
+      var arr = list("chat_mutes"), i = arr.findIndex(function (x) { return x.user_id === a.p_user; });
+      if (!a.p_minutes) { if (i >= 0) arr.splice(i, 1); }
+      else { var row = { user_id: a.p_user, muted_until: a.p_minutes === -1 ? null : new Date(Date.now() + a.p_minutes * 60000).toISOString(), reason: a.p_reason };
+        if (i >= 0) arr[i] = row; else arr.push(row); }
+      list("admin_audit_log").push({ id: Date.now(), actor: user.id, site_id: null, action: a.p_minutes ? "chat.mute" : "chat.unmute", target: a.p_user, details: {}, created_at: new Date().toISOString() });
+      save(); return { data: { status: a.p_minutes ? "muted" : "unmuted" } };
+    },
+    chat_dismiss_report: function (a) {
+      var rep = list("chat_reports").find(function (x) { return x.id === a.p_report_id; });
+      if (!rep) return err("report_not_found");
+      rep.status = "dismissed"; save(); return { data: { status: "dismissed" } };
+    },
+    admin_chat_reports: function (a) {
+      if (!staffOf("xuongphim") && !staffOf("khophim")) return err("forbidden");
+      return { data: list("chat_reports").filter(function (r) { return !a.p_status || r.status === a.p_status; }).map(function (r) {
+        var m = list("chat_messages").find(function (x) { return x.id === r.message_id; }) || {};
+        return { report_id: r.id, message_id: m.id, room: m.room, author: m.user_id, author_name: m.display_name, body: m.body, hidden: m.hidden,
+          reason: r.reason, note: r.note, status: r.status, reports: 1, created_at: r.created_at };
+      }) };
+    },
     admin_refund_unlock: function (a) {
       var c = list("content_entitlements").find(function (x) { return x.id === a.p_entitlement_id; });
       if (!c) return err("entitlement_not_found");
@@ -238,7 +304,44 @@
     var session = user ? { user: user, access_token: "e2e" } : null;
     listeners.forEach(function (cb) { try { cb(event, session); } catch (e) {} });
   }
+  // ---- Realtime stand-in: postgres_changes on chat_messages + presence, across pages of one browser context.
+  var channels = [], seenChat = {};
+  list("chat_messages").forEach(function (m) { seenChat[m.id] = JSON.stringify(m); });
+  function emitChat(type, row) {
+    seenChat[row.id] = JSON.stringify(row);
+    if (row.hidden && (!user || row.user_id !== user.id)) return;       // RLS: others never receive hidden rows
+    channels.forEach(function (ch) { ch._pg.forEach(function (h) { if (!h.room || h.room === row.room) h.cb({ eventType: type, new: clone(row) }); }); });
+  }
+  var PRES = "__AFN_MOCK_PRESENCE";
+  function presence() { try { return JSON.parse(localStorage.getItem(PRES) || "{}"); } catch (e) { return {}; } }
+  window.addEventListener("storage", function (e) {
+    if (e.key === KEY) {
+      try { db = JSON.parse(e.newValue || "{}"); } catch (x) { return; }
+      list("chat_messages").forEach(function (m) {
+        var s = JSON.stringify(m); if (seenChat[m.id] === s) return;
+        var type = seenChat[m.id] ? "UPDATE" : "INSERT"; emitChat(type, m);
+      });
+    }
+    if (e.key === PRES) channels.forEach(function (ch) { ch._pres.forEach(function (cb) { cb(); }); });
+  });
+  function channel(name, opts) {
+    var key = (opts && opts.config && opts.config.presence && opts.config.presence.key) || "anon";
+    var ch = { _pg: [], _pres: [], name: name,
+      on: function (type, filter, cb) {
+        if (type === "postgres_changes") ch._pg.push({ room: (filter.filter || "").replace(/^room=eq\./, ""), cb: cb });
+        if (type === "presence") ch._pres.push(cb);
+        return ch;
+      },
+      subscribe: function (cb) { channels.push(ch); setTimeout(function () { cb && cb("SUBSCRIBED"); }, 10); return ch; },
+      track: function () { var p = presence(); p[name + "|" + key] = Date.now(); localStorage.setItem(PRES, JSON.stringify(p)); ch._pres.forEach(function (f) { f(); }); return Promise.resolve("ok"); },
+      presenceState: function () { var p = presence(), out = {}; Object.keys(p).forEach(function (k) { if (k.indexOf(name + "|") === 0) out[k] = [{}]; }); return out; },
+      unsubscribe: function () { return Promise.resolve("ok"); }
+    };
+    return ch;
+  }
   var client = {
+    channel: channel,
+    removeChannel: function (ch) { channels = channels.filter(function (x) { return x !== ch; }); var p = presence(); Object.keys(p).forEach(function (k) { if (k.indexOf(ch.name + "|") === 0) delete p[k]; }); localStorage.setItem(PRES, JSON.stringify(p)); return Promise.resolve("ok"); },
     from: query,
     rpc: function (name, args) {
       window.__AFN_MOCK.calls.push({ rpc: name, args: args });

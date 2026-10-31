@@ -5,8 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const read = f => fs.readFileSync(path.join(ROOT, f), "utf8");
-const SQL = read("db/level4_rewards_unlock_social_v1.sql");
-const JS = ["assets/rewards.js", "assets/member-rewards.js", "assets/social.js", "assets/studio-ops.js", "assets/afn-core.js"]
+const SQL = ["db/level4_rewards_unlock_social_v1.sql", "db/level4_1_playback_fallback.sql", "db/level4_2_community_chat.sql"].map(read).join("\n");
+const JS = ["assets/rewards.js", "assets/member-rewards.js", "assets/social.js", "assets/studio-ops.js", "assets/afn-core.js", "assets/community-chat.js"]
   .map(f => [f, read(f)]);
 
 function sqlFunctions() {
@@ -23,7 +23,7 @@ test("every RPC called from the browser exists in SQL with exactly the same argu
   const fns = sqlFunctions();
   let calls = 0;
   for (const [file, src] of JS) {
-    const re = /\brpc\("([a-z_]+)",\s*\{([^}]*)\}/g;
+    const re = /\brpc\("([a-z_]+)",\s*\{([^}]*)\}/g;   // db.rpc / c.rpc / rpc helper
     let m;
     while ((m = re.exec(src))) {
       calls++;
@@ -118,4 +118,15 @@ test("all five pages load sites.js (Shared Core) before any module that resolves
       if (j > 0) assert.ok(j > i, page + ": " + m + " must load after sites.js");
     }
   }
+});
+
+test("community chat: no HTML injection, no direct writes, sender name never sent by the browser", () => {
+  const src = read("assets/community-chat.js");
+  assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML/.test(src), "chat must render with textContent only");
+  assert.ok(!/from\("chat_messages"\)[^;]*\.(insert|update|upsert|delete)\(/.test(src), "chat must not write messages directly");
+  assert.ok(!/display_name\s*:/.test(src.replace(/select\([^)]*\)/g, "")), "browser must not send display_name (server sets it)");
+  const sql = read("db/level4_2_community_chat.sql");
+  assert.match(sql, /revoke all on public\.chat_messages, public\.chat_reports, public\.chat_mutes from anon, authenticated/);
+  assert.match(sql, /alter publication supabase_realtime add table public\.chat_messages/);
+  assert.ok(!/policy[^;]*private\./.test(sql.replace(/\n/g, " ")), "RLS policies must not call private.* functions");
 });

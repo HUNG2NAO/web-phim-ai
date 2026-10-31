@@ -5,6 +5,23 @@
 -- Được kiểm thử tự động: tests/sql/run.sh áp migration → gỡ → so sánh schema với Level 3 → áp lại.
 begin;
 
+-- 0. Level 4.2 Community Chat
+do $$ begin
+  if exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'chat_messages') then
+    execute 'alter publication supabase_realtime drop table public.chat_messages';
+  end if;
+end $$;
+drop function if exists public.send_chat_message(text, text);
+drop function if exists public.report_chat_message(uuid, text, text);
+drop function if exists public.chat_moderate_message(uuid, boolean, text);
+drop function if exists public.chat_dismiss_report(uuid);
+drop function if exists public.chat_set_mute(uuid, integer, text);
+drop function if exists public.admin_chat_reports(text);
+drop table if exists public.chat_reports, public.chat_mutes, public.chat_messages cascade;
+drop function if exists private.can_moderate_room(text);
+drop function if exists private.is_chat_moderator();
+drop function if exists private.chat_room_site(text);
+
 -- 1. Trigger Level 4 gắn trên bảng Level 3
 drop trigger if exists audit_site_films on public.site_films;
 drop trigger if exists audit_review_moderation on public.film_reviews;
@@ -57,7 +74,7 @@ declare n int;
 begin
   select count(*) into n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
    where (s.nspname = 'public' and p.proname in ('claim_daily_checkin','unlock_episode','get_playback_source','log_landing')
-          or p.proname like 'admin\_%' and s.nspname = 'public')
+          or p.proname like 'admin\_%' and s.nspname = 'public' or p.proname like '%chat%' and s.nspname in ('public','private'))
       or (s.nspname = 'private' and p.proname in ('audit','audit_row','audit_source','limit_reports','lock_wallet','episode_is_open',
           'is_network_admin','is_site_admin','is_site_staff','valid_site','vn_today'));
   if n > 0 then raise exception 'ROLLBACK CHƯA SẠCH: còn % hàm Level 4', n; end if;

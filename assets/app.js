@@ -322,7 +322,8 @@
       '<div class="film-actions" id="film-actions"></div>' +
       '<p>' + esc(f.synopsis) + '</p>' +
       '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join("") + '</dl>' +
-      '<div class="film-social" id="film-social" hidden></div></div>' +
+      '<div class="film-social" id="film-social" hidden></div>' +
+      '<section class="film-chat" id="film-chat" hidden aria-label="Bàn luận về phim"></section></div>' +
       (eps ? '<aside class="film-eps" aria-label="Danh sách tập">' + eps + '</aside>' : "") + '</div>';
     updatePlayerBar();
     window.InkArt.hydrate($("#film-content"), byId);
@@ -330,6 +331,7 @@
     if (window.AFN_SOCIAL) window.AFN_SOCIAL.render($("#film-social"), "film", { title: "Bàn luận phim cùng cộng đồng" });
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
     setFilmUrl(f.id, selectedEpisode());
+    window.dispatchEvent(new CustomEvent("afn-film-opened", { detail: { site: site.id, film: f.id } }));
     if (autoplay) play();
   }
   function epButtons() { return Array.prototype.slice.call(document.querySelectorAll(".episodes [data-ep]")); }
@@ -540,7 +542,7 @@
     playToken++;
     if (typeof dlg.close === "function") dlg.close(); else dlg.removeAttribute("open");
   }
-  dlg.addEventListener("close", function () { playToken++; setFilmUrl(null); });
+  dlg.addEventListener("close", function () { playToken++; setFilmUrl(null); window.dispatchEvent(new CustomEvent("afn-film-closed")); });
 
   /* ---------- 6. Sự kiện ---------- */
   document.addEventListener("click", function (e) {

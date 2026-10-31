@@ -9,12 +9,13 @@ P="psql -X -q -v ON_ERROR_STOP=1"
 $P -d postgres -c "drop database if exists $DB" -c "create database $DB" >/dev/null
 for f in tests/sql/supabase_shim.sql db/auth_v1.sql db/level3_pilot.sql db/level3_completion_v1.sql \
          db/level3_engagement_v1.sql db/level3_policy_performance_cleanup.sql db/level3_fk_indexes.sql \
-         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql tests/sql/seed.sql; do
+         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql db/level4_2_community_chat.sql tests/sql/seed.sql; do
   $P -d $DB -f "$f" >/dev/null 2>&1 || { echo "APPLY FAILED: $f"; $P -d $DB -f "$f"; exit 1; }
 done
 # Re-applying the Level 4 migration must be safe (idempotent).
 $P -d $DB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 || { echo "RE-APPLY FAILED"; exit 1; }
 $P -d $DB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.1 FAILED"; exit 1; }
+$P -d $DB -f db/level4_2_community_chat.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.2 FAILED"; exit 1; }
 
 $P -d $DB -f tests/sql/level4_tests.sql 2>&1 | grep -E "PASS|FAIL|ERROR" | sed 's/^.*NOTICE:  //' | tee /tmp/afn_sql_results.txt
 grep -q "FAIL\|ERROR" /tmp/afn_sql_results.txt && { echo "SQL FUNCTIONAL TESTS FAILED"; exit 1; }
@@ -66,10 +67,14 @@ for f in tests/sql/supabase_shim.sql db/auth_v1.sql db/level3_pilot.sql db/level
 before=$(sig $RB)
 $P -d $RB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1
 $P -d $RB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1
+$P -d $RB -f db/level4_2_community_chat.sql >/dev/null 2>&1
 $P -d $RB -f db/staging/99_rollback_level4.sql >/dev/null 2>&1 || { echo "ROLLBACK SCRIPT FAILED"; $P -d $RB -f db/staging/99_rollback_level4.sql; }
 after=$(sig $RB)
 [ "$before" = "$after" ] && check same same "rollback script returns the schema exactly to Level 3" || { check differ same "rollback script returns the schema exactly to Level 3"; diff <(echo "$before") <(echo "$after") | head -20; }
-$P -d $RB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $RB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && check ok ok "Level 4 migration re-applies cleanly after rollback" || check fail ok "Level 4 migration re-applies cleanly after rollback"
+$P -d $RB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $RB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && $P -d $RB -f db/level4_2_community_chat.sql >/dev/null 2>&1 && check ok ok "Level 4 migration re-applies cleanly after rollback" || check fail ok "Level 4 migration re-applies cleanly after rollback"
+
+for i in $(seq 1 20); do call $C "select public.send_chat_message('network','race chat $i')" & done; wait
+check "$(q "select count(*) from chat_messages where user_id='$C'")" 5 "20 simultaneous chat sends from one user → rate limit holds at 5"
 
 echo "Concurrency/staging: $pass passed, $fail failed"
 total=$(grep -c PASS /tmp/afn_sql_results.txt)
