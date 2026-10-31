@@ -13,6 +13,34 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 23:55 — DNS email Resend cho `mail.xuongphim.ai`
+
+**Phạm vi anh duyệt:** 3 bản ghi bắt buộc của Resend (TXT DKIM và 2 CNAME). Không thêm DMARC.
+
+**Đối chiếu trước khi ghi** (đọc DNS bằng API của Cloudflare dashboard):
+- Zone `xuongphim.ai` (`fe5819c8…`, tài khoản Hung2nao, gói Free, active) chỉ có 2 bản ghi website.
+- Không có MX, TXT, SPF, DKIM, `_dmarc` hay bản ghi nào dưới `*.mail.xuongphim.ai`, nên không xung đột.
+- Giá trị lấy trực tiếp từ dữ liệu trang Resend (domain `760159a0…`, vùng Tokyo `ap-northeast-1`), đọc lại ngay trước khi ghi. DKIM dài 218 ký tự, không dùng bản hiển thị bị rút gọn "[…]".
+
+**Cách ghi:** API ghi DNS của dashboard trả 403 nên **không tạo được gì** qua API. Tôi tạo từng bản ghi bằng form "Add record" trên giao diện Cloudflare. Trước khi lưu, tôi đối chiếu nội dung ô DKIM với giá trị Resend (khớp 218/218).
+
+**Đọc lại DNS sau khi ghi:**
+
+| Bản ghi | Loại | Nội dung | Proxy | Khớp Resend |
+|---|---|---|---|---|
+| `resend._domainkey.mail.xuongphim.ai` | TXT | `p=MIGfMA0GCSqGSIb3DQEBAQ…` (218 ký tự) | — | ✓ |
+| `rsend.mail.xuongphim.ai` | CNAME | `rsend-apne1.forge.rmta.net` | **DNS only** | ✓ |
+| `send.mail.xuongphim.ai` | CNAME | `send.forge.rmta.net` | **DNS only** | ✓ |
+| `xuongphim.ai` | CNAME | `web-phim-ai-5sites.pages.dev` | Proxied | giữ nguyên |
+| `www.xuongphim.ai` | CNAME | `web-phim-ai-5sites.pages.dev` | Proxied | giữ nguyên |
+
+- Không đụng zone của 4 website còn lại, không thêm MX hay DMARC, không đổi Supabase SMTP.
+- Chưa tạo API key Resend, chưa phát sinh dịch vụ tính phí.
+
+**Resend:** đã bấm "Verify DNS records" lúc 23:53.
+- Trạng thái lúc 23:54: domain `pending`; DKIM `pending`; `rsend.mail` `pending`; `send.mail` `not_started`; không có `failed_reasons`.
+- Resend kiểm tra DNS định kỳ. Kết quả cuối ghi ở dòng dưới.
+
 ## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)
 
 **Tài khoản:** `+qa1` (0e41cb4f, thành viên A), `+qa2` (c4bdb583, thành viên B), `+qaadmin` (ca41544b).
