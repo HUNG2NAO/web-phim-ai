@@ -217,8 +217,15 @@
         closeAccountMenu();
         if (recovering) {
           // A recovery URL without an established session must not display a working reset form.
+          // Show it (it used to stay hidden, so the visitor just landed on the home page): offer a new link.
+          recovering = false;
+          if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
+          setMode("recover");
+          message(linkProblem || "Liên kết khôi phục chưa được xác thực hoặc đã hết hạn. Nhập email để nhận liên kết mới.", true);
+        } else if (linkProblem) {
+          if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
           setMode("login");
-          message("Liên kết khôi phục chưa được xác thực hoặc đã hết hạn. Hãy yêu cầu liên kết mới.", true);
+          message(linkProblem, true);
         } else setMode("login");
       }
     } catch (e) {
@@ -379,6 +386,40 @@
     } finally { setBusy(false); }
   });
 
+  // Liên kết trong email (xác minh / đặt lại mật khẩu):
+  //  • ?token_hash=…&type=… (mẫu email khuyến nghị) → verifyOtp, dùng được ở BẤT KỲ trình duyệt nào;
+  //  • ?code=… (PKCE mặc định) chỉ đổi được phiên ở đúng trình duyệt đã yêu cầu email;
+  //  • ?error=…&error_code=otp_expired (hoặc trong #hash) → liên kết hết hạn / đã dùng: báo rõ thay vì im lặng.
+  var linkProblem = "";
+  async function prepareEmailLink() {
+    var url = new URL(location.href), hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    var kind = url.searchParams.get("auth");
+    if (kind !== "recovery" && kind !== "confirm") return;
+    var err = url.searchParams.get("error_code") || hash.get("error_code") || url.searchParams.get("error") || hash.get("error");
+    var th = url.searchParams.get("token_hash"), type = url.searchParams.get("type");
+    if (err) {
+      linkProblem = (kind === "recovery" ? "Liên kết đặt lại mật khẩu" : "Liên kết xác minh email") +
+        " đã hết hạn hoặc đã được sử dụng (mỗi liên kết chỉ dùng được 1 lần). " +
+        (kind === "recovery" ? "Nhập email để nhận liên kết mới." : "Nếu tài khoản đã được xác minh, bạn có thể đăng nhập ngay.");
+    } else if (th && /^[A-Za-z0-9_-]{10,200}$/.test(th) && ["recovery", "email", "signup"].indexOf(type) !== -1) {
+      try {
+        var r = await client.auth.verifyOtp({ token_hash: th, type: type === "signup" ? "email" : type });
+        if (r.error) throw r.error;
+        if (kind === "recovery") recovering = true;
+      } catch (e) {
+        linkProblem = "Liên kết đã hết hạn hoặc đã được sử dụng. " + (kind === "recovery" ? "Nhập email để nhận liên kết mới." : "Hãy đăng nhập hoặc yêu cầu email mới.");
+      }
+    } else if (url.searchParams.get("code")) {
+      var sess = await client.auth.getSession().catch(function () { return { data: {} }; });
+      if (!(sess.data && sess.data.session)) {
+        linkProblem = "Liên kết này cần mở trong cùng trình duyệt đã dùng để " +
+          (kind === "recovery" ? "yêu cầu đặt lại mật khẩu. Hãy yêu cầu liên kết mới ngay trên trình duyệt này." : "đăng ký. Tài khoản có thể đã được xác minh — hãy thử đăng nhập.");
+      }
+    }
+    ["error", "error_code", "error_description", "token_hash", "type", "code"].forEach(function (k) { url.searchParams.delete(k); });
+    if (err || th || url.searchParams.get("code") === null) window.history.replaceState(window.history.state, "", url.pathname + url.search);
+  }
+
   if (client) {
     client.auth.onAuthStateChange(function (event) {
       if (event === "PASSWORD_RECOVERY") {
@@ -388,7 +429,7 @@
         queueMicrotask(function () { refreshUser(); });
       }
     });
-    refreshUser().then(function () {
+    prepareEmailLink().then(refreshUser).then(function () {
       var url = new URL(location.href);
       if (url.searchParams.get("auth") === "callback" || url.searchParams.get("auth") === "confirm") {
         url.searchParams.delete("auth");

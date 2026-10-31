@@ -92,6 +92,19 @@ Làm xong các bước này mới đóng được mục "Đăng ký mới qua em
 3. Tên người gửi đang viết thường "xưởng phim".
 4. Chưa kiểm tra header DKIM của thư (Gmail → "Hiện thư gốc") và chưa thử thư đặt lại mật khẩu.
 
+**Đăng nhập lần đầu và đặt lại mật khẩu (01:13–01:15):**
+- Đăng nhập bằng mật khẩu thành công (Auth log `login`, `grant_type=password`, 01:13:38). Bước **đăng nhập sau xác minh: PASS**.
+- Yêu cầu "Quên mật khẩu" lúc 01:13:57: thư "Reset your password" **đến Hộp thư đến** từ `no-reply@mail.xuongphim.ai`. **Gửi thư đặt lại mật khẩu: PASS.**
+- Bấm liên kết đặt lại mật khẩu: **FAIL, tìm ra 2 lỗi thật**
+  1. **01:14:11:** `/verify` thành công nhưng không có bước đổi mã lấy phiên. Liên kết mặc định của Supabase dùng PKCE, chỉ hoạt động ở **đúng trình duyệt đã yêu cầu**. Anh yêu cầu ở trình duyệt tích hợp nhưng mở thư bằng Chrome, nên không có phiên.
+  2. **01:14:17 và 01:15:12:** bấm lại thì Supabase trả `One-time token not found` / `otp_expired` và chuyển về `/?auth=recovery&error=…`. Web không báo gì: dialog không mở, người dùng thấy trang chủ như chưa có chuyện gì (ảnh anh gửi).
+- **Đã sửa trong DEV** (`assets/auth.js`):
+  - Liên kết có `error` / `error_code` (trong query hoặc `#hash`): mở dialog với thông báo rõ "Liên kết … đã hết hạn hoặc đã được sử dụng (mỗi liên kết chỉ dùng được 1 lần)". Với đặt lại mật khẩu, mở sẵn form xin liên kết mới. Xóa tham số lỗi khỏi URL.
+  - Hỗ trợ liên kết `token_hash` (`verifyOtp`), **dùng được ở mọi trình duyệt và điện thoại**.
+  - Liên kết PKCE mở ở trình duyệt khác: báo "cần mở trong cùng trình duyệt…" thay vì im lặng.
+  - Thêm 4 E2E (link hết hạn ở query và ở hash; token_hash hợp lệ; token_hash sai). E2E **75/75**, auth contract 9/9, level4 contract 11/11.
+- **Mẫu email tiếng Việt dùng token_hash:** `docs/email-templates/confirm-signup.html` và `docs/email-templates/reset-password.html`, mỗi tệp ghi kèm tiêu đề thư. Cần dán vào Supabase → Authentication → Emails → Templates thì liên kết mới mở được ở trình duyệt khác. Đây là thao tác cấu hình của anh.
+
 **Đề xuất (chưa làm):** sau khi gửi ổn định, thêm `_dmarc.mail.xuongphim.ai` TXT `v=DMARC1; p=none;`. Không đụng `_dmarc.xuongphim.ai`.
 
 ## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)

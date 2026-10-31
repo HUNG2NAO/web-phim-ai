@@ -361,6 +361,12 @@
       signUp: async function () { return { data: {}, error: null }; },
       resetPasswordForEmail: async function () { return { data: {}, error: null }; },
       signInWithOAuth: async function () { return { data: {}, error: null }; },
+      verifyOtp: async function (x) {
+        window.__AFN_MOCK.calls.push({ verifyOtp: x });
+        if (!x || x.token_hash !== "validhash12345") return { data: {}, error: { message: "Email link is invalid or has expired" } };
+        user = seed.loginAs || null; save(); notify(x.type === "recovery" ? "PASSWORD_RECOVERY" : "SIGNED_IN");
+        return { data: { user: user, session: { user: user } }, error: null };
+      },
       updateUser: async function (x) { if (user && x.data) Object.assign(user.user_metadata, x.data); save(); return { data: { user: user }, error: null }; }
     }
   };

@@ -1,0 +1,10 @@
+<!-- Supabase → Authentication → Emails → Templates → "Confirm sign up"
+     Subject: Xác minh email tài khoản Xưởng Phim
+     Liên kết dùng token_hash: mở được ở bất kỳ trình duyệt/điện thoại nào (không phụ thuộc PKCE). -->
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a1a">
+  <h2 style="margin:0 0 12px">Chào mừng bạn đến với Xưởng Phim</h2>
+  <p style="margin:0 0 16px;line-height:1.6">Bấm nút dưới đây để xác minh email và kích hoạt tài khoản. Liên kết có hiệu lực trong 24 giờ và chỉ dùng được một lần.</p>
+  <p style="margin:0 0 24px"><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email"
+     style="display:inline-block;padding:12px 22px;background:#22c3e6;color:#06121a;text-decoration:none;border-radius:8px;font-weight:bold">Xác minh email</a></p>
+  <p style="margin:0;color:#666;font-size:13px;line-height:1.6">Nếu bạn không đăng ký tài khoản Xưởng Phim, hãy bỏ qua email này.</p>
+</div>

@@ -15,7 +15,7 @@ function vnToday(offset = 0) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" })
     .format(new Date(Date.now() + offset * 864e5));
 }
-function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false, missing = [] } = {}) {
+function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false, missing = [], loginAs = null } = {}) {
   const t = {
     reward_rules: [{ id: 1, checkin_enabled: true, checkin_base: 10, streak_step: 2, streak_step_cap: 5, day7_bonus: 30 }],
     site_films: [{ id: "f1", site_id: "xuongphim", film_id: "tin-hieu-47", title: "Tín Hiệu 47 (thử nghiệm)", synopsis: "Phim thử nghiệm có tập mở sớm.",
@@ -45,7 +45,7 @@ function seed({ user = null, balance = 0, checkedInToday = false, entitlement = 
   if (checkedInToday) t.daily_checkins.push({ user_id: VIEWER.id, checkin_date: vnToday(), site_id: "xuongphim", streak: 1, points: 10 });
   if (entitlement) t.content_entitlements.push({ id: "22222222-2222-4222-8222-000000000001", user_id: VIEWER.id, episode_id: EP.e2, site_id: "xuongphim",
     film_id: "tin-hieu-47", episode_no: 2, points_paid: 50, status: "active", granted_at: "2026-10-30T02:00:00Z", expires_at: null });
-  return { tables: t, user, missing };
+  return { tables: t, user, missing, loginAs };
 }
 async function setup(page, opts = {}) {
   const issues = [];
@@ -792,6 +792,48 @@ test.describe("Hoàn thiện tiếng Việt (31/10)", () => {
     const n = await page.evaluate(() => window.__afnMock && window.__afnMock.clients);
     if (n !== undefined && n !== null) expect(n).toBe(1);
     expect(warn).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Liên kết trong email (xác minh / đặt lại mật khẩu)", () => {
+  test("liên kết đặt lại mật khẩu đã dùng/hết hạn: hiện thông báo rõ và form xin liên kết mới, không im lặng", async ({ page }) => {
+    const issues = await setup(page, {});
+    await page.goto("/?site=xuongphim&auth=recovery&error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+    const dlg = page.locator("dialog[open]");
+    await expect(dlg).toBeVisible();
+    await expect(dlg.locator("#afn-auth-title")).toHaveText("Quên mật khẩu");
+    await expect(dlg.locator("#afn-auth-message")).toContainText("đã hết hạn hoặc đã được sử dụng");
+    await expect(dlg.locator("#afn-submit")).toHaveText("Gửi email đặt lại mật khẩu");
+    expect(page.url()).not.toContain("error_code");
+    expect(issues).toEqual([]);
+  });
+
+  test("liên kết xác minh đã dùng: báo có thể đăng nhập ngay", async ({ page }) => {
+    const issues = await setup(page, {});
+    await page.goto("/?site=xuongphim&auth=confirm#error=access_denied&error_code=otp_expired");
+    await expect(page.locator("dialog[open] #afn-auth-message")).toContainText("có thể đăng nhập ngay");
+    await expect(page.locator("dialog[open] #afn-auth-title")).toHaveText("Đăng nhập");
+    expect(issues).toEqual([]);
+  });
+
+  test("liên kết token_hash (mẫu email khuyến nghị) mở ở trình duyệt khác vẫn đặt lại được mật khẩu", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER });
+    await page.goto("/?site=xuongphim&auth=recovery&token_hash=validhash12345&type=recovery");
+    const dlg = page.locator("dialog[open]");
+    await expect(dlg.locator("#afn-auth-title")).toHaveText("Đặt lại mật khẩu");
+    await expect(dlg.locator("#afn-submit")).toHaveText("Lưu mật khẩu mới");
+    expect(page.url()).not.toContain("token_hash");
+    const calls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.verifyOtp));
+    expect(calls).toEqual([{ verifyOtp: { token_hash: "validhash12345", type: "recovery" } }]);
+    expect(issues).toEqual([]);
+  });
+
+  test("token_hash sai/hết hạn: báo lỗi, không mở form đổi mật khẩu", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER });
+    await page.goto("/?site=xuongphim&auth=recovery&token_hash=expiredhash999&type=recovery");
+    await expect(page.locator("dialog[open] #afn-auth-title")).toHaveText("Quên mật khẩu");
+    await expect(page.locator("dialog[open] #afn-auth-message")).toContainText("hết hạn");
     expect(issues).toEqual([]);
   });
 });
