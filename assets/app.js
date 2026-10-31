@@ -93,6 +93,14 @@
       return '<a href="https://' + s.domain + '" style="--c:' + s.accent + '"' + (s.id === site.id ? ' aria-current="true"' : "") + '>' +
         '<span class="seal" aria-hidden="true">' + s.seal + '</span><span class="n">' + esc(s.domain) + '</span></a>';
     }).join("");
+    var side = $("#side-network");
+    if (side) side.innerHTML = SITES.map(function (s) {
+      return '<a href="https://' + s.domain + '" style="--c:' + s.accent + '" title="' + esc(s.name) + '"' + (s.id === site.id ? ' aria-current="true"' : "") + '>' +
+        '<span class="seal" aria-hidden="true">' + s.seal + '</span><span class="lbl">' + esc(s.name) + '</span></a>';
+    }).join("");
+    document.querySelectorAll("[data-member-tab]").forEach(function (a) {
+      a.setAttribute("href", "member.html" + (state.preview ? "?site=" + encodeURIComponent(site.id) : "") + "#" + a.dataset.memberTab);
+    });
     var bar = $("#preview-bar");
     bar.hidden = !state.preview;
     if (state.preview) {
@@ -105,7 +113,7 @@
 
   /* ---------- 3. Thành phần ---------- */
   function posterHTML(f) {
-    var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="320x480"';
+    var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="640x360"';
     var progress = seriesProgress(f);
     var right = f.type === "bo" ? (!progress ? '<span class="badge">Phim bộ</span>' : !progress.completed ? '<span class="badge accent">' + (progress.aired ? "Tập " + progress.aired : "Sắp chiếu") + '</span>' : '<span class="badge">' + progress.total + ' tập</span>') :
       f.type === "ngan" ? '<span class="badge">' + esc(f.duration) + '</span>' : "";
@@ -150,6 +158,31 @@
     return '<section>' + headHTML(r.title, cn,
       '<button class="more" type="button" data-catalog=\'' + esc(JSON.stringify(r.filter)) + '\'>Xem tất cả</button>') +
       '<div class="scroller">' + list.map(cardHTML).join("") + '</div></section>';
+  }
+
+  /* "Xem tiếp": chỉ lưu trên trình duyệt này (mã phim + số tập), không gửi đi đâu. */
+  function historyKey() { return "afn-cw:" + site.id; }
+  function readHistory() {
+    try { var a = JSON.parse(store(historyKey()) || "[]"); return Array.isArray(a) ? a.filter(function (x) { return x && typeof x.id === "string"; }) : []; }
+    catch (e) { return []; }
+  }
+  function rememberWatch(f, ep) {
+    if (!f) return;
+    var list = readHistory().filter(function (x) { return x.id !== f.id; });
+    list.unshift({ id: f.id, ep: Number(ep) || 1, at: Date.now() });
+    store(historyKey(), JSON.stringify(list.slice(0, 12)));
+  }
+  function continueHTML() {
+    var items = readHistory().map(function (x) { var f = byId(x.id); return f ? { f: f, ep: x.ep } : null; }).filter(Boolean).slice(0, 8);
+    if (!items.length) return "";
+    return '<section class="continue-row">' + headHTML("Xem tiếp", isFuture() ? "▶" : "續", '<span class="count">Trên thiết bị này</span>') +
+      '<div class="scroller">' + items.map(function (it) {
+        var label = it.f.type === "bo" || hasEpisodeList(it.f) ? "Tập " + it.ep : "Tiếp tục";
+        return '<button class="card cw" type="button" data-film="' + it.f.id + '" data-resume="' + it.ep + '">' + posterHTML(it.f) +
+          '<span class="cw-badge">' + playIcon(12) + esc(label) + '</span>' +
+          '<span class="c-title">' + esc(it.f.title) + '</span>' +
+          '<span class="c-meta">' + it.f.year + ' · ' + esc(it.f.genres.join(", ")) + '</span></button>';
+      }).join("") + '</div></section>';
   }
 
   function genresHTML() {
@@ -211,7 +244,7 @@
       $("#hero-slot").innerHTML = featured ? heroHTML(featured) : "";
       var rows = site.rows.map(rowHTML);
       rows.splice(1, 0, rankingHTML());
-      $("#content").innerHTML = genresHTML() + rows.join("");
+      $("#content").innerHTML = continueHTML() + genresHTML() + rows.join("");
     } else {
       $("#hero-slot").innerHTML = "";
       $("#content").innerHTML = catalogHTML(view);
@@ -261,10 +294,11 @@
     var wantEp = Number(startEp) || 1;
     if (hasEpisodeList(f)) {
       var chosen = f.episodeList.some(function (e) { return e.episode_no === wantEp; }) ? wantEp : f.episodeList[0].episode_no;
-      eps = '<div class="ep-head">Danh sách tập</div><div class="episodes" role="group" aria-label="Chọn tập">' +
+      eps = '<div class="ep-head">Danh sách tập</div><div class="episodes list" role="group" aria-label="Chọn tập">' +
         f.episodeList.map(function (e) {
-          return '<button type="button" data-ep="' + e.episode_no + '" data-ep-id="' + esc(e.id) + '" aria-pressed="' + (e.episode_no === chosen) + '">Tập ' +
-            String(e.episode_no).padStart(2, "0") + episodeBadge(e) + '</button>';
+          return '<button type="button" data-ep="' + e.episode_no + '" data-ep-id="' + esc(e.id) + '" aria-pressed="' + (e.episode_no === chosen) + '">' +
+            '<span class="ep-no">Tập ' + String(e.episode_no).padStart(2, "0") + '</span>' + episodeBadge(e) +
+            (e.title ? '<span class="ep-name">' + esc(e.title) + '</span>' : "") + '</button>';
         }).join("") + '</div>' +
         (f.episodeList.some(function (e) { return !episodeOpen(e); }) ? '<p class="ep-legend"><span class="ep-badge early">Sớm</span> mở sớm bằng điểm thưởng · <span class="ep-badge member">TV</span> dành cho thành viên đã đăng nhập</p>' : "");
     } else if (f.type === "bo") {
@@ -279,18 +313,39 @@
     var art = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="960x540"';
     $("#film-content").innerHTML =
       '<div class="player" id="player"' + art + '><button class="play" type="button" id="play-btn" aria-label="Phát phim">' + playIcon(30) + '</button></div>' +
-      '<div class="film-body"><h3 id="film-title">' + esc(f.title) + '</h3>' +
+      (eps && /data-ep=/.test(eps) ? '<div class="player-bar" id="player-bar">' +
+        '<button type="button" class="pb-step" data-ep-step="-1" aria-label="Tập trước">‹ <span>Tập trước</span></button>' +
+        '<span class="pb-now" id="pb-now" aria-live="polite"></span>' +
+        '<button type="button" class="pb-step" data-ep-step="1" aria-label="Tập tiếp theo"><span>Tập tiếp</span> ›</button></div>' : "") +
+      '<div class="film-body' + (eps ? " has-eps" : "") + '"><div class="film-main"><h3 id="film-title">' + esc(f.title) + '</h3>' +
       '<div class="tags"><span class="tag age">' + esc(f.age) + '</span>' + f.genres.map(function (g) { return '<span class="tag">' + esc(g) + '</span>'; }).join("") + '</div>' +
       '<div class="film-actions" id="film-actions"></div>' +
-      '<p>' + esc(f.synopsis) + '</p>' + eps +
+      '<p>' + esc(f.synopsis) + '</p>' +
       '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join("") + '</dl>' +
-      '<div class="film-social" id="film-social" hidden></div></div>';
+      '<div class="film-social" id="film-social" hidden></div></div>' +
+      (eps ? '<aside class="film-eps" aria-label="Danh sách tập">' + eps + '</aside>' : "") + '</div>';
+    updatePlayerBar();
     window.InkArt.hydrate($("#film-content"), byId);
     if (window.AFN_FILM_ACTIONS) window.AFN_FILM_ACTIONS.mount($("#film-actions"), f, selectedEpisode);
     if (window.AFN_SOCIAL) window.AFN_SOCIAL.render($("#film-social"), "film", { title: "Bàn luận phim cùng cộng đồng" });
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
     setFilmUrl(f.id, selectedEpisode());
     if (autoplay) play();
+  }
+  function epButtons() { return Array.prototype.slice.call(document.querySelectorAll(".episodes [data-ep]")); }
+  function updatePlayerBar() {
+    var now = $("#pb-now"); if (!now) return;
+    var list = epButtons(), cur = list.findIndex(function (b) { return b.getAttribute("aria-pressed") === "true"; });
+    var b = list[cur];
+    var name = b && b.querySelector(".ep-name");
+    now.textContent = b ? "Tập " + String(b.dataset.ep).padStart(2, "0") + " / " + String(list.length).padStart(2, "0") + (name ? " · " + name.textContent : "") : "Chọn tập để xem";
+    function usable(dir) { for (var i = cur + dir; i >= 0 && i < list.length; i += dir) if (!list[i].disabled) return list[i]; return null; }
+    document.querySelectorAll("[data-ep-step]").forEach(function (s) { s.disabled = !usable(Number(s.dataset.epStep)); });
+    var sel = b; if (sel && sel.scrollIntoView && dlg.open) { var box = sel.closest(".episodes"); if (box && box.scrollHeight > box.clientHeight) box.scrollTop = sel.offsetTop - box.offsetTop - 40; }
+  }
+  function stepEpisode(dir) {
+    var list = epButtons(), cur = list.findIndex(function (b) { return b.getAttribute("aria-pressed") === "true"; });
+    for (var i = cur + dir; i >= 0 && i < list.length; i += dir) if (!list[i].disabled) { list[i].click(); return; }
   }
   function playerNote(p, text, actions) {
     var box = document.createElement("div"); box.className = "player-gate";
@@ -311,6 +366,7 @@
       p.appendChild(holder);
       if (typeof window.AFN_PLAY_YOUTUBE === "function") {
         window.AFN_PLAY_YOUTUBE({ holder: holder, filmId: f.id, videoId: value, episode: epNo || 1 });
+        rememberWatch(f, epNo || 1);
       } else {
         var iframe = document.createElement("iframe");
         iframe.src = "https://www.youtube-nocookie.com/embed/" + value + "?rel=0";
@@ -330,6 +386,7 @@
           { label: "Thử lại", primary: true, run: function () { play(); } }]);
       });
       p.replaceChildren(v);
+      rememberWatch(f, epNo || 1);
       if ((window.AFN_LEVEL3_CONFIG?.enabledSites || ["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
         window.AFN_TRACK_VIDEO({ video: v, filmId: f.id, episode: epNo || 1 });
       }
@@ -419,6 +476,7 @@
     var src = Array.isArray(f.video) ? f.video[(ep ? +ep.dataset.ep : 1) - 1] : f.video;
     var yt = Array.isArray(f.youtube) ? f.youtube[(ep ? +ep.dataset.ep : 1) - 1] : f.youtube;
     if (f.live && typeof yt === "string" && /^[A-Za-z0-9_-]{11}$/.test(yt)) {
+      rememberWatch(f, ep ? Number(ep.dataset.ep) || 1 : 1);
       p.replaceChildren();
       var holder=document.createElement("div");
       holder.className="youtube-player";
@@ -438,6 +496,7 @@
       }
     } else if (src) {
       p.innerHTML = '<video controls autoplay playsinline src="' + encodeURI(src) + '"></video>';
+      rememberWatch(f, ep ? Number(ep.dataset.ep) || 1 : 1);
       // Progress is recorded only for actually playing native video, with explicit viewer consent.
       if ((window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
         window.AFN_TRACK_VIDEO({
@@ -474,7 +533,9 @@
       }
       applyBrand(); go({ kind: "home" }); return;
     }
-    if (d.film) { openFilm(d.film, !!d.play); return; }
+    if (d.film) { openFilm(d.film, !!d.play || !!d.resume, d.resume); return; }
+    if (d.epStep) { stepEpisode(Number(d.epStep)); return; }
+    if (t.id === "side-toggle") { setSide(document.body.dataset.side === "collapsed" ? "expanded" : "collapsed", true); return; }
     if (d.nav) {
       $("#q").value = "";
       if (d.nav === "home") go({ kind: "home" });
@@ -488,6 +549,7 @@
       if (t.disabled) return;
       t.parentElement.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", b === t ? "true" : "false"); });
       if (current) setFilmUrl(current.id, Number(d.ep) || 1);
+      updatePlayerBar();
       if ($("#player video") || (current && (current.video || hasEpisodeList(current)))) play();
       return;
     }
@@ -507,6 +569,21 @@
     var q = e.target.value.trim();
     if (q) { view = { kind: "catalog", q: q }; render(); } else go({ kind: "home" });
   });
+
+  /* ---------- 7. Thanh bên thu gọn (ghi nhớ trên trình duyệt này) ---------- */
+  function setSide(mode, save) {
+    document.body.dataset.side = mode;
+    var b = $("#side-toggle");
+    if (b) { b.setAttribute("aria-expanded", String(mode === "expanded")); b.setAttribute("aria-label", mode === "expanded" ? "Thu gọn thanh bên" : "Mở rộng thanh bên"); }
+    if (save) store("afn-side", mode);
+  }
+  function measureHeader() {
+    var h = $(".site-header"); if (h) document.documentElement.style.setProperty("--hdr-h", h.offsetHeight + "px");
+  }
+  measureHeader();
+  window.addEventListener("resize", measureHeader);
+  if (typeof ResizeObserver === "function" && $(".site-header")) new ResizeObserver(measureHeader).observe($(".site-header"));
+  setSide(store("afn-side") === "collapsed" || store("afn-side") === "expanded" ? store("afn-side") : (window.innerWidth >= 1100 ? "expanded" : "collapsed"), false);
 
   applyBrand();
   render();

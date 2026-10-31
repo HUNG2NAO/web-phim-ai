@@ -380,3 +380,119 @@ test.describe("Responsive & hồi quy", () => {
     expect(issues).toEqual([]);
   });
 });
+
+test.describe("Giao diện website mẫu — sidebar, poster 16:9, trải nghiệm xem phim", () => {
+  test("sidebar thu gọn: giữ tên truy cập được, ghi nhớ trạng thái, liên kết Của tôi mang theo site", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    const side = page.locator("#sidebar");
+    await expect(side).toBeVisible();
+    expect(Math.round((await side.boundingBox()).width)).toBeGreaterThan(200);
+    await expect(page.locator('#side-me [data-member-tab="rewards"]')).toHaveAttribute("href", "member.html?site=xuongphim#rewards");
+    await expect(page.locator("#side-network a")).toHaveCount(5);
+    await page.locator("#side-toggle").click();
+    await expect(page.locator("#side-toggle")).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(async () => Math.round((await side.boundingBox()).width)).toBeLessThan(90);
+    await expect(page.getByRole("button", { name: "Kho phim", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.locator("body")).toHaveAttribute("data-side", "collapsed");
+    await page.getByRole("button", { name: "Phim bộ", exact: true }).click();
+    await expect(page.locator('[data-nav="bo"]')).toHaveAttribute("aria-current", "true");
+    await page.locator("#side-toggle").click();
+    await expect(page.locator("body")).toHaveAttribute("data-side", "expanded");
+    expect(issues).toEqual([]);
+  });
+
+  test("poster 16:9 ở trang chủ, kho phim và bảng xếp hạng", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=khophim");
+    const ratios = await page.evaluate(() => [...document.querySelectorAll("#content .card .poster, #content .rank .poster")].slice(0, 12)
+      .map(p => { const r = p.getBoundingClientRect(); return r.width / r.height; }));
+    expect(ratios.length).toBeGreaterThan(8);
+    for (const r of ratios) expect(Math.abs(r - 16 / 9)).toBeLessThan(0.03);
+    await page.locator('[data-nav="kho"]').click();
+    const cols = await page.evaluate(() => getComputedStyle(document.querySelector("#content .grid")).gridTemplateColumns.split(" ").length);
+    expect(cols).toBeGreaterThanOrEqual(3);
+    expect(issues).toEqual([]);
+  });
+
+  test("xem phim: thanh tập trước/tiếp, danh sách tập có tên, cổng mở khóa, Xem tiếp trên trang chủ", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 120 });
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator(".episodes [data-ep]")).toHaveCount(3);
+    await expect(page.locator('.episodes [data-ep="2"] .ep-name')).toHaveText("Tín hiệu lạ");
+    await expect(page.locator("#pb-now")).toContainText("Tập 01 / 03");
+    await expect(page.locator('[data-ep-step="-1"]')).toBeDisabled();
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player .youtube-player")).toBeVisible();
+    await page.locator('[data-ep-step="1"]').click();
+    await expect(page.locator("#pb-now")).toContainText("Tập 02 / 03 · Tín hiệu lạ");
+    await expect(page).toHaveURL(/tap=2/);
+    await expect(page.locator("#player .player-gate")).toContainText("50 điểm");
+    // Tập 3 dành cho thành viên đã đăng nhập: phát được ngay, nút "Tập tiếp" bị vô hiệu ở tập cuối.
+    await page.locator('[data-ep-step="1"]').click();
+    await expect(page.locator('[data-ep-step="1"]')).toBeDisabled();
+    await expect(page.locator("#player .youtube-player")).toBeVisible();
+    await page.locator("#close-film").click();
+    await page.goto("/?site=xuongphim");
+    const row = page.locator(".continue-row");
+    await expect(row).toBeVisible();
+    await expect(row.locator(".card")).toHaveCount(1);
+    // Tập 2 bị khóa nên không được ghi là "đang xem"; tập cuối đã phát là tập 3.
+    await expect(row.locator(".cw-badge")).toHaveText("Tập 3");
+    await row.locator(".card").click();
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator('.episodes [data-ep="3"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(page).toHaveURL(/tap=3/);
+    // Lịch sử xem chỉ lưu trên site này: site khác không thấy.
+    await page.goto("/?site=khophim");
+    await expect(page.locator(".continue-row")).toHaveCount(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("điện thoại: thanh tab dưới thay sidebar, cửa sổ phim toàn màn hình, không che nội dung", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator("#side-toggle")).toBeHidden();
+    await expect(page.locator("#side-me")).toBeHidden();
+    const bar = await page.locator("#sidebar").boundingBox();
+    expect(bar.y + bar.height).toBeGreaterThanOrEqual(811);
+    expect(bar.height).toBeLessThan(80);
+    const sizes = await page.locator("#sidebar .nav button").evaluateAll(bs => bs.map(b => b.getBoundingClientRect().height));
+    expect(sizes).toHaveLength(5);
+    for (const h of sizes) expect(h).toBeGreaterThanOrEqual(44);
+    await page.locator('[data-nav="ngan"]').click();
+    await expect(page.locator('[data-nav="ngan"]')).toHaveAttribute("aria-current", "true");
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const fine = await page.locator(".fineprint").boundingBox();
+    expect(fine.y + fine.height).toBeLessThanOrEqual(bar.y + 1);
+    await page.locator("#content .card").first().click();
+    const dlg = await page.locator("#film-dialog").boundingBox();
+    expect(Math.round(dlg.width)).toBe(375);
+    await expect(page.locator("#close-film")).toBeInViewport();
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Shared Core — cùng một khung giao diện cho cả 5 website", () => {
+  for (const [id, name] of [["xuongphim", "XưởngPhim"], ["khophim", "KhoPhim"], ["phephim", "PhêPhim"], ["phimhay", "PhimHay"], ["ghienphim", "GhiềnPhim"]]) {
+    test(id + ": sidebar, poster 16:9, cửa sổ phim, đánh dấu đúng site, không lỗi", async ({ page }) => {
+      const issues = await setup(page, { user: VIEWER, balance: 30 });
+      await page.goto("/?site=" + id);
+      await expect(page.locator("#logo .name")).toContainText(name);
+      await expect(page.locator('#side-network a[aria-current="true"]')).toHaveCount(1);
+      await expect(page.locator('#side-network a[aria-current="true"]')).toHaveAttribute("href", new RegExp(id + "\\.ai"));
+      await expect(page.locator(".afn-reward-chip")).toBeVisible();
+      const poster = await page.locator("#content .card .poster").first().boundingBox();
+      expect(Math.abs(poster.width / poster.height - 16 / 9)).toBeLessThan(0.03);
+      await page.locator("#content .card").first().click();
+      await expect(page.locator("#film-dialog")).toBeVisible();
+      await expect(page.locator("#film-actions .afn-act")).toHaveCount(3);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      expect(await cspViolations(page)).toEqual([]);
+      expect(issues).toEqual([]);
+    });
+  }
+});

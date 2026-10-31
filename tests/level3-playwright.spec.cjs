@@ -297,7 +297,7 @@ test("homepage hero painting yields and offscreen artwork remains lazy",async({p
   }));
   expect(viewport.artworks).toBeGreaterThan(4);
   expect(viewport.lazy).toBeGreaterThan(0);
-  expect(viewport.declaredSize).toBe("320x480");
+  expect(viewport.declaredSize).toBe("640x360");
 });
 test("rapid preview-brand switching keeps headers and hero text coherent",async({page})=>{
   await setup(page);

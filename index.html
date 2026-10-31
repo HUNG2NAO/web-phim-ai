@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="assets/style.css">
 <link rel="stylesheet" href="assets/auth.css">
 <link rel="stylesheet" href="assets/master.css">
+<link rel="stylesheet" href="assets/site-shell.css">
 </head>
 <body>
 <div class="preview-bar" id="preview-bar" hidden>
@@ -27,14 +28,10 @@
 
 <header class="site-header">
   <div class="wrap">
+    <button class="side-toggle" id="side-toggle" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Thu gọn thanh bên">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
     <a href="./" class="logo" id="logo"><span class="name">Phim<span class="tld">.ai</span></span></a>
-    <nav class="nav" aria-label="Danh mục">
-      <button type="button" data-nav="home" aria-current="true">Trang chủ</button>
-      <button type="button" data-nav="kho">Kho phim</button>
-      <button type="button" data-nav="bo">Phim bộ</button>
-      <button type="button" data-nav="le">Phim lẻ</button>
-      <button type="button" data-nav="ngan">Phim ngắn</button>
-    </nav>
     <form class="search" id="search-form" role="search">
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Zm5.3-2.2L21 21"/></svg>
       <label for="q" class="sr-only">Tìm phim</label>
@@ -45,16 +42,39 @@
 
 <aside class="demo-notice" aria-label="Thông báo nội dung mẫu"><div class="wrap"><strong>DEMO</strong> · Phim mẫu do AI tạo, chưa có video để phát.</div></aside>
 
-<div id="hero-slot"></div>
-<main class="wrap" id="content"></main>
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Điều hướng chính">
+    <nav class="nav" aria-label="Danh mục">
+      <button type="button" data-nav="home" aria-current="true" title="Trang chủ"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5M5.5 9.5V20h5v-6h3v6h5V9.5"/></g></svg><span class="lbl">Trang chủ</span></button>
+      <button type="button" data-nav="kho" title="Kho phim"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4zM4 9h16M9 5v4M15 5v4"/></g></svg><span class="lbl">Kho phim</span></button>
+      <button type="button" data-nav="bo" title="Phim bộ"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v12H3zM8 3l4 3 4-3M9 10v4l4-2z"/></g></svg><span class="lbl">Phim bộ</span></button>
+      <button type="button" data-nav="le" title="Phim lẻ"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4zM10 9v6l5-3z"/></g></svg><span class="lbl">Phim lẻ</span></button>
+      <button type="button" data-nav="ngan" title="Phim ngắn"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2"/></g></svg><span class="lbl">Phim ngắn</span></button>
+    </nav>
+    <div class="side-sec" id="side-me">
+      <div class="side-label">Của tôi</div>
+      <a class="side-link" data-member-tab="library" href="member.html#library" title="Tủ phim"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></g></svg><span class="lbl">Tủ phim</span></a>
+      <a class="side-link" data-member-tab="rewards" href="member.html#rewards" title="Điểm thưởng"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></g></svg><span class="lbl">Điểm thưởng</span></a>
+      <a class="side-link" data-member-tab="community" href="member.html#community" title="Cộng đồng"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></g></svg><span class="lbl">Cộng đồng</span></a>
+    </div>
+    <div class="side-sec" id="side-net-sec">
+      <div class="side-label">Hệ thống phim AI</div>
+      <div class="side-net" id="side-network"></div>
+    </div>
+  </aside>
+  <div class="page">
+    <div id="hero-slot"></div>
+    <main class="wrap" id="content"></main>
 
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="network-label">Cùng hệ thống phim AI</div>
-    <div class="network" id="network"></div>
-    <p class="fineprint"><span id="tagline"></span>. Toàn bộ phim, hình ảnh và nhân vật trên hệ thống được tạo bằng công cụ trí tuệ nhân tạo. Phim đang hiển thị là nội dung mẫu.</p>
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="network-label">Cùng hệ thống phim AI</div>
+        <div class="network" id="network"></div>
+        <p class="fineprint"><span id="tagline"></span>. Toàn bộ phim, hình ảnh và nhân vật trên hệ thống được tạo bằng công cụ trí tuệ nhân tạo. Phim đang hiển thị là nội dung mẫu.</p>
+      </div>
+    </footer>
   </div>
-</footer>
+</div>
 
 <dialog class="film" id="film-dialog" aria-labelledby="film-title">
   <button class="close" id="close-film" type="button" aria-label="Đóng">×</button>

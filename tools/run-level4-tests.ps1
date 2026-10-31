@@ -6,7 +6,8 @@
 #>
 param(
   [switch]$Browser,
-  [string]$QaDir = ""
+  [string]$QaDir = "",
+  [string]$ReportFile = ""   # tùy chọn: ghi kết quả E2E dạng JUnit XML (làm bằng chứng nghiệm thu)
 )
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
@@ -23,8 +24,8 @@ $files = @(Get-ChildItem assets\*.js, tests\*.cjs, tests\e2e\*.cjs -File)
 foreach ($f in $files) { node --check $f.FullName; if ($LASTEXITCODE -ne 0) { throw "Lỗi cú pháp: $($f.Name)" } }
 Write-Host ("  OK: " + $files.Count + " file")
 
-Write-Host "`n[2/3] Contract + Auth" -ForegroundColor Cyan
-node --test tests/level4-contract.test.cjs tests/auth-contract.test.cjs tests/auth-account-menu.test.cjs
+Write-Host "`n[2/3] Contract + Auth + cấu hình 5 site" -ForegroundColor Cyan
+node --test tests/level4-contract.test.cjs tests/auth-contract.test.cjs tests/auth-account-menu.test.cjs tests/site-config.test.cjs
 if ($LASTEXITCODE -ne 0) { throw "Contract/Auth tests FAILED" }
 
 if ($Browser) {
@@ -41,7 +42,9 @@ if ($Browser) {
   }
   $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $QaDir "browsers"
   $env:NODE_PATH = Join-Path $QaDir "node_modules"
-  node (Join-Path $QaDir "node_modules\@playwright\test\cli.js") test -c playwright.master.config.cjs --reporter=line
+  $reporter = "line"
+  if ($ReportFile) { $env:PLAYWRIGHT_JUNIT_OUTPUT_NAME = $ReportFile; $reporter = "line,junit" }
+  node (Join-Path $QaDir "node_modules\@playwright\test\cli.js") test -c playwright.master.config.cjs --reporter=$reporter
   if ($LASTEXITCODE -ne 0) { throw "Browser E2E FAILED" }
 } else {
   Write-Host "`n[3/3] Bỏ qua Chromium E2E (thêm -Browser để chạy)."

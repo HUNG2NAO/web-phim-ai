@@ -74,7 +74,7 @@
       var created = await supabase.from("profiles").insert({id:user.id,display_name:name});
       if (created.error && created.error.code !== "23505") throw created.error;
     }
-    if (brand && ["xuongphim","khophim","phephim","phimhay","ghienphim"].includes(brand.id)) {
+    if (brand && (window.SITES||[]).some(function(s){return s.id===brand.id;})) {
       var found = await supabase.from("site_memberships").select("site_id")
         .eq("user_id",user.id).eq("site_id",brand.id).maybeSingle();
       if (found.error) throw found.error;

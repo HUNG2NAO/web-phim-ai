@@ -43,8 +43,18 @@ function tlsOptions() {
   const key = path.join(dir, "key.pem"), cert = path.join(dir, "cert.pem");
   if (!fs.existsSync(cert)) {
     fs.mkdirSync(dir, { recursive: true });
-    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30", "-subj", "/CN=afn-local.pages.dev",
-      "-addext", "subjectAltName=DNS:afn-local.pages.dev,DNS:localhost,IP:127.0.0.1", "-keyout", key, "-out", cert], { stdio: "ignore" });
+    const args = ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30", "-subj", "/CN=afn-local.pages.dev",
+      "-addext", "subjectAltName=DNS:afn-local.pages.dev,DNS:localhost,IP:127.0.0.1", "-keyout", key, "-out", cert];
+    // Windows: openssl is usually not on PATH, but Git for Windows ships one.
+    const pf = process.env.ProgramFiles || "C:\\Program Files";
+    const candidates = ["openssl", path.join(pf, "Git", "usr", "bin", "openssl.exe"), path.join(pf, "Git", "mingw64", "bin", "openssl.exe")];
+    let made = false, lastErr = null;
+    for (const bin of candidates) {
+      if (bin !== "openssl" && !fs.existsSync(bin)) continue;
+      try { execFileSync(bin, args, { stdio: "ignore", env: Object.assign({}, process.env, { MSYS_NO_PATHCONV: "1", MSYS2_ARG_CONV_EXCL: "*" }) }); made = true; break; }
+      catch (e) { lastErr = e; }
+    }
+    if (!made) throw new Error("Cần OpenSSL để tạo chứng chỉ HTTPS cục bộ (cài Git for Windows hoặc OpenSSL). " + (lastErr ? lastErr.message : ""));
   }
   return { key: fs.readFileSync(key), cert: fs.readFileSync(cert) };
 }
