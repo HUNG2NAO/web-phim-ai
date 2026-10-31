@@ -13,6 +13,56 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 15:30 — Hoàn thiện website mẫu, kiểm thử trên PC Nhân
+
+**Trạng thái website mẫu: HOÀN TẤT ở môi trường kiểm thử.** Có bằng chứng chạy thật trên PC Nhân (Windows) và GitHub Actions. Nghiệm thu trên Supabase thật và Cloudflare Preview vẫn chờ chủ tài khoản (xem cuối mục này).
+
+**Git (đọc trực tiếp trên PC Nhân trước khi làm):** worktree `source-level4` ở nhánh `dev/pc-nhan-level4` tại commit `465d75f`, không có file nào bị sửa sau khi checkout; `source` vẫn ở `main` `c6dd520`. Sau khi xong, chạy `Setup-Level4-Worktree.cmd` để fast-forward lên `4b272dc` (log ghi "sạch=True", `source` không đổi). Commit sau đó chỉ sửa CI/test.
+
+**Giao diện website mẫu (dùng chung cho cả 5 site):**
+
+| Hạng mục | Đã làm |
+|---|---|
+| Sidebar thu gọn | Desktop: thanh bên gồm Danh mục, Của tôi (Tủ phim, Điểm thưởng, Cộng đồng) và Hệ thống 5 site. Nút ☰ thu gọn thành thanh biểu tượng 76px, trạng thái được nhớ trên trình duyệt. Từ 700px trở xuống mặc định thu gọn. Điện thoại: chuyển thành thanh tab dưới 5 mục, nút cao ≥ 44px |
+| Lưới poster 16:9 | Áp dụng cho hàng phim, Kho phim, Bảng xếp hạng và Xem tiếp. Tranh tự vẽ ở kích thước 640×360, vẫn tải lười. Khi rê chuột hiện nút phát |
+| Trải nghiệm xem phim | Cửa sổ rộng 1180px, chia 2 cột (thông tin phim / danh sách tập có tên tập, nhãn Sớm/TV). Thanh "‹ Tập trước · Tập 02/03 · Tên tập · Tập tiếp ›" tự bỏ qua tập chưa phát. Trên điện thoại, cửa sổ phim toàn màn hình, trình phát dính trên đầu |
+| Xem tiếp | Lưu trên trình duyệt theo từng site (chỉ mã phim + số tập, không gửi đi đâu). Chỉ ghi khi video thật sự bắt đầu phát, nên tập bị khóa không bị ghi nhầm |
+| CSS | Tách sang `assets/site-shell.css`, chỉ nạp ở trang chủ, để Member Hub và Dashboard không bị ảnh hưởng |
+
+**Thành viên, điểm danh, ví điểm, mở khóa, Social Hub:** giữ nguyên logic Level 4 đã được kiểm thử. Bổ sung thêm E2E cho ba luồng:
+- tập có giá → hiện cổng mở khóa 50 điểm;
+- tập dành cho thành viên → phát được ngay khi đã đăng nhập;
+- 5 site đều có nút điểm danh, hành động phim và Social.
+
+**Shared Core cho 4 site còn lại:**
+- `tests/site-config.test.cjs`: cổng kiểm cấu hình 6 mục. Gồm: id/tên miền không trùng; tương phản màu nút ≥ 4.5 (WCAG AA); phim nổi bật và mọi hàng phim tồn tại đúng thế giới; Social chỉ https; resolver nhận đúng tên miền/www/preview; không file JS nào liệt kê cứng 5 site.
+- Đã bỏ danh sách cứng trong `account.js`.
+- E2E chạy đủ 5 site: sidebar, poster 16:9, cửa sổ phim, đánh dấu đúng site, không lỗi console/CSP, không cuộn ngang.
+
+**Kiểm thử — bằng chứng thực tế:**
+
+| Bộ | Kết quả | Nơi chạy |
+|---|---|---|
+| Cú pháp 29 file + contract/Auth/cấu hình 5 site | **29/29 PASS** | PC Nhân (Windows PS 5.1, Node 24.21) · cloud · CI |
+| **Chromium E2E trên PC Nhân** | **56/56 PASS** (27,4 giây) | PC Nhân, Chrome for Testing 156. Log: `Run-Level4-Browser-Tests.console.log`, `Run-Level4-Browser-Tests.junit.xml` (tests=56, failures=0) |
+| Chromium E2E (cloud + CI) | 56/56 PASS | Linux, GitHub Actions |
+| SQL chức năng/RLS + tranh chấp đồng thời | 88/88 + 10/10 PASS | PostgreSQL 16 tạm · CI |
+| jsdom (auth, Member Hub, preview 5 site) | PASS trên CI | Đã đưa vào workflow Level 4. Harness cũ nạp thiếu `sites.js` cho `index.html` → đã sửa cho đúng thứ tự trang thật |
+
+**Công cụ cho PC Nhân (nhấp đúp, không cần gõ lệnh):**
+- `Setup-Level4-Worktree.cmd`: cập nhật worktree.
+- `source-level4\tools\Run-Level4-Browser-Tests.cmd`: chạy toàn bộ test, gồm cả Chromium. Playwright được cài ngoài repo tại `temp\qa-level4`. Máy chủ test tự dùng OpenSSL của Git for Windows.
+
+**Chuẩn bị nghiệm thu Supabase Staging / Cloudflare Preview:**
+- **Supabase `ai-film-network`:** đã chạy `db/staging/00_preflight_readonly.sql` (chỉ đọc) → **28/28 ok = true**. Level 3 đủ bảng, RLS bật, có admin, 12 bảng Level 4 chưa tồn tại. Chính sách `site_films_public_published` (lỗi khách không đọc được phim) **vẫn đang có** và sẽ được migration thay. **Chưa chạy migration**: đây là project dùng chung, nên cần chủ tài khoản quyết định dùng nó làm staging hay tạo project staging riêng.
+- **Thứ tự nghiệm thu khi được phép:**
+  1. Chạy `db/level4_rewards_unlock_social_v1.sql`.
+  2. Chạy `db/staging/90_verify_after_level4.sql`: mong đợi 5 dòng PASS, kết thúc bằng ROLLBACK.
+  3. Trên Preview, dùng 2 tài khoản thật: điểm danh; mở khóa 1 tập có video thật; mở lại không trừ điểm; hoàn điểm từ Dashboard; tài khoản thường không vào được Dashboard; đổi `?site=khophim` → cùng ví, điểm danh không lặp.
+- **Cloudflare Preview:** cần chủ tài khoản bật Branch control cho `feature/master-site-*` (Workers & Pages → `web-phim-ai-5sites` → Settings → Builds). Vercel Preview của nhánh vẫn build thành công.
+
+---
+
 ## 1. PC Nhân Environment Verification
 
 | Hạng mục | Kết quả | Bằng chứng |
@@ -89,7 +139,8 @@ Chọn **xuongphim.ai**. Lý do dựa trên bằng chứng:
 - Member Hub: tab **Điểm thưởng** gồm số dư, đã nhận, đã dùng, chuỗi 7 ngày, lịch sử giao dịch, nội dung đã mở khóa, lịch sử điểm danh.
 - Chất lượng: kiểm tra ở bề rộng 375px không có cuộn ngang. Hỗ trợ bàn phím (Esc đóng popover và cửa sổ phim), nút cao tối thiểu 38–44px.
 
-**Chưa làm:** lưới poster ngang 16:9, sidebar thể loại thu gọn, "chế độ tập trung" và nguồn dự phòng cho trình phát. Lý do: các phần này cần đổi bố cục trang chủ và hệ thống tranh poster 2:3. Mình ưu tiên các chức năng có giao dịch điểm trước.
+**Đã làm thêm (31/10 15:30):** lưới poster 16:9, sidebar thu gọn, cửa sổ xem phim 2 cột với thanh Tập trước/Tập tiếp, Xem tiếp (xem mục Cập nhật ở đầu báo cáo).
+**Chưa làm:** nguồn phát dự phòng khi YouTube lỗi.
 
 ## 8. Member System
 
@@ -160,7 +211,7 @@ Các tab mới, toàn bộ bằng tiếng Việt và chỉ hiển thị số li�
 ## 15. Multi-site Packaging
 
 **Cách bật cho một site mới:**
-1. Cấu hình trong `assets/sites.js` (tên, màu, `social`).
+1. Cấu hình trong `assets/sites.js` (tên, màu, `social`), rồi chạy `node --test tests/site-config.test.cjs`: test sẽ chỉ ra mục còn thiếu.
 2. Thêm site id vào `assets/level3-config.js → enabledSites`.
 3. Thêm liên kết Social trong Dashboard.
 
@@ -205,7 +256,7 @@ Trong quá trình kiểm thử, mình phát hiện và đã sửa 4 lỗi:
 2. **Preview Cloudflare của nhánh mới chưa được tạo** ("Deployment Not Found"). Cần mở Cloudflare → Workers & Pages → `web-phim-ai-5sites` → Settings → Builds → Branch control, rồi cho phép nhánh `feature/master-site-*`.
 3. Vercel vẫn còn nối với kho và vẫn build Preview cho mỗi nhánh. Production hiện chạy trên Cloudflare, nên nên tắt Vercel để tránh nhầm lẫn.
 4. Logic nhận diện thương hiệu đang lặp lại ở 6 file Level 3 cũ. Nên chuyển dần sang `afn-core.js`.
-5. Các hạng mục chưa làm: lưới poster 16:9, sidebar thể loại, nguồn phát dự phòng, nhiệm vụ Social có thưởng, thưởng giới thiệu bạn bè.
+5. Các hạng mục chưa làm: nguồn phát dự phòng, nhiệm vụ Social có thưởng, thưởng giới thiệu bạn bè. (Lưới 16:9 và sidebar đã xong ngày 31/10.)
 
 ## 19. Rollback Plan
 
