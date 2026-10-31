@@ -13,6 +13,155 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 21:00 — Level 4 Finalization (Xưởng Phim)
+
+**Kết luận: CHƯA đạt MASTER WEBSITE READY.**
+- Toàn bộ phần kỹ thuật làm được trong DEV đã xong và có bằng chứng.
+- Hành trình có đăng nhập vẫn **BLOCKED** vì Supabase staging chưa có tài khoản QA (`auth.users` = 1, là tài khoản chủ).
+- Lý do gốc: email mặc định của Supabase chỉ gửi được 2 email/giờ và chỉ tới thành viên nhóm, chưa bật Custom SMTP.
+
+Commit trên nhánh `feature/master-site-xuongphim-2026-10-31`: `44df4cb`, `47119b7` và commit báo cáo này. Preview mới nhất: `d05fc4d1` (commit `47119b7`).
+
+### 1. Nghiệm thu: Mock PASS và Real User PASS
+
+| Hạng mục | Mock / local | Staging DB | Real User trên Preview |
+|---|---|---|---|
+| Khách: tìm, lọc, xem thông tin, phát YouTube | PASS (E2E) | — | **PASS** (đo thật) |
+| Đăng nhập / đăng ký / xác minh email | PASS (E2E mock) | — | **BLOCKED** (chưa có tài khoản QA, chưa có SMTP) |
+| Điểm danh, ví điểm | PASS | PASS (95/95 transaction rollback) | **BLOCKED** |
+| Mở khóa tập, nguồn dự phòng | PASS | PASS | **BLOCKED** (cần tài khoản) |
+| Lưu tiến độ / xem tiếp | PASS | PASS | PASS phần cục bộ; đồng bộ tài khoản **BLOCKED** |
+| Chat giữa 2 tài khoản, realtime | PASS (mock realtime) | PASS (36/36) | **BLOCKED** |
+| Báo cáo, chống spam, kiểm duyệt | PASS | PASS (gồm 20 luồng song song) | **BLOCKED** |
+| RLS | PASS (SQL 133 + 13) | PASS (xem mục 5) | Khách không đọc được ví hay chat (401 / permission denied, đo thật) |
+
+Không dùng tài khoản thật của chủ để điểm danh, mở khóa hay chat. Không bỏ qua bước xác minh email.
+
+**Quy trình tạo tài khoản QA an toàn** (người làm: chủ dự án, vì Claude không nhập mật khẩu và không tạo tài khoản):
+1. Ưu tiên bật Custom SMTP (mục 2). Sau đó đăng ký thật trên Preview bằng `hung2nao+qa1@gmail.com` và `hung2nao+qa2@gmail.com`, rồi bấm link xác minh trong hộp thư. Đây là cách đạt chuẩn Real User PASS cho cả bước đăng ký.
+2. Nếu chưa bật SMTP: vào Supabase Dashboard → Authentication → Users → **Add user**, chọn *Auto Confirm*. Cách này hợp lệ cho QA nhưng báo cáo sẽ ghi "đăng ký thật: chưa kiểm thử".
+3. Đăng nhập QA1 ở tab alias `feature-master-site-xuongphi…` và QA2 ở một tab Preview có mã hash khác origin (hai localStorage độc lập).
+4. Sau khi kiểm thử: chạy `db/staging/59_qa_cleanup.sql`, rồi xóa 2 người dùng QA trong Dashboard.
+
+### 2. Dịch vụ email (Supabase Auth)
+
+**Hiện trạng** (đọc trong Dashboard, không thay đổi gì):
+- Custom SMTP: **tắt**.
+- Site URL: `https://feature-auth-first-pilot-202.web-phim-ai-5sites.pages.dev` (Preview cũ).
+- Redirect URLs (6): `?auth=confirm|recovery|callback` cho cả `feature-auth-first-pilot-202…` và `feature-master-site-xuongphi…`. Khớp với mã nguồn: `auth.js` gửi `emailRedirectTo`/`redirectTo` = `origin + /?auth=confirm|recovery|callback`.
+- Leaked password protection: **tắt** (cảnh báo của Supabase advisor).
+
+**Đề xuất ngân sách thấp:**
+
+| Nhà cung cấp | Gói miễn phí (tham khảo, cần xác nhận lại trên trang giá) | Gói trả phí đầu | Ghi chú |
+|---|---|---|---|
+| **Resend** (khuyến nghị) | ~3.000 email/tháng, 1 tên miền | ~20 USD/tháng | SMTP `smtp.resend.com:465`, cấu hình đơn giản, đủ cho giai đoạn đầu |
+| Brevo | ~300 email/ngày | theo gói | SMTP `smtp-relay.brevo.com:587`, mật khẩu là SMTP key |
+
+**Cấu hình đề xuất:**
+- Gửi từ tên miền phụ `mail.xuongphim.ai` (không ảnh hưởng website).
+- Người gửi `Xưởng Phim <no-reply@mail.xuongphim.ai>`.
+- Cần thêm bản ghi SPF/DKIM do nhà cung cấp đưa ra. Đây là **thay đổi DNS, cần anh phê duyệt** và anh tự thực hiện.
+- Sau khi bật SMTP, Supabase nâng giới hạn mặc định lên khoảng 30 email/giờ. Điều chỉnh thêm ở Authentication → Rate Limits nếu cần.
+
+**Mẫu email tiếng Việt** (dán vào Authentication → Emails → Templates):
+- *Confirm signup*, tiêu đề "Xác minh email Xưởng Phim":
+  - Nội dung: "Chào bạn, bấm nút dưới đây để kích hoạt tài khoản. Link có hiệu lực 24 giờ."
+  - Nút "Xác minh email" với `href="{{ .ConfirmationURL }}"`.
+  - Dòng cuối: "Nếu bạn không đăng ký, hãy bỏ qua email này."
+- *Reset password*, tiêu đề "Đặt lại mật khẩu Xưởng Phim":
+  - Nút "Đặt mật khẩu mới" với `{{ .ConfirmationURL }}`.
+  - Thêm dòng "Link chỉ dùng được một lần."
+
+**Thao tác anh cần làm** (theo thứ tự):
+1. Tạo tài khoản Resend, thêm tên miền `mail.xuongphim.ai`.
+2. Thêm các bản ghi DNS mà Resend hiển thị vào Cloudflare DNS của `xuongphim.ai` (cần anh phê duyệt).
+3. Tạo API key, rồi dán vào Supabase → Authentication → Emails → SMTP Settings: host `smtp.resend.com`, port `465`, user `resend`, password là API key.
+4. Bật Leaked password protection.
+5. Đổi Site URL sang `https://feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev`.
+
+### 3. Giao diện tiếng Việt: đã sửa và đã đo lại trên Preview
+
+| Vấn đề (đánh giá 19:00) | Đã sửa | Đo lại trên Preview `d05fc4d1` |
+|---|---|---|
+| 29 request Supabase mỗi lần mở trang (`/auth/v1/user` ×10) | Debounce nạp ví. Mọi module dùng chung **một** client Supabase (`AFN.client()`). `AFN.getUser` gom các lần gọi trong 1,5 giây và xóa cache khi phiên đổi | **13 request**, `/auth/v1/user` ×3; không có cảnh báo "Multiple GoTrueClient" mới; vẫn giữ phiên đăng nhập |
+| Nhãn poster 10,5–11 px | `.badge` 12 px | 12 px |
+| "Xem tất cả" / "Vào kho phim" cao 22 px | Vùng chạm 40 px | 40 px |
+| Nút chat nổi che "Thông tin phim" (375 / 390 px) | Hàng nút hero chừa 62 px bên phải | Không chồng lấn ở mọi vị trí cuộn 0–600 px; không cuộn ngang |
+| Không có canonical / og | Canonical và Open Graph theo trang và theo phim, trỏ về tên miền thật (apex) | Trang chủ `https://xuongphim.ai/`; phim `…/phim/thanh-pho-khong-ngu`, title "Thành Phố Không Ngủ · Xưởng Phim.ai"; đóng phim thì trở về trang chủ |
+| `/sitemap.xml` 404 | Pages Function chọn `sitemaps/<site>.xml` theo tên miền; `tools/build-sitemaps.cjs` sinh tệp; test kiểm tra tệp còn khớp kho phim | 200 `application/xml`, `X-Robots-Tag: noindex` trên Preview |
+| robots.txt mặc định | Theo tên miền: tên miền thật cho phép lập chỉ mục (trừ `/admin`, `/account`) và khai báo sitemap; `*.pages.dev` chặn toàn bộ | Preview: `Disallow: /` |
+| Không có trang chính sách / quy tắc | `chinh-sach.html` (bản nháp, noindex): dữ liệu thu thập, nơi lưu, quyền xóa tài khoản (đã có trong trang Tài khoản), quy tắc cộng đồng, báo cáo/kiểm duyệt. Có link ở chân trang và trong khung chat | 200; còn thiếu email liên hệ (chủ website bổ sung) và cần pháp lý duyệt |
+| Trang 404 | Đã có sẵn (`404.html`, noindex, nút về trang chủ) | 404 đúng |
+
+**Kiểm thử:**
+- E2E Chromium **71/71** (thêm 4 bài: 375/390 px, SEO/chính sách, một client dùng chung).
+- Contract test và site-config test (7/7) đạt.
+- Bộ `playwright.config.cjs` (Level 3) chạy vào một Preview cũ nên không chạy được từ môi trường này; không có thay đổi Level 3.
+
+**Lưu ý khi merge sau này:** thư mục `functions/` sẽ chạy trên Production. Trang vẫn giữ `noindex` cho đến khi anh duyệt nội dung thật.
+
+### 4. Đặc tả nền tảng đa ngôn ngữ (chỉ thiết kế, chưa triển khai)
+
+**Thứ tự thị trường:** Việt Nam → Indonesia → Thái Lan.
+
+**URL**
+- `/{lang}/`, `/{lang}/phim/{slug}`, `/{lang}/phim/{slug}/tap/{n}`, với `lang ∈ {vi,id,th}`.
+- `/` chuyển 302 theo cookie `afn-lang`, rồi theo `Accept-Language`, mặc định `vi`. Bot không bị chuyển hướng.
+- `slug` dùng chung giữa các ngôn ngữ (id phim), nên một phim là một thực thể.
+
+**Dữ liệu (một catalog chung):**
+```
+film_translations(site_id, film_id, lang, title, synopsis, seo_title, seo_description, status draft|published, updated_at)
+  PK(site_id, film_id, lang); RLS: đọc khi published, ghi bởi site admin
+episode_translations(episode_id, lang, title)
+media_tracks(episode_id, kind subtitle|audio, lang, label, url, is_default)   -- WebVTT cho phụ đề
+i18n/{vi,id,th}.json                                                          -- chuỗi giao diện, khóa phẳng "chat.send"
+```
+- Thiếu bản dịch thì hiện bản `vi` kèm nhãn "Chưa có bản dịch". Trang đó không đưa vào sitemap của ngôn ngữ ấy.
+
+**Tài khoản và ví:**
+- Một tài khoản, một ví cho mọi ngôn ngữ (không đổi schema `wallets`).
+- Thêm `profiles.locale` và `profiles.timezone`.
+- `claim_daily_checkin` tính "ngày" theo `site.timezone` (mặc định Asia/Ho_Chi_Minh). Indonesia WITA/WIT cần ghi rõ mốc giờ trong giao diện.
+
+**SEO:**
+- Mỗi trang có `<html lang>`, canonical cùng ngôn ngữ, `hreflang` cho vi/id/th và `x-default` → `/vi/`.
+- Sitemap index trỏ tới `sitemap-vi.xml`, `sitemap-id.xml`, `sitemap-th.xml`, có `xhtml:link`.
+- Pages Functions chèn title, description và og vào HTML phía máy chủ, vì bot mạng xã hội không chạy JS. Mở rộng từ hàm `functions/` đã có.
+
+**Hiển thị:**
+- Thêm Noto Sans Thai (subset) cho `th`.
+- Kiểm tra độ dài chuỗi tiếng Indonesia (thường dài hơn tiếng Việt 15–25%) ở nút và thanh tab di động.
+
+**Tìm kiếm:** chuẩn hóa NFKC, chữ thường, bỏ dấu tiếng Việt; tiếng Thái so khớp theo chuỗi con (không có khoảng trắng giữa từ); tìm trên `title` và `synopsis` của ngôn ngữ hiện tại cộng với `vi`.
+
+**Community Chat:**
+- Phòng `network:{lang}` và `film:{site}:{film}:{lang}`.
+- Mở rộng check trên `chat_messages.room`. Giữ chung rate limit, báo cáo và kiểm duyệt.
+- Thêm `chat_moderators.langs` để giao kiểm duyệt viên theo ngôn ngữ.
+- Danh sách từ cấm theo ngôn ngữ (bảng `chat_blocklist(lang, pattern)`), xử lý trong `send_chat_message`.
+
+**Pháp lý:**
+- Trang chính sách cho từng ngôn ngữ.
+- Đồng ý xử lý dữ liệu khi đăng ký: PDPA (Thái Lan), UU PDP (Indonesia).
+
+**Ước tính:** khoảng 3–5 tuần cho một người làm kỹ thuật. Chi phí lớn nhất là dịch metadata, phụ đề và kiểm duyệt viên bản địa.
+
+### 5. RLS và an toàn Production
+
+- **RLS:** 27/27 bảng public bật RLS.
+  - `anon` chỉ có quyền SELECT trên dữ liệu công khai: `site_films`, `site_episodes`, `site_social_links`, `reward_rules`, `approved_reviews`.
+  - `anon` không có quyền INSERT trên bảng nào.
+  - `traffic_events` không có policy (chỉ ghi qua RPC `log_landing`); đúng thiết kế.
+- **Advisor:** các cảnh báo "SECURITY DEFINER callable" là RPC có chủ đích; mỗi hàm tự kiểm tra `auth.uid()` và quyền, đã kiểm thử. Còn một việc cần làm: bật Leaked password protection (thao tác của anh).
+- **Production không bị ảnh hưởng** (đã xác minh):
+  - `main` vẫn là `c6dd520`.
+  - Production deployment của Cloudflare vẫn là `c6dd520` (28/10).
+  - Tên miền thật không đổi.
+  - Không thay đổi DNS hay cấu hình thanh toán.
+  - Không đồng bộ sang bốn website còn lại.
+
 ## Cập nhật 31/10/2026 19:00 — Đánh giá trải nghiệm Đông Nam Á (Việt Nam · Thái Lan · Indonesia)
 
 **Phạm vi bằng chứng:**
