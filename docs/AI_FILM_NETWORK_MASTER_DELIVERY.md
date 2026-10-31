@@ -62,7 +62,37 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 | 21 | qa1 đăng xuất (bấm "Đăng xuất" trên giao diện) rồi đăng nhập lại (23:22) | **PASS** | Trước khi đăng xuất ô điểm hiện "★30điểm"; sau khi đăng xuất: không còn phiên, ô hiện "Điểm danh". Sau khi đăng nhập lại: ví balance 30 = ledger 30 (earned 60, spent 30), không có điểm danh trùng |
 | 22 | qa2 và qaadmin tự điểm danh trên giao diện (anh thao tác lúc 23:24) | **PASS** | Mỗi tài khoản có 1 lượt điểm danh +10, balance 10 = ledger 10 |
 
-**Còn chờ:** kiểm chứng 2 bản sửa chat trên Preview. Cần qaadmin đăng nhập ở alias (bản mới nhất); qa2 đã ở `0d8d5ae6` (bản đã sửa).
+| 23 | **Kiểm chứng bản sửa 1** (thật, 23:30): qa1 gửi tin vào phòng chung; qa2 (bản `0d8d5ae6`) báo cáo Spam qua giao diện; qaadmin (alias, bản mới nhất) bấm "Ẩn tin" trong Dashboard | **PASS** | Tin biến mất khỏi khung chat đang mở của qa2 sau **1,8 giây** (trước khi sửa: khoảng 20 giây, tối đa 45 giây) |
+| 24 | **Kiểm chứng bản sửa 2**: qa2 gửi tin, qa1 báo cáo, qaadmin bấm "Khóa chat 24h" rồi "Mở khóa" | **PASS** | Khung chat đang mở của qa2 bị khóa sau **1,6 giây** (banner "Bạn đang bị tạm khóa chat đến 23:30 01-11."); mở lại sau **1,1 giây** khi được mở khóa; gửi tin "gửi lại được sau khi mở khóa" thành công, không cần tải lại trang |
+
+Thêm commit sau kiểm chứng: nút "Khóa chat" ngay trong khung chat của kiểm duyệt viên cũng phát tín hiệu, giống Dashboard.
+
+**Regression sau các bản sửa:** E2E Chromium **71/71**, contract test 11/11, site-config 7/7, SQL **133 chức năng + 13 đồng thời/rollback** (PostgreSQL 16 cục bộ).
+
+**Kiểm tra dọn dữ liệu QA** (`59_qa_cleanup.sql`, chỉ chạy thử, **chưa xóa gì**):
+- Khớp đúng 3 tài khoản QA. Dữ liệu người khác liên quan: quyền xem 0, báo cáo 0. Tin chat của người không phải QA: 0.
+- Nếu chạy thật sẽ xóa: 1 phim QA, 3 tập, 1 quyền xem, 1 dòng `site_staff` (qaadmin), 10 tin chat QA, 0 khóa chat.
+- Ví, lịch sử điểm và lượt điểm danh của QA chỉ mất khi anh xóa 3 tài khoản trong Dashboard (cascade).
+- Không chạm tới tài khoản chủ (10 điểm) và tài khoản `ngos…@gmail.com`.
+- Chỉ chạy thật khi anh đồng ý.
+
+### Kết luận nghiệm thu Xưởng Phim Level 4
+
+| Hạng mục | Kết quả |
+|---|---|
+| Khách: tìm kiếm, lọc, xem thông tin, phát video | Real User PASS |
+| Đăng nhập, đăng xuất, đăng nhập lại (tài khoản QA tạo bằng Dashboard) | Real User PASS |
+| Đăng ký mới qua email xác minh | **BLOCKED**: chưa bật Custom SMTP (email mặc định 2/giờ, chỉ gửi trong nhóm) |
+| Điểm danh, chống điểm danh trùng, ví điểm | Real User PASS |
+| Mở khóa tập, chống trừ điểm hai lần, quyền xem sau mở khóa | Real User PASS |
+| Community Chat: phòng chung và theo phim, Realtime, số người đang xem | Real User PASS |
+| Chống spam, báo cáo, kiểm duyệt (ẩn, khóa, mở khóa), giới hạn quyền, nhật ký | Real User PASS (sau 2 bản sửa đã kiểm chứng) |
+| Giao diện desktop/mobile | Real User PASS (đo ở 375/768/1366 px) |
+| RLS, Production không bị ảnh hưởng | PASS |
+
+**MASTER WEBSITE: READY cho toàn bộ hành trình đã kiểm thử, trừ đăng ký mới qua email xác minh.** Bước này cần bật Custom SMTP (chủ dự án làm), rồi đăng ký 1 tài khoản thật để đóng mục BLOCKED cuối cùng.
+- Chưa merge `main`, chưa đồng bộ 4 website còn lại.
+- `main` vẫn là `c6dd520`, Production và DNS không đổi.
 
 ## Cập nhật 31/10/2026 23:10 — Xác minh môi trường trước khi chạy script QA
 

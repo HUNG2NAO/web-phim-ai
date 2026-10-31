@@ -146,6 +146,7 @@
       c.rpc("chat_set_mute", { p_user: m.user_id, p_minutes: 1440, p_reason: "Vi phạm quy định cộng đồng (24 giờ)" }).then(function (r) {
         if (r.error) { setStatus(explain(r.error), true); return; }
         AFN.toast("Đã khóa chat " + m.display_name + " trong 24 giờ.");
+        if (channel) channel.send({ type: "broadcast", event: "moderated", payload: {} });
       });
     }
     function checkMute() {
