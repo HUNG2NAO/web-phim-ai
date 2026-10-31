@@ -15,7 +15,7 @@ function vnToday(offset = 0) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" })
     .format(new Date(Date.now() + offset * 864e5));
 }
-function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false } = {}) {
+function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false, missing = [] } = {}) {
   const t = {
     reward_rules: [{ id: 1, checkin_enabled: true, checkin_base: 10, streak_step: 2, streak_step_cap: 5, day7_bonus: 30 }],
     site_films: [{ id: "f1", site_id: "xuongphim", film_id: "tin-hieu-47", title: "Tín Hiệu 47 (thử nghiệm)", synopsis: "Phim thử nghiệm có tập mở sớm.",
@@ -45,7 +45,7 @@ function seed({ user = null, balance = 0, checkedInToday = false, entitlement = 
   if (checkedInToday) t.daily_checkins.push({ user_id: VIEWER.id, checkin_date: vnToday(), site_id: "xuongphim", streak: 1, points: 10 });
   if (entitlement) t.content_entitlements.push({ id: "22222222-2222-4222-8222-000000000001", user_id: VIEWER.id, episode_id: EP.e2, site_id: "xuongphim",
     film_id: "tin-hieu-47", episode_no: 2, points_paid: 50, status: "active", granted_at: "2026-10-30T02:00:00Z", expires_at: null });
-  return { tables: t, user };
+  return { tables: t, user, missing };
 }
 async function setup(page, opts = {}) {
   const issues = [];
@@ -336,6 +336,15 @@ test.describe("Dashboard quản trị", () => {
 });
 
 test.describe("Responsive & hồi quy", () => {
+  test("Supabase chưa chạy migration Level 4: ẩn nút điểm danh, trang vẫn hoạt động", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, missing: ["reward_rules", "wallets", "daily_checkins", "site_episodes", "site_social_links"] });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator("#content .card").first()).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(page.locator(".afn-reward-slot")).toBeHidden();
+    await expect(page.locator(".site-footer .afn-social")).toBeHidden();
+    expect(issues).toEqual([]);
+  });
   test("điện thoại 375px: không cuộn ngang ở trang chủ, cửa sổ phim, Member Hub", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     const issues = await setup(page, { user: VIEWER, balance: 20 });

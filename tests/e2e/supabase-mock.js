@@ -19,6 +19,7 @@
   var listeners = [];
   window.__AFN_MOCK = { get db() { return db; }, save: save, calls: [] };
 
+  var MISSING = seed.missing || [];   // simulate a Supabase project where Level 4 is not migrated yet
   var UNIQUE = { site_episodes: ["site_id", "film_id", "episode_no"], film_library: ["viewer_profile_id", "film_id", "collection"],
     episode_sources: ["episode_id"], daily_checkins: ["user_id", "checkin_date"], site_social_links: ["id"] };
   function query(t) {
@@ -41,6 +42,7 @@
     function match(x) { return filters.every(function (f) { return f(x); }); }
     function run() {
       window.__AFN_MOCK.calls.push({ table: t, op: op });
+      if (MISSING.indexOf(t) !== -1) return Promise.resolve({ data: null, error: { code: "42P01", message: 'relation "public.' + t + '" does not exist' } });
       var all = list(t), data = null, error = null;
       if (op === "select") {
         data = all.filter(match).map(clone);

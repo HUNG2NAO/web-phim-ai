@@ -6,7 +6,7 @@
   var AFN = window.AFN;
   if (!AFN) return;
   var el = AFN.el;
-  var state = { user: null, rules: null, wallet: null, last: null, busy: false };
+  var state = { user: null, rules: null, wallet: null, last: null, busy: false, unavailable: true };
   var pendingUnlockKeys = {};   // episodeId → idempotency key reused if the network drops mid-request
 
   function todayKey() { return AFN.vnDayKey(new Date()); }
@@ -30,8 +30,10 @@
     state.user = await AFN.getUser(true);
     try {
       var rules = await c.from("reward_rules").select("*").eq("id", 1).maybeSingle();
+      // Level 4 not migrated on this Supabase project yet → keep the feature out of sight.
+      state.unavailable = !!(rules && rules.error) || !(rules && rules.data);
       state.rules = rules && rules.data || null;
-    } catch (e) { state.rules = null; }
+    } catch (e) { state.rules = null; state.unavailable = true; }
     if (state.user) {
       try {
         var w = await c.from("wallets").select("balance,earned_total,spent_total").eq("user_id", state.user.id).maybeSingle();
@@ -90,7 +92,7 @@
     if (account) header.insertBefore(slot, account); else header.appendChild(slot);
   }
   function render() {
-    if (!AFN.configured) { slot.hidden = true; return; }
+    if (!AFN.configured || state.unavailable) { slot.hidden = true; return; }
     slot.hidden = false;
     chip.replaceChildren();
     var star = el("span", "afn-star", "★"); star.setAttribute("aria-hidden", "true");
