@@ -17,13 +17,18 @@
   Kết quả ghi vào Setup-Level4-Worktree.log cạnh script — gửi file log này cho Claude để xác minh.
 #>
 param(
-  [string]$Root = $PSScriptRoot,
+  [string]$Root = "",
   [string]$Branch = "feature/master-site-xuongphim-2026-10-31",
   [string]$DevBranch = "dev/pc-nhan-level4",
   [switch]$NoPause,
   [switch]$SkipTests
 )
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 (menu "Run with PowerShell") có thể để $PSScriptRoot rỗng trong param():
+# xác định thư mục gốc trong thân script, có nhiều phương án dự phòng.
+if (-not $Root) { $Root = $PSScriptRoot }
+if (-not $Root -and $MyInvocation.MyCommand.Path) { $Root = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $Root) { $Root = (Get-Location).Path }
 $log = Join-Path $Root "Setup-Level4-Worktree.log"
 function Log([string]$m, [string]$c = "Gray") { $line = (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + "  " + $m; Add-Content -LiteralPath $log -Value $line -Encoding UTF8; Write-Host $line -ForegroundColor $c }
 function Pause-End { if (-not $NoPause) { Read-Host "Nhấn Enter để đóng" | Out-Null } }
