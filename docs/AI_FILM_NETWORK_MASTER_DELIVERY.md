@@ -103,7 +103,10 @@ Làm xong các bước này mới đóng được mục "Đăng ký mới qua em
   - Hỗ trợ liên kết `token_hash` (`verifyOtp`), **dùng được ở mọi trình duyệt và điện thoại**.
   - Liên kết PKCE mở ở trình duyệt khác: báo "cần mở trong cùng trình duyệt…" thay vì im lặng.
   - Thêm 4 E2E (link hết hạn ở query và ở hash; token_hash hợp lệ; token_hash sai). E2E **75/75**, auth contract 9/9, level4 contract 11/11.
-- **Mẫu email tiếng Việt dùng token_hash:** `docs/email-templates/confirm-signup.html` và `docs/email-templates/reset-password.html`, mỗi tệp ghi kèm tiêu đề thư. Cần dán vào Supabase → Authentication → Emails → Templates thì liên kết mới mở được ở trình duyệt khác. Đây là thao tác cấu hình của anh.
+- **Mẫu email tiếng Việt dùng token_hash:** `docs/email-templates/confirm-signup.html` và `docs/email-templates/reset-password.html`, mỗi tệp ghi kèm tiêu đề thư. Lúc 01:25, theo yêu cầu của anh, tôi đã dán 2 mẫu này vào Supabase → Authentication → Emails → Templates ("Confirm sign up" và "Reset password", project staging `ai-film-network`).
+  - Tải lại trang để kiểm tra: tiêu đề "Xác minh email tài khoản Xưởng Phim" và "Đặt lại mật khẩu Xưởng Phim" đã lưu.
+  - Liên kết đã lưu: `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email` (xác minh) và `…&type=recovery` (đặt lại mật khẩu).
+  - Các mẫu khác giữ nguyên. Preview alias đã chạy `auth.js` mới (có `verifyOtp`).
 
 **Đề xuất (chưa làm):** sau khi gửi ổn định, thêm `_dmarc.mail.xuongphim.ai` TXT `v=DMARC1; p=none;`. Không đụng `_dmarc.xuongphim.ai`.
 
