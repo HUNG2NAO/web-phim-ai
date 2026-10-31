@@ -340,7 +340,7 @@
     setActiveProfile(p);await loadSelected();announce("Đã chuyển sang hồ sơ "+p.nickname);
   }
   function setTab(name){
-    if(!["overview","library","discover","community","profiles","inbox","settings"].includes(name))return;
+    if(!["overview","rewards","library","discover","community","profiles","inbox","settings"].includes(name))return;
     state.tab=name;$$("[data-panel]").forEach(p=>p.hidden=p.dataset.panel!==name);
     $$("[data-tab]").forEach(b=>{const active=b.dataset.tab===name;b.classList.toggle("active",active);if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");});
     if(window.location.hash!=="#"+name)window.history.replaceState(window.history.state,"","#"+name);

@@ -1,0 +1,3 @@
+# Đường dẫn đẹp để chia sẻ phim / tập (giữ nguyên trang một tệp index.html).
+/phim/:slug/tap/:ep   /?film=:slug&tap=:ep   302
+/phim/:slug           /?film=:slug           302

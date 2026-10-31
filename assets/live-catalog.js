@@ -23,6 +23,20 @@ function valid(row){
  try{
   const {data,error}=await client.from("site_films").select("*").eq("site_id",brand.id).eq("published",true);
   if(error)throw error;
+  // Level 4: public episode metadata (tier, price). Sources are never part of this response.
+  const episodesByFilm=new Map();
+  try{
+   const ep=await client.from("site_episodes")
+    .select("id,film_id,episode_no,title,access_tier,price_points,free_from,access_days")
+    .eq("site_id",brand.id).eq("published",true).order("episode_no",{ascending:true});
+   if(!ep.error)(ep.data||[]).forEach(e=>{
+    if(!/^[0-9a-f-]{36}$/i.test(e.id||"")||!Number.isInteger(e.episode_no))return;
+    if(!["free","early","member"].includes(e.access_tier))return;
+    if(!episodesByFilm.has(e.film_id))episodesByFilm.set(e.film_id,[]);
+    episodesByFilm.get(e.film_id).push({id:e.id,episode_no:e.episode_no,title:String(e.title||"").slice(0,160),
+     access_tier:e.access_tier,price_points:Math.max(0,Number(e.price_points)||0),free_from:e.free_from||null,access_days:e.access_days||null});
+   });
+  }catch(_){/* Level 4 tables may not be migrated yet; film-level playback still works */}
   const films=window.FILMS||[];
   for(const row of (data||[]).filter(valid)){
    const genres=Array.isArray(row.genres)?row.genres.filter(x=>typeof x==="string").slice(0,12):[];
@@ -33,6 +47,9 @@ function valid(row){
     art:{motif:brand.world==="tuong-lai"?"pho":"truc",hue:200}};
    if(row.source_kind==="youtube")film.youtube=row.youtube_id;
    else film.video=row.video_url;
+   const eps=episodesByFilm.get(row.film_id);
+   if(eps&&eps.length){film.episodeList=eps.sort((a,b)=>a.episode_no-b.episode_no);
+    if(film.type==="bo")film.episodes=eps.length,film.aired=eps.length;}
    const idx=films.findIndex(x=>x.id===film.id);
    if(idx>=0)films[idx]=film;else films.push(film);
   }

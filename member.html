@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Chakra+Petch:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/level3.css">
   <link rel="stylesheet" href="assets/premium-ui.css">
+  <link rel="stylesheet" href="assets/master.css">
 </head>
 <body class="premium-member">
   <a class="skip-link" href="#main">Đến nội dung chính</a>
@@ -57,6 +58,7 @@
       <div class="layout">
         <nav class="side-nav" aria-label="Khu vực thành viên">
           <button class="nav-item active" data-tab="overview" aria-current="page">⌂ <span>Tổng quan</span></button>
+          <button class="nav-item" data-tab="rewards">★ <span>Điểm thưởng</span></button>
           <button class="nav-item" data-tab="library">♡ <span>Tủ phim</span></button>
           <button class="nav-item" data-tab="discover">✦ <span>Khám phá</span></button>
           <button class="nav-item" data-tab="community">♧ <span>Cộng đồng</span></button>
@@ -80,6 +82,10 @@
               <div class="stat"><span>Đang theo dõi</span><strong id="stat-following">0</strong></div>
               <div class="stat"><span>Đang xem dở</span><strong id="stat-progress">0</strong></div>
             </div>
+          </section>
+          <section class="tab-panel" id="tab-rewards" data-panel="rewards" hidden>
+            <div class="section-top"><div><span class="eyebrow">ĐIỂM THƯỞNG</span><h2>Điểm danh &amp; ví điểm</h2></div><span class="muted">Một ví dùng chung cho cả mạng lưới phim</span></div>
+            <div id="rewards-root" aria-live="polite"><p class="muted">Đang tải ví điểm…</p></div>
           </section>
           <section class="tab-panel" id="tab-library" data-panel="library" hidden>
             <div class="section-top"><div><span class="eyebrow">TỦ PHIM CÁ NHÂN</span><h2>Lưu những gì bạn yêu thích</h2></div></div>
@@ -111,6 +117,7 @@
               </div>
               <div class="panel-card"><h3>Thành tích cá nhân</h3><div id="achievement-items" class="achievement-list"></div><p class="muted small">Huy hiệu thử nghiệm dựa trên những hành động có dữ liệu. Không có XP hoặc thứ hạng giả.</p></div>
             </div>
+            <section id="member-social" class="afn-social" hidden></section>
             <div class="section-top"><h3>Đánh giá đã gửi</h3></div><div id="review-items" class="review-list"></div>
             <div class="section-top"><h3>Đánh giá cộng đồng đã duyệt</h3></div>
             <p class="muted small">Chỉ bình luận đã được quản trị viên kiểm duyệt mới hiển thị công khai.</p>
@@ -157,4 +164,7 @@
 <script src="assets/live-catalog.js"></script>
   <script src="assets/art.js"></script>
   <script src="assets/level3.js"></script>
+  <script src="assets/afn-core.js"></script>
+  <script src="assets/social.js"></script>
+  <script src="assets/member-rewards.js"></script>
 </body></html>

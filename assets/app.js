@@ -230,18 +230,50 @@
   /* ---------- 5. Chi tiết phim + trình phát ---------- */
   var dlg = $("#film-dialog");
   var current = null;
-  function openFilm(id, autoplay) {
+  var playToken = 0;
+  function hasEpisodeList(f) { return !!(f && Array.isArray(f.episodeList) && f.episodeList.length); }
+  function episodeOpen(e) { return e.access_tier === "free" || (e.access_tier === "early" && e.free_from && new Date(e.free_from) <= new Date()); }
+  function episodeBadge(e) {
+    if (episodeOpen(e)) return "";
+    if (e.access_tier === "member") return ' <span class="ep-badge member" title="Dành cho thành viên đã đăng nhập">TV</span>';
+    return ' <span class="ep-badge early" title="Mở sớm bằng ' + e.price_points + ' điểm">Sớm ' + e.price_points + '</span>';
+  }
+  function selectedEpisode() {
+    var b = $(".episodes [aria-pressed='true']");
+    return b ? Number(b.dataset.ep) || 1 : 1;
+  }
+  // Each opened film gets its own shareable address (?film=…&tap=…). Pretty /phim/… links redirect here.
+  function setFilmUrl(filmId, ep) {
+    try {
+      var u = new URL(location.href);
+      if (filmId) { u.searchParams.set("film", filmId); if (ep > 1) u.searchParams.set("tap", String(ep)); else u.searchParams.delete("tap"); }
+      else { u.searchParams.delete("film"); u.searchParams.delete("tap"); }
+      history.replaceState(history.state, "", u.href);
+    } catch (e) {}
+  }
+  function openFilm(id, autoplay, startEp) {
     var f = byId(id); if (!f) return;
     current = f;
+    playToken++;
     var specs = [["Thể loại", f.genres.join(", ")], ["Loại", TYPE_LABEL[f.type]], ["Tình trạng", status(f)], ["Năm", f.year],
       ["Thời lượng", f.duration], ["Chất lượng", f.quality], ["Độ tuổi", f.age], ["Lượt xem", fmtViews(f.views)]];
     var eps = "";
-    if (f.type === "bo") {
+    var wantEp = Number(startEp) || 1;
+    if (hasEpisodeList(f)) {
+      var chosen = f.episodeList.some(function (e) { return e.episode_no === wantEp; }) ? wantEp : f.episodeList[0].episode_no;
+      eps = '<div class="ep-head">Danh sách tập</div><div class="episodes" role="group" aria-label="Chọn tập">' +
+        f.episodeList.map(function (e) {
+          return '<button type="button" data-ep="' + e.episode_no + '" data-ep-id="' + esc(e.id) + '" aria-pressed="' + (e.episode_no === chosen) + '">Tập ' +
+            String(e.episode_no).padStart(2, "0") + episodeBadge(e) + '</button>';
+        }).join("") + '</div>' +
+        (f.episodeList.some(function (e) { return !episodeOpen(e); }) ? '<p class="ep-legend"><span class="ep-badge early">Sớm</span> mở sớm bằng điểm thưởng · <span class="ep-badge member">TV</span> dành cho thành viên đã đăng nhập</p>' : "");
+    } else if (f.type === "bo") {
       var progress = seriesProgress(f);
+      var pick = progress && wantEp >= 1 && wantEp <= progress.aired ? wantEp : 1;
       eps = progress ? '<div class="ep-head">Danh sách tập</div><div class="episodes" role="group" aria-label="Chọn tập">' +
         Array.from({ length: progress.total }, function (_, i) {
           var n = i + 1, off = n > progress.aired;
-          return '<button type="button" data-ep="' + n + '" aria-pressed="' + (n === 1 && !off) + '"' + (off ? ' disabled title="Sắp chiếu"' : "") + '>Tập ' + String(n).padStart(2, "0") + '</button>';
+          return '<button type="button" data-ep="' + n + '" aria-pressed="' + (n === pick && !off) + '"' + (off ? ' disabled title="Sắp chiếu"' : "") + '>Tập ' + String(n).padStart(2, "0") + '</button>';
         }).join("") + '</div>' : '<p class="ep-head">Chưa có thông tin số tập hợp lệ.</p>';
     }
     var art = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="960x540"';
@@ -249,14 +281,131 @@
       '<div class="player" id="player"' + art + '><button class="play" type="button" id="play-btn" aria-label="Phát phim">' + playIcon(30) + '</button></div>' +
       '<div class="film-body"><h3 id="film-title">' + esc(f.title) + '</h3>' +
       '<div class="tags"><span class="tag age">' + esc(f.age) + '</span>' + f.genres.map(function (g) { return '<span class="tag">' + esc(g) + '</span>'; }).join("") + '</div>' +
+      '<div class="film-actions" id="film-actions"></div>' +
       '<p>' + esc(f.synopsis) + '</p>' + eps +
-      '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join("") + '</dl></div>';
+      '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join("") + '</dl>' +
+      '<div class="film-social" id="film-social" hidden></div></div>';
     window.InkArt.hydrate($("#film-content"), byId);
+    if (window.AFN_FILM_ACTIONS) window.AFN_FILM_ACTIONS.mount($("#film-actions"), f, selectedEpisode);
+    if (window.AFN_SOCIAL) window.AFN_SOCIAL.render($("#film-social"), "film", { title: "Bàn luận phim cùng cộng đồng" });
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+    setFilmUrl(f.id, selectedEpisode());
     if (autoplay) play();
   }
+  function playerNote(p, text, actions) {
+    var box = document.createElement("div"); box.className = "player-gate";
+    var msg = document.createElement("p"); msg.textContent = text; box.appendChild(msg);
+    (actions || []).forEach(function (a) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "btn " + (a.primary ? "primary" : "ghost");
+      b.textContent = a.label; b.addEventListener("click", a.run); box.appendChild(b);
+    });
+    p.replaceChildren(box);
+    var first = box.querySelector("button"); if (first && dlg.open) first.focus();
+  }
+  function playSource(p, f, kind, value, epNo) {
+    if (kind === "youtube" && typeof value === "string" && /^[A-Za-z0-9_-]{11}$/.test(value)) {
+      p.replaceChildren();
+      var holder = document.createElement("div");
+      holder.className = "youtube-player";
+      holder.style.cssText = "width:100%;aspect-ratio:16/9;background:#000";
+      p.appendChild(holder);
+      if (typeof window.AFN_PLAY_YOUTUBE === "function") {
+        window.AFN_PLAY_YOUTUBE({ holder: holder, filmId: f.id, videoId: value, episode: epNo || 1 });
+      } else {
+        var iframe = document.createElement("iframe");
+        iframe.src = "https://www.youtube-nocookie.com/embed/" + value + "?rel=0";
+        iframe.title = f.title;
+        iframe.setAttribute("allow", "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture");
+        iframe.setAttribute("allowfullscreen", "");
+        iframe.style.cssText = "width:100%;height:100%;border:0";
+        holder.appendChild(iframe);
+      }
+      return true;
+    }
+    if (kind === "native" && typeof value === "string" && /^https:\/\/\S+$/.test(value)) {
+      var v = document.createElement("video");
+      v.controls = true; v.autoplay = true; v.playsInline = true; v.src = value;
+      v.addEventListener("error", function () {
+        playerNote(p, "Không phát được video tập này. Bạn có thể báo lỗi để quản trị viên kiểm tra.", [
+          { label: "Thử lại", primary: true, run: function () { play(); } }]);
+      });
+      p.replaceChildren(v);
+      if ((window.AFN_LEVEL3_CONFIG?.enabledSites || ["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
+        window.AFN_TRACK_VIDEO({ video: v, filmId: f.id, episode: epNo || 1 });
+      }
+      return true;
+    }
+    return false;
+  }
+  // Live episodes: the source is fetched from the server only after the access check passes.
+  function playEpisode(p, f) {
+    var btn = $(".episodes [aria-pressed='true']");
+    var info = f.episodeList.find(function (e) { return btn && e.id === btn.dataset.epId; }) || f.episodeList[0];
+    setFilmUrl(f.id, info.episode_no);
+    if (!window.AFN_PLAYBACK) { playerNote(p, "Trình phát chưa sẵn sàng trên bản này."); return; }
+    var token = ++playToken;
+    playerNote(p, "Đang kiểm tra quyền xem tập " + info.episode_no + "…");
+    window.AFN_PLAYBACK.resolve(info.id).then(function (res) {
+      if (token !== playToken || !p.isConnected) return;
+      showResult(p, f, info, res);
+    });
+  }
+  function showResult(p, f, info, res) {
+    var price = AFN_fmt(info.price_points);
+    var freeFrom = info.free_from ? " Tập sẽ miễn phí từ " + new Date(info.free_from).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "." : "";
+    var status = res && res.status;
+    if (status === "ok") {
+      if (!playSource(p, f, res.source_kind, res.youtube_id || res.video_url, info.episode_no))
+        playerNote(p, "Nguồn phát của tập này không hợp lệ. Vui lòng báo lỗi để quản trị viên kiểm tra.");
+      return;
+    }
+    if (status === "login_required") {
+      playerNote(p, info.access_tier === "member"
+        ? "Tập " + info.episode_no + " dành cho thành viên. Đăng nhập miễn phí để xem."
+        : "Tập " + info.episode_no + " đang mở sớm cho thành viên với " + price + " điểm." + freeFrom,
+        [{ label: "Đăng nhập để xem", primary: true, run: function () { if (window.AFN) window.AFN.openLogin(); } }]);
+      return;
+    }
+    if (status === "locked") {
+      var bal = window.AFN_PLAYBACK.balance;
+      playerNote(p, "Tập " + info.episode_no + " đang mở sớm với " + price + " điểm." + (bal !== null && bal !== undefined ? " Số dư của bạn: " + AFN_fmt(bal) + " điểm." : "") + freeFrom, [
+        { label: "Mở khóa · " + price + " điểm", primary: true, run: function (e) { doUnlock(p, f, info, e.currentTarget); } }]);
+      return;
+    }
+    if (status === "no_source") { playerNote(p, "Tập " + info.episode_no + " chưa có nguồn phát. Vui lòng quay lại sau."); return; }
+    if (status === "not_found") { playerNote(p, "Tập này không còn được phát hành."); return; }
+    playerNote(p, "Không tải được nguồn phát. Vui lòng kiểm tra kết nối.", [
+      { label: "Thử lại", primary: true, run: function () { play(); } }]);
+  }
+  function doUnlock(p, f, info, button) {
+    if (button) { button.disabled = true; button.textContent = "Đang mở khóa…"; }
+    window.AFN_PLAYBACK.unlock(info.id).then(function (r) {
+      if (!p.isConnected) return;
+      var s = r && r.status;
+      if (s === "unlocked" || s === "already_unlocked" || s === "free" || s === "member_access") {
+        if (s === "unlocked" && window.AFN) window.AFN.toast("Đã mở khóa tập " + info.episode_no + " (−" + AFN_fmt(r.price) + " điểm). Chúc bạn xem phim vui!");
+        playEpisode(p, f);
+        return;
+      }
+      if (s === "insufficient") {
+        var need = Math.max(0, (r.price || info.price_points) - (r.balance || 0));
+        playerNote(p, "Bạn cần thêm " + AFN_fmt(need) + " điểm để mở khóa tập này (số dư " + AFN_fmt(r.balance) + "). Điểm danh mỗi ngày để tích điểm.", [
+          { label: "Điểm danh hôm nay", primary: true, run: function () {
+            if (window.AFN_REWARDS) window.AFN_REWARDS.claim().then(function () { playEpisode(p, f); });
+          } }]);
+        return;
+      }
+      if (s === "login_required") return;
+      playerNote(p, "Chưa mở khóa được. Điểm của bạn chưa bị trừ — vui lòng thử lại.", [
+        { label: "Thử lại", primary: true, run: function (e) { doUnlock(p, f, info, e.currentTarget); } }]);
+    });
+  }
+  function AFN_fmt(n) { return Number(n || 0).toLocaleString("vi-VN"); }
+  // Read-only hook for modules that load after a deep-linked film is already open (rewards.js, social.js).
+  window.AFN_APP = Object.freeze({ current: function () { return dlg.open ? current : null; }, selectedEpisode: selectedEpisode });
   function play() {
     var p = $("#player"), f = current; if (!p || !f) return;
+    if (hasEpisodeList(f)) { playEpisode(p, f); return; }
     var progress = seriesProgress(f);
     if (f.type === "bo" && (!progress || progress.aired === 0)) {
       if (!p.querySelector(".note")) {
@@ -304,8 +453,10 @@
   }
   function closeFilm() {
     var v = dlg.querySelector("video"); if (v) v.pause();
+    playToken++;
     if (typeof dlg.close === "function") dlg.close(); else dlg.removeAttribute("open");
   }
+  dlg.addEventListener("close", function () { playToken++; setFilmUrl(null); });
 
   /* ---------- 6. Sự kiện ---------- */
   document.addEventListener("click", function (e) {
@@ -336,7 +487,8 @@
     if (d.ep) {
       if (t.disabled) return;
       t.parentElement.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", b === t ? "true" : "false"); });
-      if ($("#player video") || (current && current.video)) play();
+      if (current) setFilmUrl(current.id, Number(d.ep) || 1);
+      if ($("#player video") || (current && (current.video || hasEpisodeList(current)))) play();
       return;
     }
     if (t.id === "play-btn") { play(); return; }
@@ -362,11 +514,15 @@
   window.addEventListener("afn-catalog-updated",function(){
     applyBrand();render();
   });
-  var requestFilm=new URLSearchParams(location.search).get("film");
+  var requestParams=new URLSearchParams(location.search);
+  var requestFilm=requestParams.get("film");
+  var requestEp=Math.max(1,Math.min(10000,parseInt(requestParams.get("tap")||"1",10)||1));
   if(requestFilm && /^[a-z0-9][a-z0-9-]{0,119}$/.test(requestFilm)) {
-    if(byId(requestFilm))openFilm(requestFilm,false);
-    else window.addEventListener("afn-catalog-updated",function(){
-      if(byId(requestFilm))openFilm(requestFilm,false);
+    if(byId(requestFilm))openFilm(requestFilm,false,requestEp);
+    // Live films (and their episode lists) arrive asynchronously; reopen once they are known.
+    window.addEventListener("afn-catalog-updated",function(){
+      var f=byId(requestFilm);
+      if(f && (!dlg.open || (current && current.id===requestFilm && !$(".episodes [data-ep-id]") && hasEpisodeList(f))))openFilm(requestFilm,false,requestEp);
     },{once:true});
   }
 })();
