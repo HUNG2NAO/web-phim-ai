@@ -403,6 +403,17 @@ test.describe("Giao diện website mẫu — sidebar, poster 16:9, trải nghi�
     expect(issues).toEqual([]);
   });
 
+  test("máy tính bảng 768px: thanh bên thu gọn, Danh mục nằm trên cùng, không cuộn ngang", async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    const issues = await setup(page);
+    await page.goto("/?site=khophim");
+    await expect(page.locator("body")).toHaveAttribute("data-side", "collapsed");
+    const navTop = (await page.locator("#sidebar .nav").boundingBox()).y;
+    const meTop = (await page.locator("#side-me").boundingBox()).y;
+    expect(navTop).toBeLessThan(meTop);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    expect(issues).toEqual([]);
+  });
   test("poster 16:9 ở trang chủ, kho phim và bảng xếp hạng", async ({ page }) => {
     const issues = await setup(page);
     await page.goto("/?site=khophim");
