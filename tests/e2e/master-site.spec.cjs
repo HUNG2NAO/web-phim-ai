@@ -699,6 +699,30 @@ test.describe("Community Chat (Level 4.2)", () => {
     expect(issues).toEqual([]); expect(issuesB).toEqual([]);
   });
 
+  test("khóa/mở khóa từ Dashboard tới ngay khung chat PHÒNG PHIM đang mở (kênh kiểm duyệt toàn mạng)", async ({ page, context }) => {
+    const pageB = await context.newPage(); await withProfiles(pageB);
+    const issuesB = await setup(pageB, { user: USER_B });
+    await pageB.goto("/phim/tin-hieu-47?site=xuongphim");
+    const fc = pageB.locator("#film-chat");
+    await fc.locator("textarea").fill("Tin trong phòng phim"); await fc.locator("textarea").press("Enter");
+    await expect(fc.locator(".afn-chat-msg.mine")).toHaveCount(1);
+    const viewer = await context.newPage(); await setup(viewer, { user: VIEWER });
+    await viewer.goto("/phim/tin-hieu-47?site=xuongphim");
+    const msg = viewer.locator("#film-chat .afn-chat-msg").filter({ hasText: "Tin trong phòng phim" });
+    await msg.getByRole("button", { name: "Báo cáo" }).click(); await msg.getByRole("button", { name: "Spam" }).click();
+    await expect.poll(async () => (await mock(viewer)).chat_reports.length).toBe(1);
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    await page.locator("#ops-chat-reports .studio-item").first().getByRole("button", { name: "Khóa chat 24h" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã khóa chat 24 giờ");
+    await expect(fc.locator("textarea")).toBeDisabled({ timeout: 5000 });
+    await page.locator("#ops-chat-mutes").getByRole("button", { name: "Mở khóa" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã mở khóa chat");
+    await expect(fc.locator("textarea")).toBeEnabled({ timeout: 5000 });
+    expect(issues).toEqual([]); expect(issuesB).toEqual([]);
+  });
+
   test("chat theo phim trong cửa sổ phim, tách riêng phòng chung", async ({ page }) => {
     const issues = await setup(page, { user: VIEWER });
     await page.goto("/phim/tin-hieu-47?site=xuongphim");

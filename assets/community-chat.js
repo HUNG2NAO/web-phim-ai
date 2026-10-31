@@ -54,9 +54,27 @@
   function canMute() { return !!roles && (roles.owner || Object.keys(roles.sites).some(function (k) { return roles.sites[k] === "admin"; })); }
 
   /* ------------------------------------------------------------------ một khung chat */
+  // Khóa/mở khóa chat có hiệu lực toàn mạng → mọi khung chat đang mở (phòng chung hay phòng phim) phải kiểm tra lại
+  // ngay khi kiểm duyệt viên khóa/mở khóa, không chỉ phòng nơi thao tác diễn ra.
+  var modHooks = [], modChannel = null;
+  function onModeration(fn) {
+    modHooks.push(fn);
+    if (!modChannel) {
+      var c0 = AFN.client();
+      if (c0 && typeof c0.channel === "function") {
+        modChannel = c0.channel("chat:moderation")
+          .on("broadcast", { event: "moderated" }, function () { modHooks.slice().forEach(function (h) { h(); }); })
+          .subscribe();
+      }
+    }
+    return function () { modHooks = modHooks.filter(function (h) { return h !== fn; }); };
+  }
+  function announceModeration() {
+    if (modChannel) modChannel.send({ type: "broadcast", event: "moderated", payload: {} });
+  }
   function mount(box, room, opts) {
     opts = opts || {};
-    var c = AFN.client(), alive = true, channel = null, uid = null, msgs = {}, resync = 0, modReload = 0;
+    var c = AFN.client(), alive = true, channel = null, uid = null, msgs = {}, resync = 0, modReload = 0, offMod = null;
     box.replaceChildren(); box.classList.add("afn-chat"); box.dataset.room = room;
     var head = el("div", "afn-chat-head");
     var title = el("h3", "afn-chat-title", opts.title || "Trò chuyện");
@@ -147,6 +165,7 @@
         if (r.error) { setStatus(explain(r.error), true); return; }
         AFN.toast("Đã khóa chat " + m.display_name + " trong 24 giờ.");
         if (channel) channel.send({ type: "broadcast", event: "moderated", payload: {} });
+        announceModeration();
       });
     }
     function checkMute() {
@@ -216,11 +235,15 @@
       }
       uid = u.id;
       loadRoles(c, uid).then(function () { return checkMute(); }).then(function () { return load(); }).then(subscribe);
-      resync = setInterval(function () { if (navigator.onLine) { checkMute(); load(); } }, 45000);   // gỡ tin bị ẩn mà Realtime không gửi (RLS); cập nhật khóa/mở khóa chat
+      resync = setInterval(function () { if (navigator.onLine) { checkMute(); load(); } }, 45000);
+      offMod = onModeration(function () {
+        if (!alive) return;
+        clearTimeout(modReload); modReload = setTimeout(function () { checkMute().then(load); }, 300 + Math.random() * 700);
+      });   // gỡ tin bị ẩn mà Realtime không gửi (RLS); cập nhật khóa/mở khóa chat
     });
 
     return { destroy: function () {
-      alive = false; clearInterval(resync); clearTimeout(modReload);
+      alive = false; clearInterval(resync); clearTimeout(modReload); if (offMod) offMod();
       window.removeEventListener("online", onNet); window.removeEventListener("offline", onNet);
       if (channel) { try { c.removeChannel(channel); } catch (e) {} channel = null; }
     } };
