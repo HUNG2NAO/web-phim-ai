@@ -44,6 +44,9 @@ insert into public.episode_sources(episode_id, source_kind, youtube_id, video_ur
  ('eeeeeeee-0000-4000-8000-000000000006', 'youtube', 'EP6xxxxxxxx', null),
  ('eeeeeeee-0000-4000-8000-000000000007', 'youtube', 'EP7xxxxxxxx', null),
  ('eeeeeeee-0000-4000-8000-000000000011', 'youtube', 'K01xxxxxxxx', null);
+-- Level 4.1: episode 2 has a rights-cleared HTTPS backup source.
+update public.episode_sources set fallback_kind = 'native', fallback_video_url = 'https://media.example.test/ep2-backup.mp4'
+ where episode_id = 'eeeeeeee-0000-4000-8000-000000000002';
 insert into public.site_social_links(site_id, platform, label, url, enabled) values
  ('xuongphim', 'facebook_page', 'Fanpage', 'https://www.facebook.com/example-test', true),
  ('xuongphim', 'telegram', 'Kênh ẩn', 'https://t.me/example_test', false);

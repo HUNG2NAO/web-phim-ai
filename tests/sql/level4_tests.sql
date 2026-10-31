@@ -20,6 +20,7 @@ select t.err($$select public.unlock_episode('eeeeeeee-0000-4000-8000-00000000000
 select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000001')->>'youtube_id' = 'EP1xxxxxxxx', 'anon gets source of a free episode');
 select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000002')->>'status' = 'login_required', 'anon gets login_required for early-access episode');
 select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000002')->>'youtube_id' is null, 'locked response contains no source');
+select t.ok(not (public.get_playback_source('eeeeeeee-0000-4000-8000-000000000002') ? 'fallback'), 'locked response contains no fallback source either');
 select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000004')->>'status' = 'login_required', 'member episode needs login');
 select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000005')->>'status' = 'not_found', 'unpublished episode is not_found for anon');
 select public.log_landing('xuongphim', '/', 'tin-hieu-47', 'facebook', 'social', 'ra-mat', 'abc_1');
@@ -70,6 +71,8 @@ select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000004')->
 select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000011')->>'status' = 'locked', 'xuongphim unlock does not open khophim episode (site isolation)');
 select t.err($$select public.unlock_episode('eeeeeeee-0000-4000-8000-000000000005', 'req-a-ep5-0001')$$, 'episode_not_found', 'cannot unlock unpublished episode');
 select t.err($$select public.unlock_episode('eeeeeeee-0000-4000-8000-000000000002', 'bad key!')$$, 'invalid_idempotency_key', 'malformed idempotency key rejected');
+select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000002')->'fallback'->>'video_url' = 'https://media.example.test/ep2-backup.mp4', 'fallback source delivered only together with an allowed primary');
+select t.ok(public.get_playback_source('eeeeeeee-0000-4000-8000-000000000001')->'fallback' = 'null'::jsonb, 'episode without backup returns fallback null');
 select t.ok((select balance from public.wallets) = 160, 'A balance after all attempts = 160');
 select t.ok((select count(*) from public.content_entitlements) = 1, 'A has exactly one entitlement');
 select t.ok((select count(*) from public.wallet_ledger where kind = 'unlock') = 1, 'A has exactly one unlock debit');
@@ -158,6 +161,11 @@ begin; set local role authenticated; select t.as_user(:KADMIN);
 insert into public.site_social_links(site_id, platform, label, url) values ('khophim','youtube','Kênh YouTube','https://www.youtube.com/@example-test');
 select t.err($$insert into public.site_social_links(site_id,platform,label,url) values ('xuongphim','tiktok','x','https://www.tiktok.com/@x')$$, 'row-level security', 'khophim admin cannot edit xuongphim social links');
 select t.err($$insert into public.site_social_links(site_id,platform,label,url) values ('khophim','other','x','javascript:alert(1)')$$, 'check constraint', 'non-https social URL rejected');
+select t.err($$update public.episode_sources set fallback_kind='native', fallback_video_url='http://insecure.example.test/a.mp4' where episode_id='eeeeeeee-0000-4000-8000-000000000011'$$, 'fallback_valid', 'fallback must be HTTPS');
+select t.err($$update public.episode_sources set fallback_kind='youtube', fallback_youtube_id='short' where episode_id='eeeeeeee-0000-4000-8000-000000000011'$$, 'fallback_valid', 'fallback YouTube ID must be 11 characters');
+update public.episode_sources set fallback_kind='youtube', fallback_youtube_id='K01backup00' where episode_id='eeeeeeee-0000-4000-8000-000000000011';
+select t.ok((select fallback_youtube_id from public.episode_sources where episode_id='eeeeeeee-0000-4000-8000-000000000011') = 'K01backup00', 'site admin sets a backup source for own-site episode');
+select t.ok((select count(*) from public.admin_audit_log where action = 'episode_sources.update') >= 1, 'backup source change is audited');
 commit;
 begin; set local role authenticated; select t.as_user(:OWNER);
 select t.ok((select visits from public.admin_traffic('xuongphim', 7) where utm_source='facebook') = 1, 'traffic dashboard groups campaign visits');

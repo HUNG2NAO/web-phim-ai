@@ -153,7 +153,8 @@
       if (!ok) return { data: { status: user ? "locked" : "login_required", tier: e.access_tier, price: e.price_points } };
       var s = list("episode_sources").find(function (x) { return x.episode_id === e.id; });
       if (!s) return { data: { status: "no_source" } };
-      return { data: { status: "ok", source_kind: s.source_kind, youtube_id: s.youtube_id, video_url: s.video_url } };
+      return { data: { status: "ok", source_kind: s.source_kind, youtube_id: s.youtube_id, video_url: s.video_url,
+        fallback: s.fallback_kind ? { source_kind: s.fallback_kind, youtube_id: s.fallback_youtube_id || null, video_url: s.fallback_video_url || null } : null } };
     },
     log_landing: function (a) {
       if (!a.p_source && !a.p_medium && !a.p_campaign && !a.p_ref) return { data: null };

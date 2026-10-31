@@ -73,7 +73,8 @@
         </div>
         <label for="ops-ep-source">Nguồn phát</label><select id="ops-ep-source"><option value="youtube">YouTube (Video ID)</option><option value="native">Video HTTPS (.mp4)</option></select>
         <label for="ops-ep-video">YouTube ID hoặc URL HTTPS</label><input id="ops-ep-video" placeholder="Để trống khi chỉ sửa quyền xem">
-        <label class="toggle-row"><input type="checkbox" id="ops-ep-rights"><span>Tôi xác nhận có quyền phát hành nguồn video này.</span></label>
+        <div id="ops-fallback-row"><label for="ops-ep-fallback">Nguồn dự phòng (không bắt buộc): YouTube ID hoặc URL HTTPS bạn có quyền phát</label><input id="ops-ep-fallback" placeholder="Tự dùng khi nguồn chính lỗi · nhập - để xóa"></div>
+        <label class="toggle-row"><input type="checkbox" id="ops-ep-rights"><span>Tôi xác nhận có quyền phát hành nguồn video này (và nguồn dự phòng nếu có).</span></label>
         <label class="toggle-row"><input type="checkbox" id="ops-ep-published"><span>Phát hành tập này</span></label>
         <div class="ops-inline"><button type="submit" class="btn primary" id="ops-ep-save">Lưu tập</button><button type="button" class="btn ghost" id="ops-ep-reset">Tạo mới</button></div>
         <p class="ops-note">Nguồn phát được lưu riêng, người xem chỉ nhận được sau khi máy chủ kiểm tra quyền xem.</p>

@@ -86,8 +86,16 @@
       ctx.films.forEach(function (f) { sel.append(new Option(f.title + (f.published ? "" : " (nháp)"), f.film_id)); });
       if (keep && ctx.films.some(function (f) { return f.film_id === keep; })) sel.value = keep;
       ctx.episodes = await rows(db.from("site_episodes").select("*").eq("site_id", ctx.site).order("film_id", { ascending: true }).order("episode_no", { ascending: true }));
-      var src = ctx.siteAdmin ? await rows(db.from("episode_sources").select("episode_id,source_kind")) : [];
-      ctx.sources = {}; src.forEach(function (s) { ctx.sources[s.episode_id] = s.source_kind; });
+      var src = [];
+      if (ctx.siteAdmin) {
+        // Level 4.1 (nguồn dự phòng) có thể chưa được áp trên CSDL: khi đó ẩn ô dự phòng, phần còn lại vẫn chạy.
+        var withFb = await db.from("episode_sources").select("episode_id,source_kind,fallback_kind");
+        ctx.fallbackSupported = !withFb.error;
+        src = withFb.error ? await rows(db.from("episode_sources").select("episode_id,source_kind")) : (withFb.data || []);
+      }
+      $("#ops-fallback-row").hidden = !ctx.fallbackSupported;
+      ctx.sources = {}; ctx.fallbacks = {};
+      src.forEach(function (s) { ctx.sources[s.episode_id] = s.source_kind; if (s.fallback_kind) ctx.fallbacks[s.episode_id] = s.fallback_kind; });
       renderEpisodes();
     } catch (e) { empty(list, explain(e)); }
   }
@@ -98,7 +106,7 @@
     list.replaceChildren(table(["Tập", "Quyền xem", "Giá", "Miễn phí từ", "Hạn xem", "Nguồn", "Trạng thái", ""], eps.map(function (e) {
       return [String(e.episode_no) + (e.title ? " · " + e.title : ""), TIER[e.access_tier] || e.access_tier,
         e.access_tier === "early" ? { num: e.price_points } : "–", e.free_from ? AFN.vnDateTime(e.free_from) : "–",
-        e.access_days ? e.access_days + " ngày" : "Vĩnh viễn", ctx.sources[e.id] || "Chưa có",
+        e.access_days ? e.access_days + " ngày" : "Vĩnh viễn", (ctx.sources[e.id] || "Chưa có") + (ctx.fallbacks[e.id] ? " + dự phòng" : ""),
         e.published ? "Đã phát hành" : "Nháp",
         group(btn("Sửa", function () { editEpisode(e); }),
           btn(e.published ? "Gỡ" : "Phát hành", function (ev) { togglePublish(e, ev.currentTarget); }),
@@ -126,7 +134,7 @@
     $("#ops-ep-price").value = String(e.price_points || 50);
     $("#ops-ep-free").value = isoToVnInput(e.free_from);
     $("#ops-ep-days").value = e.access_days ? String(e.access_days) : "";
-    $("#ops-ep-video").value = ""; $("#ops-ep-rights").checked = false;
+    $("#ops-ep-video").value = ""; $("#ops-ep-fallback").value = ""; $("#ops-ep-rights").checked = false;
     $("#ops-ep-published").checked = !!e.published;
     syncTier();
     $("#ops-ep-title").focus();
@@ -140,6 +148,17 @@
       free_from: tier === "early" ? vnInputToIso($("#ops-ep-free").value) : null,
       access_days: tier === "early" && $("#ops-ep-days").value ? parseInt($("#ops-ep-days").value, 10) : null,
       published: publish, updated_at: new Date().toISOString() };
+    var fbText = ctx.fallbackSupported ? $("#ops-ep-fallback").value.trim() : "";
+    var fb = null;
+    if (fbText === "-") fb = { fallback_kind: null, fallback_youtube_id: null, fallback_video_url: null };
+    else if (fbText) {
+      if (/^[A-Za-z0-9_-]{11}$/.test(fbText)) fb = { fallback_kind: "youtube", fallback_youtube_id: fbText, fallback_video_url: null };
+      else if (/^https:\/\/\S+$/.test(fbText) && fbText.length <= 1000) fb = { fallback_kind: "native", fallback_youtube_id: null, fallback_video_url: fbText };
+      else { status("Nguồn dự phòng phải là YouTube ID 11 ký tự hoặc đường dẫn HTTPS.", true); return; }
+      if (fbText === video) { status("Nguồn dự phòng phải khác nguồn chính.", true); return; }
+      if (!$("#ops-ep-rights").checked) { status("Cần xác nhận quyền phát hành nguồn dự phòng.", true); return; }
+    }
+    if (fb && !video && !(ctx.editing && ctx.sources[ctx.editing.id])) { status("Cần có nguồn chính trước khi thêm nguồn dự phòng.", true); return; }
     if (video) {
       if (kind === "youtube" && !/^[A-Za-z0-9_-]{11}$/.test(video)) { status("YouTube ID phải có đúng 11 ký tự.", true); return; }
       if (kind === "native" && !/^https:\/\/\S+$/.test(video)) { status("Video phải là đường dẫn HTTPS.", true); return; }
@@ -166,12 +185,17 @@
       }
       if (video) {
         var src = { episode_id: id, source_kind: kind, youtube_id: kind === "youtube" ? video : null, video_url: kind === "native" ? video : null, updated_at: new Date().toISOString() };
+        if (fb) Object.assign(src, fb);
         var up = await db.from("episode_sources").upsert(src, { onConflict: "episode_id" });
         if (up.error) throw up.error;
         if (publish && !ctx.editing) {
           var pub = await db.from("site_episodes").update({ published: true, updated_at: new Date().toISOString() }).eq("id", id);
           if (pub.error) throw pub.error;
         }
+      }
+      if (fb && !video) {
+        var fu = await db.from("episode_sources").update(Object.assign({ updated_at: new Date().toISOString() }, fb)).eq("episode_id", id);
+        if (fu.error) throw fu.error;
       }
       status("Đã lưu tập phim.");
       await loadEpisodes(); resetEpisodeForm();

@@ -37,7 +37,7 @@ function currentSite(){
  if(window.AFN_RESOLVE_SITE)return window.AFN_RESOLVE_SITE().site?.id;
  return host.endsWith(".pages.dev")?(sites.find(x=>x.id===p.get("site"))||sites[0])?.id:sites.find(x=>x.domain===host)?.id;
 }
-window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
+window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1,onError=null}){
  if(!holder||!/^[A-Za-z0-9_-]{11}$/.test(videoId||"")||!/^[a-z0-9][a-z0-9-]{0,119}$/.test(filmId||""))return;
  if(activeInterval)clearInterval(activeInterval);
  if(activePlayer){try{activePlayer.destroy();}catch(_){}activePlayer=null;}
@@ -91,6 +91,8 @@ window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
    playerVars:{playsinline:1,rel:0,origin:location.origin},
    events:{
     onReady:e=>{if(restored>0){try{e.target.seekTo(restored,true);}catch(_){}}},
+    // 2 invalid id · 5 HTML5 error · 100 removed/private · 101/150 embedding not allowed by the owner.
+    onError:e=>{if(typeof onError==="function")onError(e.data);},
     onStateChange:e=>{
      if(e.data===yt.PlayerState.PLAYING){dirty=true;startTimer();}
      if(e.data===yt.PlayerState.PAUSED||e.data===yt.PlayerState.ENDED){if(activeInterval)clearInterval(activeInterval);activeInterval=null;dirty=true;save(true);}

@@ -496,3 +496,77 @@ test.describe("Shared Core — cùng một khung giao diện cho cả 5 website"
     });
   }
 });
+
+test.describe("Nguồn phát dự phòng (Level 4.1)", () => {
+  function withSources(sources) {
+    return page => page.addInitScript(src => {
+      const seedFn = () => { const s = window.__AFN_MOCK_SEED; if (!s) return; s.tables.episode_sources = s.tables.episode_sources.map(r => Object.assign({}, r, src[r.episode_id] || {})); };
+      seedFn();
+    }, sources);
+  }
+  test("nguồn chính (HTTPS) lỗi → tự chuyển sang nguồn dự phòng YouTube, có thông báo", async ({ page }) => {
+    const issues = await setup(page);
+    await withSources({ [EP.e1]: { source_kind: "native", youtube_id: null, video_url: "https://afn-local.pages.dev:4173/media/khong-ton-tai.mp4",
+      fallback_kind: "youtube", fallback_youtube_id: "FBK1xxxxxxx", fallback_video_url: null } })(page);
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player")).toHaveAttribute("data-playback", "fallback");
+    await expect(page.locator("#player .youtube-player, #player iframe").first()).toBeAttached();
+    await expect(page.locator(".afn-toast, [role=status]").filter({ hasText: "nguồn dự phòng" }).first()).toBeVisible();
+    expect(issues).toEqual([]);
+  });
+  test("YouTube báo lỗi nhúng (150) và nguồn dự phòng cũng lỗi → báo rõ, có Thử lại và Báo lỗi", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    // Giả lập YouTube IFrame API: chủ video tắt quyền nhúng (mã 150).
+    await page.addInitScript(() => {
+      window.YT = { PlayerState: { PLAYING: 1, PAUSED: 2, ENDED: 0 },
+        Player: function (holder, opts) { setTimeout(() => opts.events.onError({ data: 150 }), 50); this.destroy = () => {}; } };
+    });
+    await withSources({ [EP.e1]: { fallback_kind: "native", fallback_youtube_id: null, fallback_video_url: "https://afn-local.pages.dev:4173/media/backup-hong.mp4" } })(page);
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player")).toHaveAttribute("data-playback", "failed");
+    await expect(page.locator("#player .player-gate")).toContainText("đã thử cả nguồn dự phòng");
+    await page.locator("#player .player-gate").getByRole("button", { name: "Báo lỗi" }).click();
+    await expect(page.locator(".afn-report")).toBeVisible();
+    expect(issues).toEqual([]);
+  });
+  test("Dashboard: thêm/xóa nguồn dự phòng có kiểm tra định dạng và quyền phát hành", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="episodes"]').click();
+    await expect(page.locator("#ops-fallback-row")).toBeVisible();
+    await page.locator("#ops-episodes tbody tr").first().getByRole("button", { name: "Sửa" }).click();
+    await page.locator("#ops-ep-fallback").fill("http://khong-an-toan.example/a.mp4");
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("YouTube ID 11 ký tự hoặc đường dẫn HTTPS");
+    await page.locator("#ops-ep-fallback").fill("https://cdn.example.test/ep1-backup.mp4");
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Cần xác nhận quyền phát hành nguồn dự phòng");
+    await page.locator("#ops-ep-rights").check();
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Đã lưu tập phim");
+    await expect(page.locator("#ops-episodes tbody tr").first()).toContainText("youtube + dự phòng");
+    let src = (await mock(page)).episode_sources.find(r => r.episode_id === EP.e1);
+    expect(src).toMatchObject({ source_kind: "youtube", youtube_id: "EP1xxxxxxxx", fallback_kind: "native", fallback_video_url: "https://cdn.example.test/ep1-backup.mp4" });
+    await page.locator("#ops-episodes tbody tr").first().getByRole("button", { name: "Sửa" }).click();
+    await page.locator("#ops-ep-fallback").fill("-");
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Đã lưu tập phim");
+    src = (await mock(page)).episode_sources.find(r => r.episode_id === EP.e1);
+    expect(src.fallback_kind).toBeNull();
+    expect(issues).toEqual([]);
+  });
+  test("tập bị khóa không lộ nguồn dự phòng; tập không có dự phòng vẫn phát như cũ", async ({ page }) => {
+    const issues = await setup(page);
+    await withSources({ [EP.e2]: { fallback_kind: "native", fallback_video_url: "https://afn-local.pages.dev:4173/media/backup.mp4" } })(page);
+    await page.goto("/phim/tin-hieu-47/tap/2?site=xuongphim");
+    const res = await page.evaluate(id => window.supabase.createClient("x", "y").rpc("get_playback_source", { p_episode_id: id }).then(r => r.data), EP.e2);
+    expect(res.status).toBe("login_required");
+    expect(JSON.stringify(res)).not.toContain("backup");
+    await page.locator('.episodes [data-ep="1"]').click();
+    await expect(page.locator("#player")).toHaveAttribute("data-playback", "primary");
+    await expect(page.locator("#player .youtube-player").first()).toBeAttached();
+    expect(issues).toEqual([]);
+  });
+});

@@ -9,11 +9,12 @@ P="psql -X -q -v ON_ERROR_STOP=1"
 $P -d postgres -c "drop database if exists $DB" -c "create database $DB" >/dev/null
 for f in tests/sql/supabase_shim.sql db/auth_v1.sql db/level3_pilot.sql db/level3_completion_v1.sql \
          db/level3_engagement_v1.sql db/level3_policy_performance_cleanup.sql db/level3_fk_indexes.sql \
-         db/level4_rewards_unlock_social_v1.sql tests/sql/seed.sql; do
+         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql tests/sql/seed.sql; do
   $P -d $DB -f "$f" >/dev/null 2>&1 || { echo "APPLY FAILED: $f"; $P -d $DB -f "$f"; exit 1; }
 done
 # Re-applying the Level 4 migration must be safe (idempotent).
 $P -d $DB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 || { echo "RE-APPLY FAILED"; exit 1; }
+$P -d $DB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.1 FAILED"; exit 1; }
 
 $P -d $DB -f tests/sql/level4_tests.sql 2>&1 | grep -E "PASS|FAIL|ERROR" | sed 's/^.*NOTICE:  //' | tee /tmp/afn_sql_results.txt
 grep -q "FAIL\|ERROR" /tmp/afn_sql_results.txt && { echo "SQL FUNCTIONAL TESTS FAILED"; exit 1; }
@@ -51,6 +52,24 @@ check "$pre" 0 "staging preflight script: no failing prerequisite"
 ver=$($P -d $DB -f db/staging/90_verify_after_level4.sql 2>&1 | grep -c "PASS:" || true)
 check "$ver" 5 "staging verify script: 5 PASS checks, then ROLLBACK"
 check "$(q "select count(*) from auth.users where email like 'staging-check%'")" 0 "staging verify script leaves no data behind"
+
+# ---- rollback script: Level 4 → gỡ → phải trùng khớp Level 3, rồi áp lại được ---------------
+sig(){ $P -d $1 -t -A -c "select string_agg(x, E'\n' order by x) from (
+  select 'table '||tablename x from pg_tables where schemaname='public'
+  union all select 'policy '||tablename||'.'||policyname||' '||array_to_string(roles,',')||' '||coalesce(qual,'')||' '||coalesce(with_check,'') from pg_policies where schemaname='public'
+  union all select 'fn '||n.nspname||'.'||p.proname||'('||pg_get_function_identity_arguments(p.oid)||')' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private')
+  union all select 'trigger '||tgrelid::regclass||'.'||tgname from pg_trigger where not tgisinternal) s"; }
+RB=afn_rollback
+$P -d postgres -c "drop database if exists $RB" -c "create database $RB" >/dev/null 2>&1
+for f in tests/sql/supabase_shim.sql db/auth_v1.sql db/level3_pilot.sql db/level3_completion_v1.sql db/level3_engagement_v1.sql \
+         db/level3_policy_performance_cleanup.sql db/level3_fk_indexes.sql; do $P -d $RB -f "$f" >/dev/null 2>&1; done
+before=$(sig $RB)
+$P -d $RB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1
+$P -d $RB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1
+$P -d $RB -f db/staging/99_rollback_level4.sql >/dev/null 2>&1 || { echo "ROLLBACK SCRIPT FAILED"; $P -d $RB -f db/staging/99_rollback_level4.sql; }
+after=$(sig $RB)
+[ "$before" = "$after" ] && check same same "rollback script returns the schema exactly to Level 3" || { check differ same "rollback script returns the schema exactly to Level 3"; diff <(echo "$before") <(echo "$after") | head -20; }
+$P -d $RB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $RB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && check ok ok "Level 4 migration re-applies cleanly after rollback" || check fail ok "Level 4 migration re-applies cleanly after rollback"
 
 echo "Concurrency/staging: $pass passed, $fail failed"
 total=$(grep -c PASS /tmp/afn_sql_results.txt)

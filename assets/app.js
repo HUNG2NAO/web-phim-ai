@@ -357,7 +357,8 @@
     p.replaceChildren(box);
     var first = box.querySelector("button"); if (first && dlg.open) first.focus();
   }
-  function playSource(p, f, kind, value, epNo) {
+  // onFail(reason): gọi khi nguồn không phát được (YouTube báo lỗi nhúng/đã gỡ, video HTTPS lỗi tải).
+  function playSource(p, f, kind, value, epNo, onFail) {
     if (kind === "youtube" && typeof value === "string" && /^[A-Za-z0-9_-]{11}$/.test(value)) {
       p.replaceChildren();
       var holder = document.createElement("div");
@@ -365,7 +366,8 @@
       holder.style.cssText = "width:100%;aspect-ratio:16/9;background:#000";
       p.appendChild(holder);
       if (typeof window.AFN_PLAY_YOUTUBE === "function") {
-        window.AFN_PLAY_YOUTUBE({ holder: holder, filmId: f.id, videoId: value, episode: epNo || 1 });
+        window.AFN_PLAY_YOUTUBE({ holder: holder, filmId: f.id, videoId: value, episode: epNo || 1,
+          onError: function (code) { if (onFail) onFail("youtube:" + code); } });
         rememberWatch(f, epNo || 1);
       } else {
         var iframe = document.createElement("iframe");
@@ -382,6 +384,7 @@
       var v = document.createElement("video");
       v.controls = true; v.autoplay = true; v.playsInline = true; v.src = value;
       v.addEventListener("error", function () {
+        if (onFail) { onFail("native"); return; }
         playerNote(p, "Không phát được video tập này. Bạn có thể báo lỗi để quản trị viên kiểm tra.", [
           { label: "Thử lại", primary: true, run: function () { play(); } }]);
       });
@@ -412,8 +415,30 @@
     var freeFrom = info.free_from ? " Tập sẽ miễn phí từ " + new Date(info.free_from).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "." : "";
     var status = res && res.status;
     if (status === "ok") {
-      if (!playSource(p, f, res.source_kind, res.youtube_id || res.video_url, info.episode_no))
-        playerNote(p, "Nguồn phát của tập này không hợp lệ. Vui lòng báo lỗi để quản trị viên kiểm tra.");
+      // Nguồn dự phòng (Level 4.1): chỉ có khi máy chủ đã cho phép xem tập này; tự chuyển khi nguồn chính lỗi.
+      var fb = res.fallback && (res.fallback.source_kind === "youtube" || res.fallback.source_kind === "native") ? res.fallback : null;
+      var token = playToken, usedFallback = false;
+      var giveUp = function () {
+        if (token !== playToken || !p.isConnected) return;
+        playerNote(p, "Không phát được video tập " + info.episode_no + (usedFallback ? " (đã thử cả nguồn dự phòng)" : "") +
+          ". Bạn có thể thử lại hoặc báo lỗi để quản trị viên kiểm tra.", [
+          { label: "Thử lại", primary: true, run: function () { play(); } },
+          { label: "Báo lỗi", run: function () { var r = Array.prototype.find.call(document.querySelectorAll("#film-actions .afn-act"), function (b) { return /Báo lỗi/.test(b.textContent); }); if (r) { r.click(); r.scrollIntoView({ block: "center" }); } } }]);
+        p.dataset.playback = "failed";
+      };
+      var failed = function () {
+        if (token !== playToken || !p.isConnected) return;
+        if (fb && !usedFallback) {
+          usedFallback = true;
+          p.dataset.playback = "fallback";
+          if (window.AFN && window.AFN.toast) window.AFN.toast("Nguồn chính đang gặp sự cố — đã chuyển sang nguồn dự phòng.");
+          if (!playSource(p, f, fb.source_kind, fb.youtube_id || fb.video_url, info.episode_no, giveUp)) giveUp();
+          return;
+        }
+        giveUp();
+      };
+      p.dataset.playback = "primary";
+      if (!playSource(p, f, res.source_kind, res.youtube_id || res.video_url, info.episode_no, failed)) failed();
       return;
     }
     if (status === "login_required") {
