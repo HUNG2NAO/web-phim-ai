@@ -6,9 +6,9 @@
   const host=window.location.hostname.replace(/^www\./,"");
   const params=new URLSearchParams(window.location.search);
   const brands=window.SITES||[];
-  const site=host.endsWith(".pages.dev") ?
+  const site=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE().site:(host.endsWith(".pages.dev") ?
     (brands.find(x=>x.id===params.get("site"))||brands[0]) :
-    brands.find(x=>x.domain===host);
+    brands.find(x=>x.domain===host));
   const SITE=site?.id||"unknown";
   const pilot=(window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(SITE);
   if(!pilot||!cfg.enabled||!window.supabase||!/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||""))return;

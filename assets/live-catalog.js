@@ -6,8 +6,8 @@ const brands=window.SITES||[];
 if(!cfg.enabled||!window.supabase?.createClient)return;
 const host=location.hostname.replace(/^www\./,"");
 const params=new URLSearchParams(location.search);
-const brand=host.endsWith(".pages.dev")?
- (brands.find(x=>x.id===params.get("site"))||brands[0]):brands.find(x=>x.domain===host);
+const brand=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE().site:(host.endsWith(".pages.dev")?
+ (brands.find(x=>x.id===params.get("site"))||brands[0]):brands.find(x=>x.domain===host));
 if(!brand)return;
 const client=window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
  persistSession:true,autoRefreshToken:true,storageKey:cfg.storageKey||"afn-film-auth-v1"

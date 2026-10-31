@@ -93,3 +93,29 @@ test("Production branch content guard: index.html still declares noindex and DEM
   assert.match(html, /<meta name="robots" content="noindex,follow">/);
   assert.match(html, /<strong>DEMO<\/strong>/);
 });
+
+test("Shared Core site resolver: real domains, www/subdomains, previews and unknown hosts", () => {
+  const vm = require("node:vm");
+  const ctx = { window: {}, URLSearchParams };
+  vm.runInNewContext(read("assets/sites.js"), ctx);
+  const R = (host, search = "") => ctx.window.AFN_RESOLVE_SITE({ hostname: host, search });
+  assert.deepEqual([R("xuongphim.ai").site.id, R("xuongphim.ai").preview], ["xuongphim", false]);
+  assert.equal(R("www.khophim.ai", "?site=phephim").site.id, "khophim", "a real domain ignores ?site=");
+  assert.equal(R("WWW.GHIENPHIM.AI").site.id, "ghienphim");
+  assert.deepEqual([R("feature-x.web-phim-ai-5sites.pages.dev", "?site=phimhay").site.id, R("a.pages.dev").preview], ["phimhay", true]);
+  assert.equal(R("localhost", "?site=khophim").site.id, "khophim", "localhost behaves like a preview");
+  assert.equal(R("web-phim-ai-git-x.vercel.app", "?site=khong-co").site.id, "xuongphim", "unknown ?site= falls back to the first brand");
+  assert.equal(R("evilxuongphim.ai").preview, true, "look-alike domains are not treated as the real site");
+});
+
+test("all five pages load sites.js (Shared Core) before any module that resolves the site", () => {
+  for (const page of ["index.html", "member.html", "admin.html", "account.html"]) {
+    const html = read(page);
+    const i = html.indexOf('src="assets/sites.js"');
+    assert.ok(i > 0, page + " loads sites.js");
+    for (const m of ["auth.js", "level3.js", "live-catalog.js", "account.js", "studio.js", "afn-core.js"]) {
+      const j = html.indexOf('src="assets/' + m + '"');
+      if (j > 0) assert.ok(j > i, page + ": " + m + " must load after sites.js");
+    }
+  }
+});

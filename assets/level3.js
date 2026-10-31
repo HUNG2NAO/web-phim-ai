@@ -8,10 +8,11 @@
   const BRANDS=Array.isArray(window.SITES)?window.SITES:[];
   const params=new URL(window.location.href).searchParams;
   const hostname=window.location.hostname.replace(/^www\./,"");
-  const preview=hostname.endsWith(".pages.dev");
-  const brand=preview
+  const resolved=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE():null;   // Shared Core
+  const preview=resolved?resolved.preview:hostname.endsWith(".pages.dev");
+  const brand=resolved?resolved.site:(preview
     ? (BRANDS.find(b=>b.id===params.get("site"))||BRANDS[0])
-    : BRANDS.find(b=>b.domain===hostname);
+    : BRANDS.find(b=>b.domain===hostname));
   const SITE=brand?.id||"unknown";
   const flags=window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"];
   const isPilot=flags.includes(SITE);

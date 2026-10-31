@@ -34,6 +34,7 @@ function playbackClient(){
 function currentSite(){
  const host=location.hostname.replace(/^www\./,""),p=new URLSearchParams(location.search);
  const sites=window.SITES||[];
+ if(window.AFN_RESOLVE_SITE)return window.AFN_RESOLVE_SITE().site?.id;
  return host.endsWith(".pages.dev")?(sites.find(x=>x.id===p.get("site"))||sites[0])?.id:sites.find(x=>x.domain===host)?.id;
 }
 window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){

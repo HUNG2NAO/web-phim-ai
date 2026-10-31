@@ -6,7 +6,7 @@
   var brands = Array.isArray(window.SITES) ? window.SITES : [];
   var domainBrand = brands.find(function(b) { return b.domain === hostname; });
   var previewBrand = brands.find(function(b) { return b.id === params.get("site"); });
-  var brand = domainBrand || previewBrand || brands[0];
+  var brand = window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE().site : (domainBrand || previewBrand || brands[0]);
   var isMemberPilot = !!(brand && (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(brand.id));
   var memberShortcut = document.getElementById("afn-member-hub-shortcut");
   if(memberShortcut){

@@ -90,3 +90,19 @@ window.SITES = [
     ]
   }
 ];
+
+/*
+ * SHARED CORE — nhận diện website (dùng chung cho mọi trang và module).
+ * - Tên miền thật (kể cả www./tên miền con) → website tương ứng, preview=false.
+ * - Mọi host khác (*.pages.dev, Vercel, localhost…) → bản xem thử, chọn site bằng ?site=<id>,
+ *   mặc định site đầu tiên. Thêm website mới: chỉ cần thêm một mục vào window.SITES.
+ */
+window.AFN_RESOLVE_SITE = function (loc) {
+  loc = loc || window.location;
+  var sites = window.SITES || [];
+  var host = String(loc.hostname || "").toLowerCase().replace(/^www\./, "");
+  var real = sites.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); });
+  if (real) return { site: real, preview: false };
+  var wanted = new URLSearchParams(loc.search || "").get("site");
+  return { site: sites.find(function (s) { return s.id === wanted; }) || sites[0] || null, preview: true };
+};

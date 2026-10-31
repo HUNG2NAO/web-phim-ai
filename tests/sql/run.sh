@@ -45,7 +45,14 @@ check "$(q "select count(*) from wallet_ledger where user_id='$E' and kind='unlo
 check "$(q "select balance from wallets where user_id='$E'")" 450 "balance after duplicate requests = 450"
 check "$(q "select count(*) from wallets w where balance <> (select coalesce(sum(delta),0) from wallet_ledger l where l.user_id=w.user_id)")" 0 "ledger reconciles with every wallet after races"
 
-echo "Concurrency: $pass passed, $fail failed"
+# ---- staging helper scripts must stay valid against the migrated schema ------------------
+pre=$($P -d $DB -t -A -f db/staging/00_preflight_readonly.sql | grep -c '|f|' || true)
+check "$pre" 0 "staging preflight script: no failing prerequisite"
+ver=$($P -d $DB -f db/staging/90_verify_after_level4.sql 2>&1 | grep -c "PASS:" || true)
+check "$ver" 5 "staging verify script: 5 PASS checks, then ROLLBACK"
+check "$(q "select count(*) from auth.users where email like 'staging-check%'")" 0 "staging verify script leaves no data behind"
+
+echo "Concurrency/staging: $pass passed, $fail failed"
 total=$(grep -c PASS /tmp/afn_sql_results.txt)
 echo "Functional: $total passed"
 [ "$fail" = 0 ]

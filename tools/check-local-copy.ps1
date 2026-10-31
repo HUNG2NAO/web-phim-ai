@@ -5,15 +5,16 @@
   (chỉ đổi refs/remotes, không đụng file làm việc).
 
   Cách chạy (PowerShell, trên PC Hưng):
-    powershell -ExecutionPolicy Bypass -File .\check-local-copy.ps1 -Path "D:\HUNG_PROJECTS\WEB_PHIM_AI"
+    powershell -ExecutionPolicy Bypass -File .\check-local-copy.ps1 -Path "<thư mục dự án, ví dụ C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI>"
   Kết quả: Desktop\AFN_LOCAL_AUDIT_<tên máy>.txt  → gửi file này lại cho Claude.
   Báo cáo chỉ liệt kê TÊN file, không in nội dung, không in khóa/mật khẩu.
 #>
 param(
-  [string]$Path = "D:\HUNG_PROJECTS\WEB_PHIM_AI",
+  [string]$Path = "",
   [string]$Level4Branch = "feature/master-site-xuongphim-2026-10-31"
 )
 $ErrorActionPreference = "Continue"
+if (-not $Path) { $Path = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }   # mặc định: thư mục chứa repo
 $out = Join-Path ([Environment]::GetFolderPath("Desktop")) ("AFN_LOCAL_AUDIT_" + $env:COMPUTERNAME + ".txt")
 $lines = New-Object System.Collections.Generic.List[string]
 function Say([string]$t) { $lines.Add($t) | Out-Null; Write-Host $t }
