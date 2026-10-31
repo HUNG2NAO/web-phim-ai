@@ -13,6 +13,54 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 31/10/2026 23:30 — Nghiệm thu thật bằng 3 tài khoản QA (Real User)
+
+**Tài khoản:** `+qa1` (0e41cb4f, thành viên A), `+qa2` (c4bdb583, thành viên B), `+qaadmin` (ca41544b).
+- Anh tạo bằng Dashboard → Add user + Auto Confirm và tự đăng nhập. Mỗi tài khoản đăng nhập ở một origin Preview riêng, nên các phiên độc lập.
+- Đã kiểm tra danh tính từng tab bằng `auth.getUser()`.
+
+**Chuẩn bị:**
+- Chạy `51_qa_roles.sql`: qaadmin thành admin Xưởng Phim (audit `qa.grant_site_admin`).
+- Cộng điểm cho qa1 bằng `admin_adjust_points` dưới danh tính chủ mạng: +50 điểm, idempotency key `qa-test-grant-qa1-20261031`, audit `wallet.adjust`, lý do "QA TEST — cấp điểm kiểm thử mở khóa tập trên staging".
+
+| # | Kiểm thử (thật trên Preview) | Kết quả | Bằng chứng |
+|---|---|---|---|
+| 1 | qa1 bấm "Điểm danh nhận +10 điểm" | **PASS** | Toast "Điểm danh thành công: +10 điểm · chuỗi 1 ngày"; ô điểm 50 → 60; nút chuyển thành "Đã điểm danh hôm nay ✓ (+10)" và bị vô hiệu |
+| 2 | Gửi yêu cầu điểm danh lần 2 cùng ngày: 1 lần cho xuongphim, 1 lần cho khophim, 5 lần đồng thời | **PASS** | Cả 7 yêu cầu trả `already`, số dư giữ 60; ledger chỉ có 1 dòng `checkin` |
+| 3 | qa1 tự sửa ví / ghi ledger / tự cộng điểm | **PASS** (bị chặn) | Lần lượt trả `permission denied for table wallets`, `permission denied for table wallet_ledger`, `forbidden` |
+| 4 | Trước khi mở khóa: tập 2 (sớm, 30 điểm) | **PASS** | Màn khóa "Tập 2 đang mở sớm với 30 điểm. Số dư của bạn: 60 điểm." `get_playback_source` trả `locked`, không có nguồn; bảng `episode_sources` trả 0 dòng |
+| 5 | qa1 bấm "MỞ KHÓA · 30 ĐIỂM" **3 lần liên tiếp** | **PASS** | Toast "Đã mở khóa tập 2 (−30 điểm)"; số dư 60 → **30** (trừ đúng 1 lần) |
+| 6 | Gửi thêm 5 yêu cầu mở khóa đồng thời, mỗi yêu cầu một khóa mới | **PASS** | Cả 5 trả `already_unlocked:30`; có 1 quyền xem (active, 30 điểm); ledger có 1 dòng `unlock −30` |
+| 7 | Quyền xem sau mở khóa | **PASS** | Nguồn `ok` (YouTube Sintel kèm nguồn dự phòng); player phát thật, `currentTime` tăng 4,06 → 5,13 giây |
+| 8 | qa2 (chưa mở khóa) xem tập 2 | **PASS** | `locked`; qa2 thấy 0 quyền xem của người khác |
+| 9 | Ví sau toàn bộ thao tác | **PASS** | qa1: balance 30 = tổng ledger 30 (earned 60, spent 30); ví chủ không đổi (10) |
+| 10 | Chat theo phim giữa qa1 ↔ qa2 | **PASS** | Hiện "● Trực tiếp · 2 người đang xem"; tin qa1 gõ bằng bàn phím tới qa2 qua Realtime; tin qa2 tới qa1 sau **~0,3 giây** |
+| 11 | Phòng chung: qa1 ↔ qa2 | **PASS** | Hiện 2 người xem; qa2 thấy đủ 5 tin của qa1 |
+| 12 | Chống spam: tin trùng, quá 5 tin/30 giây, tin trống, quá 500 ký tự, phòng sai | **PASS** | Lần lượt hiện: "Tin nhắn trùng với tin bạn vừa gửi.", "Bạn đang gửi quá nhanh…", "Tin nhắn đang trống.", `message_too_long`, `invalid_room` |
+| 13 | HTML/XSS trong tin nhắn | **PASS** | `<b>…<img onerror>` hiện dạng chữ thường ở cả khung chat và Dashboard, không tạo phần tử HTML |
+| 14 | Giả mạo / sửa tin, member tự kiểm duyệt | **PASS** (bị chặn) | Insert trực tiếp và sửa tin: `permission denied`; member ẩn tin, khóa chat, xem danh sách báo cáo: `forbidden` |
+| 15 | qa2 báo cáo tin qa1 qua giao diện (lý do "Không phù hợp"), rồi báo cáo lại | **PASS** | 1 báo cáo `open`; báo cáo lần 2 không tạo thêm (vẫn 1) |
+| 16 | qaadmin xử lý trong Dashboard → Chat cộng đồng | **PASS** | Thấy báo cáo; bấm "Ẩn tin" → "Đã ẩn tin nhắn."; danh sách báo cáo mở rỗng; DB `hidden=true`; qa1 (tác giả) thấy nhãn "Đã ẩn"; qa2 đọc DB được 0 dòng |
+| 17 | qaadmin "Khóa chat 24h" qa1 | **PASS** | Bảng khóa có 1 dòng; giao diện qa1 hiện "Bạn đang bị tạm khóa chat đến 23:17 01-11.", ô nhập bị vô hiệu; gọi RPC trực tiếp → `chat_muted` |
+| 18 | Giới hạn quyền của qaadmin | **PASS** | Khóa chat chủ mạng → `forbidden`; tự khóa mình → `cannot_mute_self`; cộng điểm → `forbidden`; xem tổng quan khophim → `forbidden`; xem tổng quan xuongphim → ok |
+| 19 | qaadmin "Mở khóa" | **PASS** phía máy chủ | "Đã mở khóa chat."; bảng khóa rỗng |
+| 20 | Nhật ký kiểm duyệt | **PASS** | `qa.grant_site_admin`, `wallet.adjust`, `chat.hide`, `chat.mute`, `chat.unmute` đều ghi đúng người thực hiện và lý do |
+
+**Lỗi thật phát hiện và đã sửa trong DEV** (commit `0897e31`):
+1. **Tin bị ẩn vẫn hiện với người đang mở chat.**
+   - Nguyên nhân: Realtime không gửi sự kiện cho dòng mà RLS đã ẩn, nên qa2 vẫn thấy tin cho tới lần đồng bộ 45 giây (đo được: 20 giây).
+   - Sửa: kiểm duyệt viên, cả trong khung chat lẫn Dashboard, phát tín hiệu `moderated` vào kênh của phòng; mọi người trong phòng tải lại ngay.
+2. **Sau khi mở khóa chat, khung chat đang mở của thành viên vẫn bị khóa** (chờ hơn 40 giây vẫn khóa, phải tải lại trang).
+   - Sửa: tín hiệu `moderated` và lần đồng bộ định kỳ đều kiểm tra lại trạng thái khóa. Dashboard phát tín hiệu sau khi khóa hoặc mở khóa.
+
+**Kiểm thử sau khi sửa:**
+- Đã thêm assert hồi quy vào E2E: tin biến mất trong vòng 5 giây, ô nhập mở lại trong vòng 5 giây. **Đã xác nhận assert thất bại trên code cũ.**
+- E2E 71/71, contract test đạt.
+
+**Ghi nhận UX (không sửa):** tài khoản tạo bằng Dashboard chưa có tên hiển thị nên hiện "Thành viên". Bảng khóa chat hiện mã người dùng (`0e41cb4f`). Đăng ký thật có ô tên hiển thị nên không gặp vấn đề này.
+
+**Còn chờ:** qa1 đăng nhập lại (đã đăng xuất lúc 23:2x với số dư 30); kiểm chứng 2 bản sửa trên Preview `0d8d5ae6` / alias với qa2 và qaadmin.
+
 ## Cập nhật 31/10/2026 23:10 — Xác minh môi trường trước khi chạy script QA
 
 **Project `ai-film-network` không phục vụ Production.** Bằng chứng (chỉ đọc):
