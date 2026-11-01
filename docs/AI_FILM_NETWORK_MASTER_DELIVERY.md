@@ -13,6 +13,129 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 10:50 — RC2: sao lưu Supabase thật, thử khôi phục, chính sách
+
+Không merge main, không sửa DNS, không dọn dữ liệu QA, không triển khai Production. Supabase chỉ nhận **câu SELECT** (không đổi schema hay dữ liệu).
+
+### 1–2. PostgreSQL 17 client trên PC Nhân
+- Đã rà `C:\Program Files`, `C:\Program Files (x86)`, `%LOCALAPPDATA%\Programs`, `C:\Tools`, `C:\`: **không có** pg_dump, pg_restore hay psql nào.
+- **Chưa cài được từ phía Claude:**
+  - Phiên này không có shell trên PC Nhân (chỉ đọc và ghi file).
+  - Máy chủ đám mây không tải được gói Windows của EDB hay postgresql.org (proxy chặn, 403).
+- **Việc cần anh làm:**
+  - Tải "PostgreSQL 17 Windows x64 binaries (zip)" từ https://www.enterprisedb.com/download-postgresql-binaries.
+  - Giải nén vào `%LOCALAPPDATA%\Programs\pgsql17\`. Thư mục này **ngoài Git repo**; script tự tìm ở đây hoặc theo biến `AFN_PGBIN`.
+- Sao lưu dưới đây **không phụ thuộc** bước này.
+
+### 4. Rà soát `Backup-Supabase.cmd` / `backup-supabase.ps1`
+- **Không phá dữ liệu:** chỉ có `pg_dump`, `pg_restore --list` (đọc file cục bộ) và 1 câu SELECT đếm dòng. Không có drop, truncate, delete hay restore lên Supabase.
+- **Không lộ mật khẩu:** nhập qua ô ẩn; không có `Start-Transcript`; không ghi chuỗi kết nối ra tệp.
+- **Đã sửa 3 điểm:**
+  1. Mật khẩu giờ chỉ được giải mã **bên trong** `try/finally`. BSTR được xóa ngay, `PGPASSWORD` được gỡ và `SecureString` được hủy kể cả khi lỗi.
+  2. Có 7-Zip thì tự **mã hóa AES-256 (.7z, mã hóa cả tên tệp)**. 7-Zip tự hỏi mật khẩu, script không thấy mật khẩu. Kiểm tra giải mã đạt thì mới xóa bản chưa mã hóa do chính script vừa tạo. `row_counts`/`SHA256SUMS` được giữ cạnh tệp. Chưa có 7-Zip thì hiện cảnh báo rõ.
+  3. Tìm pg_dump ở thư mục công cụ ngoài repo trước.
+- `backups/`, `tools/pgsql/` vẫn nằm trong `.gitignore`. Không có binary, mật khẩu hay bản sao lưu nào trong Git.
+
+### 5. Sao lưu Supabase thật (kết nối chỉ đọc qua Supabase MCP)
+- **Phương pháp:**
+  - Một câu `SELECT json_build_object(...)` lấy toàn bộ **27 bảng public** cùng `auth.users` và `auth.identities`.
+  - Với `auth`, chỉ lấy các cột không bí mật: id, email, thời điểm xác minh, metadata, `created_at`, `last_sign_in_at`.
+  - **Không lấy** mật khẩu đã băm hay token. Sau khi khôi phục, người dùng đặt lại mật khẩu bằng "Quên mật khẩu".
+- **Thời điểm:** `2026-11-01T03:39:41Z` (10:39 giờ VN).
+- **Toàn vẹn khi tải về:** md5 do máy chủ tính `d09517ca…86ee` **trùng** md5 của tệp nhận về. Độ dài 29.621 ký tự cũng trùng.
+- **Số dòng:**
+  - Có dữ liệu: admin_audit_log 21, chat_messages 18, chat_reports 5, content_entitlements 2, daily_checkins 5, episode_sources 3, network_staff 1, profiles 1, reward_rules 1, site_episodes 3, site_films 1, site_memberships 1, site_staff 6, viewer_preferences 1, viewer_profiles 4, wallet_ledger 9, wallets 5.
+  - Tài khoản: auth.users 6, auth.identities 6.
+  - 10 bảng còn lại: 0.
+- **Lỗi phát hiện và đã sửa trong quá trình này:**
+  - Lần xuất đầu dùng `query_to_xml/xpath`. Cách này **giữ nguyên ký tự thoát XML**, nên `<b>` thành `&lt;b&gt;`.
+  - Lần thử khôi phục bắt được lỗi: checksum `chat_messages` lệch đúng 1 dòng (tin QA chứa HTML).
+  - Bản đó đã bị hủy và xuất lại bằng JSON trực tiếp.
+- **Phạm vi:** đây là bản sao lưu **logic dữ liệu**.
+  - Schema tái tạo từ `db/*.sql`; đã đối chiếu fingerprint (35 hàm, 59 policy) ở vòng trước.
+  - Bản `pg_dump` đầy đủ (gồm mật khẩu đã băm) vẫn chờ anh cài client 17.
+
+### 6. Lưu trữ có mã hóa
+- **Vị trí:** `C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI\backups\supabase\afn_supabase_backup_20261101.zip`.
+  - Nằm ngoài repo `source-level4`. Không thấy dấu hiệu thư mục này được Syncthing đồng bộ.
+  - Kích thước 10.179 byte; SHA-256 `8ac505510a3c9e7efd30941d5e4a11ba918f642ff7948931d2035b673e0ce522`.
+- **Mã hóa:** **AES-256 (WinZip AE-2)**, mở bằng 7-Zip.
+  - Mật khẩu ngẫu nhiên khoảng 148 bit, gửi riêng cho anh trong chat một lần. **Không nằm** trong báo cáo, repo hay cạnh tệp. Bản trong container đã xóa.
+- **Nội dung gói:**
+  - `afn_data_20261101.json`
+  - `restore-logical-backup.sql`
+  - `row_counts.txt`
+  - `auth_storage_inventory.json`
+  - `README_KHOI_PHUC.txt`
+  - `SHA256SUMS.txt`
+- **Kiểm chứng:**
+  - Đọc lại tệp từ PC: SHA-256 trùng từng byte.
+  - Giải mã độc lập bằng **libarchive** (engine của bsdtar): SHA-256 cả 6 tệp khớp.
+  - Sai mật khẩu → `Incorrect passphrase`.
+  - Không còn chuỗi email ở dạng rõ trong tệp zip.
+- **Dọn container:** đã xóa (shred) bản JSON chưa mã hóa và đã drop DB thử khôi phục.
+- **Kiểm soát truy cập:** phiên này không đặt được ACL NTFS (không có shell). Khuyến nghị:
+  - Chép thêm 1 bản ra ổ ngoài hoặc kho lưu trữ đám mây riêng (tệp đã mã hóa).
+  - Lưu mật khẩu vào trình quản lý mật khẩu.
+
+### 7. Thử khôi phục vào database cô lập — PASS
+- **Môi trường:** PostgreSQL cục bộ trong container, DB mới `afn_restore_real`. Không kết nối tới Supabase.
+- **Các bước:**
+  1. Áp shim và 10 migration theo `tests/sql/run.sh`.
+  2. Chạy **`tools/restore-logical-backup.sql`** (công cụ mới, không chứa dữ liệu). Script này:
+     - tự dừng nếu DB đích đã có dữ liệu (đã thử chạy lần 2 → `STOP`);
+     - nạp với `session_replication_role=replica`;
+     - đặt lại sequence.
+- **Kết quả:**
+  - **27/27 bảng khớp checksum nội dung** với Supabase (md5 của từng dòng JSON đã sắp xếp, tính ở cả hai phía).
+  - auth.users 6.
+  - Ví = tổng sổ cái (0 lệch).
+  - RLS 27/27, 59 policy.
+  - Không có báo cáo mồ côi.
+  - Sequence audit tiếp tục ở 104.
+- **Chạy thử nghiệp vụ** trên DB khôi phục, bằng danh tính qa2, sau đó rollback:
+  - Điểm danh nối chuỗi **ngày 2** (+12 điểm, số dư 22).
+  - RLS chỉ cho thấy 1 ví (ví của qa2).
+  - Mở khóa tập 30 điểm → `insufficient`.
+
+### 8. Kiểm kê Storage và Auth (lưu trong gói, không có bí mật)
+- **Storage:** 0 bucket, 0 object (storage.migrations 74). Không có tệp nào cần sao lưu.
+- **Auth cần cấu hình lại tay khi khôi phục:**
+  - Email provider, xác minh email bật. Không bật provider khác.
+  - Site URL đang là preview cũ (đổi sang `https://www.xuongphim.ai` khi phát hành).
+  - 6 Redirect URL, chỉ có preview.
+  - SMTP Resend: `smtp.resend.com:465`, user `resend`, người gửi `no-reply@mail.xuongphim.ai`. **Mật khẩu/API key không lưu**, khi khôi phục phải tạo key mới.
+  - Rate limit: email 30/giờ, refresh 150/5 phút, verify 30, OTP 30, anonymous 30, sms 30, web3 30. SMTP tần suất tối thiểu 60 giây.
+  - Mẫu email nằm ở `docs/email-templates/`.
+  - Leaked-password protection và CAPTCHA đang tắt.
+- **DNS Resend:** 3 bản ghi (đã liệt kê ở mục 31/10 23:55).
+
+### 9. Chính sách riêng tư
+- Nội dung `chinh-sach.html` khớp hệ thống thật, đã nêu Resend.
+- Vẫn còn **3 ô cần chủ website điền**. Claude không tự điền:
+  1. Đơn vị hoặc cá nhân chịu trách nhiệm.
+  2. Email hỗ trợ.
+  3. Số ngày lưu nhật ký sau khi xóa tài khoản.
+- Có test chặn phát hành khi còn ô trống. Trang giữ noindex.
+
+### 10. Kiểm thử chạy lại
+- E2E **76/76**
+- contract **11/11**
+- site-config **8/8**
+- SQL functional **133**, concurrency/staging **13/13**
+- Mã website RC2 (`ffb68f8`) không đổi trong vòng này; chỉ thay đổi công cụ sao lưu và báo cáo.
+
+### Kết luận
+| Hạng mục | Trạng thái |
+|---|---|
+| **RC2 QA** | **PASS**: thay đổi RC2 đã kiểm chứng thật (khóa chat phòng phim 2,7 giây, mở 1,0 giây); toàn bộ test xanh |
+| **SUPABASE BACKUP** | **VERIFIED** (bản logic dữ liệu: 27 bảng + tài khoản, md5 khớp máy chủ, mã hóa AES-256, lưu ngoài repo). Giới hạn: không gồm mật khẩu đã băm; bản pg_dump đầy đủ chờ cài client 17 |
+| **RESTORE TEST** | **PASS**: 27/27 bảng khớp checksum, nghiệp vụ chạy đúng trên DB khôi phục |
+| **PRIVACY POLICY** | **NEEDS OWNER INPUT**: 3 thông tin ở mục 9 |
+| **PRODUCTION RELEASE** | **NOT READY**: chờ 3 thông tin chính sách (→ RC3 chỉ đổi `chinh-sach.html` và smoke test), rồi phê duyệt R1–R7 (dọn QA, tạo project `xuongphim-ai`, URL Supabase production, chuyển tên miền) |
+
+---
+
 ## Cập nhật 01/11/2026 02:10 (vòng 2) — RC1 QA Admin, alias ổn định, sao lưu, chính sách
 
 ### Alias Preview ổn định (anh đã đồng ý)
