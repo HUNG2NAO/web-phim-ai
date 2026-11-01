@@ -13,6 +13,145 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 21:50 — ĐỘC LẬP TRIỂN KHAI 5 WEBSITE · LEVEL 4.7 (đa ngôn ngữ, nhiều nguồn video)
+
+**Định hướng đã chốt:**
+- Một repository và một Shared Core.
+- Mỗi website một Cloudflare project, cùng domain, deployment và rollback riêng.
+- Thành viên và ví điểm dùng chung; nội dung và phân quyền cách ly theo website.
+- Level 4.7: một phim, nhiều ngôn ngữ, nguồn video bên ngoài.
+
+**Phạm vi đã giữ nguyên:**
+- Không đổi DNS, không đụng Production (`web-phim-ai-5sites` vẫn chạy `main` `c6dd520`), không merge `main`.
+- Không áp migration lên Staging, không xóa dữ liệu QA.
+- Không phát sinh chi phí: Pages Free, không dịch vụ lưu trữ.
+
+### 1. Bản đồ 10 tên miền (Cloudflare, chỉ đọc)
+| Zone | `@` | `www` | Bản ghi khác |
+|---|---|---|---|
+| xuongphim.ai | CNAME Proxied → `web-phim-ai-5sites.pages.dev` | CNAME Proxied → `web-phim-ai-5sites.pages.dev` | Email Resend (`send.mail`, `rsend.mail`, DKIM) |
+| khophim.ai | như trên | như trên | — |
+| phephim.ai | như trên | như trên | — |
+| phimhay.ai | như trên | như trên | — |
+| ghienphim.ai | như trên | như trên | — |
+
+- Cả 10 tên miền gắn **một** project `web-phim-ai-5sites`, đều Active.
+- Ngoài ra có project `web-phim-ai` từ trước; Claude không đụng tới.
+
+### 2. Năm project Cloudflare độc lập (Preview, không gắn tên miền)
+| Project | Production branch | URL | Bản đang chạy | Kiểm chứng (Preview thật) |
+|---|---|---|---|---|
+| `xuongphim-ai` | `site/xuongphim` | xuongphim-ai.pages.dev | 4.6.1 · core `9767c1e` | Khóa site ✓ (`?site=khophim` bị bỏ qua) · catalog `xuongphim` (1 phim Staging) · robots chặn · sitemap 17 URL đúng domain · noindex |
+| `khophim-ai` | `site/khophim` | khophim-ai.pages.dev | 4.6.1 · `9767c1e` | Khóa site ✓ · catalog `khophim` · sitemap 21 ✓ · 17 thẻ phim |
+| `phephim-ai` | `site/phephim` | phephim-ai.pages.dev | **4.7.0-pre · `8a0503b`** | Khóa site ✓ · sitemap 17 ✓ · có Language Router · CSP mới |
+| `phimhay-ai` | `site/phimhay` | phimhay-ai.pages.dev | 4.6.1 · `9767c1e` | Khóa site ✓ · sitemap 21 ✓ · 38 thẻ phim |
+| `ghienphim-ai` | `site/ghienphim` | ghienphim-ai.pages.dev | 4.6.1 · `9767c1e` | Khóa site ✓ · sitemap 21 ✓ · 18 thẻ phim |
+
+- **Cấu hình mỗi project:**
+  - không có lệnh build, xuất ra thư mục gốc;
+  - Pages Functions chạy (robots, sitemap, `/api/catalog` trả đúng site);
+  - **chỉ tự triển khai nhánh `site/<id>` của chính nó** (Preview branches = None, để không tốn lượt build và không chéo site).
+- **Bộ nhận diện khóa site:** quy tắc `<id>-ai` đã có từ 20:15. Mỗi project chỉ có `releases/<id>.json` của chính nó (4 tệp còn lại trả 404).
+
+### 3. Chứng minh cập nhật và rollback độc lập — **VERIFIED**
+| Bước (giờ VN) | Kho Phim (`khophim-ai`) | 4 website còn lại |
+|---|---|---|
+| Trước (21:00) | 4.6.1, lớp giao diện `cb2e77…`, đầu trang không viền | 4.6.1, core `9767c1e` |
+| **Cập nhật** riêng Kho Phim (21:04): đẩy `site/khophim` `1a4cdfa` (chỉ `themes/khophim.css` + `releases/khophim.json`) | Tự triển khai → **4.6.2**, lớp giao diện `8267a6…`, đầu trang có viền ngọc `rgb(79,176,143)` | Phê Phim kiểm trực tiếp: vẫn 4.6.1, lớp giao diện `14cfc8…`, `app.js`/`sites.js` không đổi, không viền. Các project kia không build bản mới (Production branch khác) |
+| **Rollback** trên Cloudflare (21:14, "Rollback to this deployment" → `a74eab88`, hộp xác nhận ghi rõ chỉ ảnh hưởng `khophim-ai.pages.dev`) | Sau ~10 giây: **4.6.1**, lớp giao diện `cb2e77…`, không viền | Không đổi |
+| Đồng bộ git (21:19): revert trên `site/khophim` (`6f83376`, giống hệt 4.6.1) | Khớp bản đã rollback | Không đổi |
+| **Thăng cấp core riêng** Phê Phim lên `8a0503b` (Level 4.7 client) | 4.6.1 | **Chỉ Phê Phim** lên 4.7.0-pre. Kiểm trực tiếp xuongphim, khophim, phimhay, ghienphim: vẫn 4.6.1, `language-router.js` = 404 |
+| Production `web-phim-ai-5sites` | — | Vẫn `main` `c6dd520` suốt quá trình (bản `site/*` chỉ là Preview, bị bỏ qua) |
+
+### 4. Level 4.7 — schema
+- **`episode_media`:** nhiều nguồn mỗi tập theo ngôn ngữ (BCP 47).
+  - Loại bản: gốc / lồng tiếng / phụ đề cứng.
+  - Nhà cung cấp: `youtube`, `youtube_unlisted`, `facebook`, `gdrive`, `native` (https). Mỗi nhà cung cấp có ràng buộc định dạng riêng.
+  - Thứ tự ưu tiên dùng làm dự phòng. Xuất bản cần `rights_attested`.
+- **`episode_subtitles`:**
+  - `source = youtube`: track phụ đề có sẵn trong video YouTube, không cần URL. Đây là mô hình ưu tiên: một link YouTube với nhiều phụ đề.
+  - `source = vtt`: tệp WebVTT (https) cho MP4.
+  - Chỉ một phụ đề mặc định mỗi tập.
+- **`get_playback_media(tập, ngôn ngữ)`:**
+  - dùng lại kiểm tra quyền xem của v1, nên tập bị khóa không lộ nguồn;
+  - trả toàn bộ media và phụ đề đã xuất bản cho Language Router;
+  - tập chưa có media thì trả nguồn v1.
+- **RLS và audit:**
+  - chỉ admin đúng website hoặc nhân sự mạng được ghi; thêm 8 cổng 2FA (tổng 35);
+  - `anon` không đọc trực tiếp bảng;
+  - trigger `audit_media` ghi mọi thêm/sửa/xóa vào nhật ký quản trị.
+- **Gỡ:** `db/staging/93_rollback_level4_7.sql` chỉ xóa 2 bảng và 2 hàm mới.
+- **Kiểm thử cục bộ: 33/33:**
+  - phân quyền theo site, ràng buộc, bản nháp ẩn;
+  - phụ đề YouTube không có URL, VTT bắt buộc https;
+  - audit, khóa quyền xem;
+  - fallback v1 không đổi;
+  - áp lại 2 lần (idempotent); gỡ rồi áp lại OK; `dangerous_grants` 0.
+- **Staging:** chưa áp.
+  - Bản chạy thử trong giao dịch tự hủy (21:2x) **không chạy**: hộp xác nhận của Supabase không có người trả lời trong thời hạn, nên không có thay đổi nào.
+  - Gói nghiệm thu đã sẵn: backup age, áp migration, chạy `db/staging/92_verify_level4_7.sql`. Script này chỉ đọc; mọi thao tác ghi nằm trong giao dịch tự hủy. Mục tiêu: 35 cổng 2FA, 16 migration, `dangerous_grants` 0.
+
+### 5. Video Source Manager & Language Router — **DESIGNED · IMPLEMENTED · TESTED**
+**Language Router** (`assets/language-router.js`, dùng chung 5 site, không phụ thuộc DOM):
+- **Ngôn ngữ người xem**, theo thứ tự: `?lang=` → lựa chọn đã lưu → ngôn ngữ trình duyệt → mặc định của site → `vi`.
+- **Chọn nguồn:**
+  1. Có bản đúng ngôn ngữ (lồng tiếng / phụ đề cứng / bản riêng) thì phát bản đó; bản gốc làm dự phòng.
+  2. Không có thì phát bản gốc (ưu tiên YouTube) và **bật phụ đề** ngôn ngữ đó: track YouTube (`cc_lang_pref`) hoặc `<track>` WebVTT cho MP4.
+  3. Facebook / Google Drive không chọn được track, nên **mỗi ngôn ngữ một link**; ngôn ngữ không có link thì dùng ngôn ngữ mặc định.
+- **Trình phát:**
+  - thanh chọn ngôn ngữ (chỉ hiện khi có ≥ 2 lựa chọn); đổi ngôn ngữ thì phát lại **cùng tập**;
+  - iframe nhúng chính thức Facebook/Drive (CSP `frame-src` thêm `www.facebook.com`, `drive.google.com`);
+  - máy chủ chưa có 4.7 thì tự dùng v1.
+  - Đã kiểm trên Staging thật qua `phephim-ai`: `PGRST202` → v1 `ok`; tập mở sớm cho khách → `login_required`, không có nguồn.
+
+**Video Source Manager** (Studio → *Nguồn phát & ngôn ngữ*):
+- Chỉ nhận **link bên ngoài**: nhận diện YouTube (watch / youtu.be / shorts / unlisted), Facebook video công khai, Google Drive, MP4 https. Từ chối http, `fb.watch`, bài viết Facebook, link lạ.
+- **Không có ô tải tệp**; website không lưu trữ MP4.
+- **Không tự phát hành:**
+  - mọi nguồn và phụ đề mới đều là **bản nháp**;
+  - phát hành phải xác nhận quyền phát và bấm xác nhận lần 2;
+  - gỡ hoặc xóa cũng phải xác nhận.
+- Có **"Xem thử như người xem"** (chạy router theo từng ngôn ngữ). Phụ đề YouTube bị chặn nếu tập chưa có nguồn YouTube.
+- Máy chủ chưa có 4.7 thì báo rõ và khóa nút lưu.
+- Chính sách riêng tư bổ sung mục trình phát nhúng Facebook/Google Drive (cần chủ/pháp lý duyệt cùng bản dự thảo).
+
+**Kiểm thử:**
+- Router unit **8/8**.
+- E2E 4.7: **5**
+  - một link YouTube + phụ đề, đổi sang lồng tiếng, lưu lựa chọn;
+  - `?lang=`, Drive/Facebook, không vi phạm CSP;
+  - fallback v1, tập khóa không lộ nguồn;
+  - Studio: bản nháp → phát hành có xác nhận → người xem thấy phụ đề Thái;
+  - từ chối link lạ, máy chủ chưa có 4.7.
+
+### 6. Hồi quy Level 3–4.6
+- E2E **122/122**: gồm 5 kịch bản 4.7, MFA, multi-site, Studio khóa site, chat, ví, điểm danh, mở khóa, quyền riêng tư.
+- Unit: contract 11/11 (thêm hàm 4.7), site-config 14/14 (thêm nhà cung cấp Facebook/Drive), language-router 8/8, catalog, auth.
+- SQL: 253 + 23 + khôi phục MFA 23 + Level 4.7 33.
+- `site-package check`: 5/5 OK.
+- Hai bài jsdom cũ vẫn không chạy được (registry npm bị chặn).
+
+### Kết luận
+| Hạng mục | Trạng thái |
+|---|---|
+| **MULTI-SITE PREVIEW** | **READY**: 5 project riêng, mỗi project đúng một website |
+| **INDEPENDENT DEPLOYMENT** | **VERIFIED**: cập nhật + rollback Kho Phim và thăng cấp core riêng Phê Phim, 4 site còn lại không đổi; Production không đổi |
+| **LEVEL 4.7 SCHEMA** | **PASS** (cục bộ: 33/33, rollback, idempotent) — **chưa áp Staging**, chờ phê duyệt |
+| **VIDEO SOURCE MANAGER** | **DESIGNED · IMPLEMENTED · TESTED** (mock + fallback trên Staging thật) |
+| **LANGUAGE ROUTER** | **DESIGNED · IMPLEMENTED · TESTED** |
+| **PRODUCTION** | **ON HOLD** |
+
+**Cần anh phê duyệt:**
+1. **Áp Level 4.7 lên Staging** theo gói: backup, `apply_migration`, `92_verify_level4_7.sql`. Sau đó kiểm Studio và trình phát trên Supabase thật bằng QA Admin (anh đăng nhập).
+2. **Chuyển tên miền từng site** từ `web-phim-ai-5sites` sang `<id>-ai`, theo runbook 20:15:
+   - mỗi lần 2 tên miền;
+   - thêm Redirect URL vào Supabase Auth;
+   - chạy `site-package verify`;
+   - rollback = trả tên miền về project cũ.
+3. **Pháp lý:** chính sách (thêm mục Facebook/Drive), chat, nội dung phim thật. Vẫn **PENDING OWNER/LEGAL REVIEW**.
+
+---
+
 ## Cập nhật 01/11/2026 20:15 — MFA SIGN-OFF · ĐỒNG BỘ 4 WEBSITE (PREVIEW) · TRIỂN KHAI ĐỘC LẬP
 
 Không merge `main`, không đổi DNS, không đụng Production (`c6dd520` vẫn phục vụ 10 tên miền), không áp migration mới, không xóa dữ liệu.
