@@ -424,6 +424,28 @@ select t.err($$select public.send_chat_message('film:phimhay:bat-ky', 'không c�
 commit;
 insert into public.chat_settings(scope) values ('phimhay');
 
+-- 9. Level 4.5: tăng cứng quyền ------------------------------------------------------------
+begin; set local role authenticated; select t.as_user(:U2);
+select t.err($$truncate public.profiles$$, 'permission denied', 'authenticated cannot TRUNCATE (TRUNCATE bypasses RLS)');
+select t.err($$truncate public.watch_progress$$, 'permission denied', 'authenticated cannot TRUNCATE watch_progress');
+select t.err($$update public.site_memberships set site_id = 'khophim'$$, 'permission denied', 'no UPDATE grant where no UPDATE policy exists');
+insert into public.profiles(id, display_name) values (auth.uid(), 'U2 hồ sơ') on conflict (id) do update set display_name = excluded.display_name;
+select t.ok((select display_name from public.profiles where id = auth.uid()) = 'U2 hồ sơ', 'member profile upsert still works (needed by account page)');
+commit;
+begin; set local role anon;
+select t.err($$truncate public.site_films$$, 'permission denied', 'anon cannot TRUNCATE');
+commit;
+select t.ok((select count(*) from private.grant_hardening_log where privilege = 'TRUNCATE') >= 8, 'revoked privileges are logged for exact rollback');
+insert into public.traffic_events(site_id, path, utm_source) select 'phephim', '/', 'flood' from generate_series(1, 300);
+begin; set local role anon;
+select public.log_landing('phephim', '/', null, 'facebook', 'social', 'flood-test', null);
+commit;
+select t.ok((select count(*) from public.traffic_events where site_id = 'phephim') = 300, 'log_landing flood cap: max 300 landings/minute/site');
+begin; set local role anon;
+select public.log_landing('phimhay', '/', null, 'facebook', 'social', 'binh-thuong', null);
+commit;
+select t.ok((select count(*) from public.traffic_events where site_id = 'phimhay') = 1, 'other sites unaffected by the cap');
+
 -- 6. Invariants -------------------------------------------------------------------
 select t.ok(not exists (select 1 from public.wallets w where w.balance <> (select coalesce(sum(delta),0) from public.wallet_ledger l where l.user_id = w.user_id)), 'every wallet balance equals the sum of its ledger');
 select t.ok(not exists (select 1 from public.wallets where balance < 0), 'no negative balances');
