@@ -13,6 +13,103 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 11:15 — RC2: xác minh bản backup cuối, khôi phục từ chính tệp đó, kiểm kê Auth đầy đủ
+
+Mã ứng dụng RC2 (`ffb68f8`) **giữ nguyên**: vòng này không phát hiện lỗi ứng dụng. Không xóa dữ liệu QA, không đổi Production, không merge main, không thay đổi cấu hình Supabase (chỉ đọc Dashboard và chạy SQL `read only`).
+
+### 1. Bản backup hiện có
+- Tệp `afn_supabase_backup_20261101.zip` (bản 10:39) lấy lại từ PC Nhân: SHA-256 `8ac50551…e522` khớp; giải mã được; 5/5 tệp khớp `SHA256SUMS`.
+- **Bản cuối cùng:** `backups\supabase\afn_supabase_backup_20261101_final.zip` (11.219 byte).
+  - SHA-256 `986257ad5dda0510b5edb94042bfa464c1e7abb2a6e8c4de50a5a2b0a0031831`.
+  - Cùng dữ liệu (md5 `d09517ca…86ee`) và cùng mật khẩu đã gửi anh.
+  - Bổ sung bản kiểm kê Auth/cấu hình đầy đủ (mục 4).
+  - Bản 10:39 vẫn được giữ, không xóa.
+- **Dữ liệu chưa thay đổi kể từ lúc sao lưu:** fingerprint chạy trên Supabase lúc 11:00 trùng với bản sao lưu (27/27 bảng).
+
+### 2–3. Công cụ và cách kết nối
+- **7-Zip:** **đã có sẵn** trên PC Nhân (`C:\Program Files\7-Zip`, kèm WinRAR), không cần cài.
+- **PostgreSQL 17 client:** vẫn **chưa có**, và chưa cài được một cách hợp lệ:
+  - Phiên này không có shell trên PC Nhân.
+  - Container không phân giải DNS ra ngoài: `apt.postgresql.org`, `get.enterprisedb.com`, `*.pooler.supabase.com:5432` đều không tới được. Vì vậy pg_dump cũng **không chạy được từ container**.
+- **Kết nối dùng cho sao lưu:** Supabase MCP đã được cấp quyền.
+  - Mọi truy vấn của vòng này chạy trong `set transaction read only`.
+  - Không có mật khẩu hay connection string trong mã nguồn, log, báo cáo.
+- **Bản pg_dump đầy đủ** (có cả mật khẩu đã băm) là tùy chọn, cần anh tự làm trên PC Nhân:
+  1. Giải nén gói PostgreSQL 17 vào `%LOCALAPPDATA%\Programs\pgsql17\`.
+  2. Chạy `tools\Backup-Supabase.cmd` và tự nhập mật khẩu DB vào ô ẩn.
+  3. Script tự mã hóa bằng 7-Zip đã có.
+
+### 4. Kiểm kê Storage, Auth và cấu hình — đầy đủ, đọc trực tiếp lúc 11:00
+- **Storage:** 0 bucket, 0 object.
+- **Trong database nhưng ngoài các bảng:**
+  - Vault: 0 secret. Không có pg_cron, pg_net hay Database Webhooks.
+  - Edge Functions: 0. Không có role tùy biến. Không có trigger trên `auth.users`.
+  - Realtime publication: chỉ có `public.chat_messages`.
+  - Extensions: pg_stat_statements, pgcrypto, plpgsql, supabase_vault, uuid-ossp.
+  - Grants: anon 5, authenticated 86 (bản khôi phục cũng ra **5/86**).
+- **Auth:**
+  - **Đăng nhập:** chỉ bật Email provider; cho đăng ký; bắt buộc xác minh email; tắt anonymous và manual linking. Không có OAuth, SSO, SAML, third-party hay custom provider. 0 MFA factor.
+  - **Email provider:** secure email change bật; độ dài mật khẩu tối thiểu 8; OTP email 8 ký tự, hết hạn 3600 giây; leaked-password protection tắt.
+  - **Phiên:** access token 3600 giây; phát hiện dùng lại refresh token bật, khoảng 10 giây; time-box và inactivity = 0 (gói Free). 12 phiên đang hoạt động không được sao lưu; khi khôi phục, người dùng đăng nhập lại.
+  - **Bảo vệ:** CAPTCHA tắt, Auth Hooks không có.
+  - **Rate limit:** email 30/giờ, SMS 30, refresh token 150, verify 30, anonymous 30, sign-in/sign-up 30, web3 30. Khoảng cách tối thiểu mỗi người dùng 60 giây. IP forwarding tắt.
+  - **SMTP:** Resend `smtp.resend.com:465`, user `resend`, `no-reply@mail.xuongphim.ai`, tên "xưởng phim". Mật khẩu **không lưu**.
+  - **URL:** Site URL = preview cũ, 6 Redirect URL (liệt kê đủ trong gói).
+  - **Mẫu email:** "Confirm sign up" và "Reset password" trên Supabase **trùng từng ký tự** với `docs/email-templates/*.html` (đã bỏ phần comment đầu tệp; SHA-256 `71ff4c00…` và `a85182c5…`). Các mẫu còn lại giữ mặc định.
+- **Ghi nhận:** alias RC `release-xuongphim-l4-rc1` **chưa có** trong Redirect URLs.
+  - Hiện chưa ảnh hưởng: email đăng ký/đặt lại đã nghiệm thu trên alias Level 4.
+  - Khi phát hành, sẽ thêm `https://www.xuongphim.ai/?auth=confirm|recovery|callback` theo bước R-Supabase đã lên kế hoạch.
+  - Không đổi lúc này, theo chỉ thị.
+
+### 5. Khôi phục từ chính tệp backup cuối — PASS
+- **Quy trình:**
+  1. Xóa sạch mọi bản tạm trong container.
+  2. Lấy **tệp `_final.zip` từ PC Nhân**; SHA-256 trùng.
+  3. Giải mã bằng libarchive: mật khẩu sai bị từ chối; 5/5 tệp khớp `SHA256SUMS`; tệp zip không còn chuỗi email ở dạng rõ.
+  4. Tạo DB cô lập mới, áp shim và 10 migration, chạy `restore-logical-backup.sql` **lấy từ trong gói**.
+- **So sánh với Supabase thật bằng `tools/schema-fingerprint.sql` (mới): 35/35 hạng mục trùng.**
+
+| Hạng mục | Supabase = Bản khôi phục |
+|---|---|
+| Hàm public/private (định nghĩa đầy đủ) | 35 · `dc3627c7…` |
+| Policy (nội dung USING/WITH CHECK) | 59 · `da4254ea…` |
+| RLS bật | 27/27 · `eb7f03cd…` |
+| Cột | 214 · `c65acbb5…` |
+| Trigger | 9 · `8364ddb2…` |
+| Dữ liệu 27 bảng (số dòng + md5 nội dung) | trùng toàn bộ |
+| Tổng số dư ví / từng ví | 60 · `06d7514f…` |
+| Ví lệch sổ cái | 0 |
+| auth.users | 6 · `f91e6ea5…` |
+
+- **Realtime:** trên PostgreSQL cục bộ, publication không có sẵn. Đã tạo publication rồi chạy lại đoạn mã của migration 4.2 → `public.chat_messages` được thêm đúng như trên Supabase.
+- **Nghiệp vụ trên DB khôi phục** (danh tính qa1, sau đó rollback):
+  - Chỉ thấy ví của mình (30 điểm).
+  - Mở lại tập đã mua → `already_unlocked`, không trừ điểm lần hai.
+  - Sửa trực tiếp `wallets` → `permission denied`.
+- **Dọn dẹp:** đã drop DB cô lập; đã shred bản giải mã và tệp khóa trong container.
+
+### 6. Chính sách riêng tư
+- `chinh-sach.html` giữ nguyên nội dung đã đối chiếu với hệ thống thật.
+- 3 ô pháp lý **để trống có đánh dấu**, chờ anh xác nhận:
+  1. Người chịu trách nhiệm.
+  2. Email hỗ trợ.
+  3. Số ngày lưu nhật ký sau khi xóa tài khoản.
+- Có test chặn phát hành khi còn ô trống.
+
+### Kết luận
+| Hạng mục | Trạng thái |
+|---|---|
+| **BACKUP CREATED** | **YES**: bản sao lưu logic từ Supabase thật (27 bảng + 6 tài khoản), lưu ở `backups\supabase\afn_supabase_backup_20261101_final.zip` trên PC Nhân, ngoài Git repo |
+| **BACKUP ENCRYPTED** | **YES**: AES-256 (mở bằng 7-Zip đã có trên máy); mật khẩu chỉ gửi anh, không nằm trong repo, log hay cạnh tệp |
+| **RESTORE FROM FINAL BACKUP** | **PASS**: 35/35 hạng mục schema, RLS, policy, dữ liệu, số dư ví trùng Supabase |
+| **AUTH/CONFIG INVENTORY** | **COMPLETE**: đọc trực tiếp Dashboard và SQL; chỉ các bí mật (SMTP key, JWT, mật khẩu DB) cố ý không lưu |
+| **PRIVACY POLICY** | **NEEDS OWNER INPUT**: 3 thông tin pháp lý |
+| **PRODUCTION RELEASE** | **NOT READY**: chờ 3 thông tin chính sách (→ RC3 chỉ đổi `chinh-sach.html`), rồi phê duyệt R1–R7 |
+
+Giới hạn còn lại: bản sao lưu không gồm mật khẩu đã băm. Nếu phải khôi phục, người dùng dùng "Quên mật khẩu". Bản pg_dump đầy đủ là tùy chọn và cần anh tự nhập mật khẩu DB.
+
+---
+
 ## Cập nhật 01/11/2026 10:50 — RC2: sao lưu Supabase thật, thử khôi phục, chính sách
 
 Không merge main, không sửa DNS, không dọn dữ liệu QA, không triển khai Production. Supabase chỉ nhận **câu SELECT** (không đổi schema hay dữ liệu).
