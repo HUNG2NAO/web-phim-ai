@@ -133,4 +133,6 @@ check "$(q "select count(*) from chat_messages where user_id='$C'")" 5 "20 simul
 echo "Concurrency/staging: $pass passed, $fail failed"
 total=$(grep -c PASS /tmp/afn_sql_results.txt)
 echo "Functional: $total passed"
-[ "$fail" = 0 ]
+[ "$fail" = 0 ] || exit 1
+# Khôi phục 2FA của chủ mạng khi mất thiết bị (trích nguyên văn khối A/B của db/staging/94_mfa_break_glass.sql)
+tests/sql/owner_mfa_recovery.sh | tail -1

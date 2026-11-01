@@ -13,6 +13,38 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 17:50 — OWNER MFA PASS (Hungcreator, Staging/Preview)
+
+Chủ hệ thống tự bật xác thực 2 lớp trên trình duyệt riêng (Preview → Studio → Bảo mật). Claude **không thấy, không lưu, không yêu cầu** QR, khóa bí mật hay mã OTP; mọi kiểm tra dưới đây chỉ đọc siêu dữ liệu (trạng thái, thời điểm, mã phản hồi).
+
+**Phương thức Supabase hỗ trợ trên Staging:** chỉ TOTP (ứng dụng xác thực); tối đa 10 factor/người. SMS cần gói Pro, nên không dùng. "Limit duration of AAL1 sessions" đang bật: tài khoản có 2FA mà không nhập mã sẽ bị ngắt phiên sau khoảng 15 phút.
+
+| # | Kiểm tra (Staging thật) | Kết quả |
+|---|---|---|
+| 1 | Factor của chủ (`90b8b707…`) | **1 TOTP `verified`**: tạo 10:38:25 UTC, xác minh 10:39:07 UTC (challenge `verified_at` cùng thời điểm) |
+| 2 | Phiên đăng nhập | Phiên duy nhất `55753ba4…` = **`aal2`**, AMR = `otp` + `totp`. Các phiên AAL1 cũ không còn |
+| 3 | Quyền quản trị sau MFA (phiên thật) | Log API: token phát hành lúc 10:39:07 (đúng lúc xác minh mã) gọi `admin_staff_mfa_status` (cần quyền quản trị mạng + `mfa_ok`) → **200** lúc 10:39:08. Vì tài khoản đã có factor, hàm chỉ trả 200 khi JWT là `aal2`; nếu không sẽ trả `forbidden`/403. Trước đó (10:37) Studio đã tải đủ `admin_overview`, `admin_traffic`, `admin_member_wallets`, `admin_site_staff`, `admin_chat_reports`, `admin_site_entitlements` → đều 200 |
+| 4 | Chủ chỉ có AAL1 (JWT mô phỏng, chỉ đọc) | `mfa_ok=false`; chủ mạng, quản trị mạng, nhân sự site và gate đều `false`. `admin_overview` → `forbidden`; `admin_set_staff_mfa_required` → `forbidden`; nhật ký quản trị đọc được 0 dòng. Ví riêng và trạng thái bảo mật vẫn đọc được (không khóa tài khoản). Cùng tài khoản ở AAL2: nhật ký 21 dòng, overview OK, danh sách 2FA nhân sự 7 dòng (theo phạm vi) |
+| 5 | Mất thiết bị (CSDL cục bộ giả lập, `tests/sql/owner_mfa_recovery.sh`, khối A/B trích nguyên văn runbook 94) | **23/23 ĐẠT**: mất thiết bị → vẫn đăng nhập và dùng tính năng thành viên, chỉ mất quyền quản trị. Có thiết bị dự phòng → tự khôi phục. Khối B tự dừng khi chưa thay email, email sai hoặc email không phải nhân sự. Gỡ đúng factor của chủ thì được ghi nhật ký và có lại quyền. Nếu đã bật bắt buộc: chạy khối B rồi khối A (có ghi nhật ký). Bật lại 2FA với thiết bị mới thì AAL1 lại bị chặn. Dữ liệu ví và tài khoản không đổi. **MFA thật trên Staging không bị đụng tới** |
+| 6 | Hồi quy | SQL chức năng 253 · đồng thời 23 · khôi phục chủ 23 · REST/PostgREST 40 · E2E Playwright **106/106** (thêm 2 kịch bản bước 2FA khi đăng nhập) · unit 5/7. Hai bài jsdom cũ (Level 1–3) không chạy được vì máy kiểm thử không tải được thư viện jsdom (lỗi mạng npm), không phải lỗi mã |
+| — | Trạng thái sau kiểm thử | `staff_mfa_required = false` (**không bật bắt buộc cho nhân sự**) · tổng factor 1 (chỉ của chủ) · `dangerous_grants` 0 · 27 gate · 15 migration (không thêm) · nhật ký không có dòng mới từ kiểm thử |
+
+**Mã nguồn (nhánh dev `cd0fdf1`, Preview đã nhận):**
+- `assets/auth.js` thêm bước nhập mã 6 số ngay sau đăng nhập và khi mở trang với phiên AAL1 của tài khoản đã bật 2FA. Trước đây thiếu bước này nên phiên sẽ bị Supabase ngắt sau 15 phút. Có chống mở 2 hộp thoại; nút "Để sau" không chặn trang.
+- Ô nhập mã chấp nhận dạng "123 456".
+- Không đổi `main`, Production hay DNS.
+
+**Kết luận: OWNER MFA PASS.** Đã kiểm chứng trên phiên thật: TOTP đã xác minh, phiên đạt AAL2, quyền quản trị mạng hoạt động sau MFA.
+
+**Việc chủ nên làm (khuyến nghị, không bắt buộc):**
+1. Thêm thiết bị xác thực dự phòng. Supabase không cấp recovery code; hiện Studio chỉ cho đăng ký khi chưa có factor, nên cách nhanh là dùng trình quản lý mật khẩu đồng bộ TOTP, hoặc nhờ Claude thêm nút "Thêm thiết bị dự phòng".
+2. Bật 2FA cho chính tài khoản Supabase (Dashboard). Đây là chìa khóa của quy trình break-glass.
+3. Chỉ bật "bắt buộc 2FA cho nhân sự" khi các nhân sự khác đã đăng ký xong và chủ phê duyệt. Hiện có 2 nhân sự (chủ + QA Admin); QA Admin chưa có factor.
+
+**PRODUCTION: ON HOLD.**
+
+---
+
 ## Cập nhật 01/11/2026 16:20 — LEVEL 4.6 STAGING VERIFIED
 
 Chủ hệ thống phê duyệt lúc 16:16. Migration `level4_6_staff_mfa` đã áp lên `jurvphonehknrxjpowoe` (Staging) và được kiểm chứng **trên Supabase thật**.
