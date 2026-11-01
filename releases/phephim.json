@@ -1,0 +1,10 @@
+{
+  "site": "phephim",
+  "channel": "preview",
+  "version": "4.7.0-pre",
+  "core_commit": "8a0503b",
+  "core_sha256": "8d0cb1085a733d422436578aa2b43de7465b20ce3dd06055d6bcd188d3712fae",
+  "promoted_at": "2026-11-01T14:37:33Z",
+  "preview_url": "https://phephim-ai.pages.dev/",
+  "note": "Thăng cấp riêng Phê Phim lên Shared Core 8a0503b (Language Router + Video Source Manager). Máy chủ Staging chưa có Level 4.7 → trình phát tự dùng nguồn v1. 4 website còn lại giữ 4.6.1."
+}
