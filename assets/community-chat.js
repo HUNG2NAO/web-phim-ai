@@ -7,6 +7,12 @@
   "use strict";
   var AFN = window.AFN;
   if (!AFN || !AFN.configured) return;
+  if (AFN.chatEnabled === false) {
+    // Tên miền thật chưa được phép mở chat công khai: gỡ lối vào chat, không kết nối Realtime.
+    Array.prototype.forEach.call(document.querySelectorAll("[data-chat-open]"), function (x) { x.hidden = true; });
+    window.AFN_CHAT = Object.freeze({ disabled: true });
+    return;
+  }
   var el = AFN.el;
   var ERR = {
     login_required: "Vui lòng đăng nhập để trò chuyện.",

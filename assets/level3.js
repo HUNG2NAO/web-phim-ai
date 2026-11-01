@@ -454,11 +454,19 @@
   $("#export-data").addEventListener("click",async function(){
     this.disabled=true;
     try{
-      const owned=["profiles","site_memberships","viewer_profiles","viewer_preferences","film_library","watch_progress","film_reviews","member_notifications"];
-      const exports={exported_at:new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:{}};
-      for(const table of owned){
-        const key=table==="profiles"?"id":"user_id";
-        exports.data[table]=await getRows(table,{[key]:state.user.id});
+      let exports;
+      // Level 4.3: toàn bộ dữ liệu (kể cả ví, sổ điểm, chat) qua RPC; CSDL chưa nâng cấp → cách cũ.
+      let full={error:true};
+      try{if(typeof client.rpc==="function")full=await client.rpc("my_data_export");}catch(_){full={error:true};}
+      if(!full.error&&full.data){
+        exports={exported_at:full.data.exported_at||new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:full.data};
+      }else{
+        const owned=["profiles","site_memberships","viewer_profiles","viewer_preferences","film_library","watch_progress","film_reviews","member_notifications"];
+        exports={exported_at:new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:{}};
+        for(const table of owned){
+          const key=table==="profiles"?"id":"user_id";
+          exports.data[table]=await getRows(table,{[key]:state.user.id});
+        }
       }
       const payload=new Blob([JSON.stringify(exports,null,2)],{type:"application/json;charset=utf-8"});
       const link=document.createElement("a");

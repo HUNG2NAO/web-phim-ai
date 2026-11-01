@@ -121,8 +121,16 @@
     return parts;
   }
 
+  // Community Chat công khai trên tên miền thật CHỈ khi được ghi vào danh sách dưới đây (sau khi đánh giá pháp lý,
+  // xem docs/AI_FILM_NETWORK_MASTER_DELIVERY.md — RC3 mục 5). Preview / localhost luôn bật để kiểm thử.
+  var CHAT_PUBLIC_DOMAINS = [];
+  function chatEnabled() {
+    var b = hostBrand();
+    return !b || CHAT_PUBLIC_DOMAINS.indexOf(b.domain) !== -1;
+  }
   window.AFN = Object.freeze({
     sites: SITES,
+    get chatEnabled() { return chatEnabled(); },
     get brand() { return currentBrand(); },
     get siteId() { var b = currentBrand(); return b ? b.id : null; },
     get preview() { return !hostBrand(); },

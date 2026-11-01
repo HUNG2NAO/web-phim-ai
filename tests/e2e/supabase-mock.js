@@ -290,6 +290,47 @@
           reason: r.reason, note: r.note, status: r.status, reports: 1, created_at: r.created_at };
       }) };
     },
+    admin_privacy_request_set_status: function (a) {
+      var r = list("member_privacy_requests").find(function (x) { return x.id === a.p_id; });
+      if (!r) return err("not_found");
+      var role = staffOf(r.site_id); if (role !== "owner" && role !== "admin") return err("forbidden");
+      var ok = (r.status === "pending" && (a.p_status === "in_review" || a.p_status === "rejected")) ||
+               (r.status === "in_review" && (a.p_status === "completed" || a.p_status === "rejected"));
+      if (!ok) return err("invalid_transition");
+      if (a.p_status === "completed" && r.request_type === "delete_account") return err("use_account_deletion");
+      var note = String(a.p_note || "").trim();
+      if (a.p_status === "rejected" && note.length < 5) return err("note_required");
+      r.status = a.p_status; r.admin_note = note; r.handled_by = user.id;
+      r.handled_at = (a.p_status === "completed" || a.p_status === "rejected") ? new Date().toISOString() : null;
+      list("admin_audit_log").push({ id: Date.now(), actor: user.id, site_id: r.site_id, action: "privacy." + a.p_status, target: r.id, details: {}, created_at: new Date().toISOString() });
+      if (r.user_id) list("member_notifications").push({ id: uuid(), user_id: r.user_id, site_id: r.site_id, title: "Yêu cầu xóa tài khoản đang được xử lý", body: note, event_key: "privacy:" + r.id + ":" + a.p_status, created_at: new Date().toISOString(), read_at: null });
+      save(); return { data: { id: r.id, status: r.status } };
+    },
+    admin_execute_account_deletion: function (a) {
+      if (!user || !list("network_staff").some(function (n) { return n.user_id === user.id; })) return err("forbidden");
+      var r = list("member_privacy_requests").find(function (x) { return x.id === a.p_request_id; });
+      if (!r) return err("not_found");
+      if (r.status !== "in_review") return err("invalid_state");
+      var email = (seed.emails || {})[r.user_id] || "";
+      var counts = { chat_messages: list("chat_messages").filter(function (x) { return x.user_id === r.user_id; }).length,
+        wallet_ledger: list("wallet_ledger").filter(function (x) { return x.user_id === r.user_id; }).length,
+        daily_checkins: list("daily_checkins").filter(function (x) { return x.user_id === r.user_id; }).length,
+        content_entitlements: list("content_entitlements").filter(function (x) { return x.user_id === r.user_id; }).length,
+        viewer_profiles: 0, film_reviews: 0 };
+      if (a.p_dry_run !== false) return { data: { status: "dry_run", counts: counts, email_hint: email.slice(0, 2) + "***@" + email.split("@")[1] } };
+      if (String(a.p_confirm_email || "").trim().toLowerCase() !== email.toLowerCase()) return err("email_mismatch");
+      ["chat_messages", "wallet_ledger", "daily_checkins", "content_entitlements", "wallets"].forEach(function (t) { db[t] = list(t).filter(function (x) { return x.user_id !== r.user_id; }); });
+      r.status = "completed"; r.user_id = null; r.handled_at = new Date().toISOString();
+      save(); return { data: { status: "deleted", counts: counts } };
+    },
+    my_data_export: function () {
+      if (!user) return err("not_authenticated");
+      var mine = function (t, k) { return clone(list(t).filter(function (x) { return x[k || "user_id"] === user.id; })); };
+      return { data: { exported_at: new Date().toISOString(), account: { id: user.id, email: user.email },
+        wallet: mine("wallets")[0] || null, wallet_ledger: mine("wallet_ledger"), daily_checkins: mine("daily_checkins"),
+        content_entitlements: mine("content_entitlements"), chat_messages: mine("chat_messages"), viewer_profiles: mine("viewer_profiles"),
+        privacy_requests: mine("member_privacy_requests") } };
+    },
     admin_refund_unlock: function (a) {
       var c = list("content_entitlements").find(function (x) { return x.id === a.p_entitlement_id; });
       if (!c) return err("entitlement_not_found");

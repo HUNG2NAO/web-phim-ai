@@ -215,17 +215,20 @@
     }catch(_){showStatus("Không thể gửi xác nhận đổi email. Kiểm tra cấu hình redirect và SMTP của Supabase.",true);}
     finally{btn.disabled=false;}
   });
+  var PRIVACY_TYPE={delete_account:"Yêu cầu xóa tài khoản",data_export:"Yêu cầu xuất dữ liệu",delete_activity:"Yêu cầu xóa lịch sử hoạt động"};
+  var PRIVACY_STATUS={pending:"Chờ xử lý",in_review:"Đang xử lý",completed:"Đã hoàn tất",rejected:"Chưa được chấp thuận"};
   async function loadPrivacyRequests(){
     if(!current)return;
     var box=document.getElementById("afn-privacy-requests");
-    var response=await supabase.from("member_privacy_requests").select("request_type,status,submitted_at")
+    var response=await supabase.from("member_privacy_requests").select("request_type,status,submitted_at,handled_at,admin_note")
       .eq("user_id",current.id);
     if(response.error){box.textContent="Chưa thể tải trạng thái yêu cầu.";return;}
     box.replaceChildren();
     (response.data||[]).sort((a,b)=>new Date(b.submitted_at)-new Date(a.submitted_at)).slice(0,10).forEach(function(r){
       var p=document.createElement("p");
       p.className="afn-auth-hint";
-      p.textContent="Yêu cầu "+(r.request_type==="delete_account"?"xóa tài khoản":r.request_type)+" · "+r.status+" · "+new Date(r.submitted_at).toLocaleDateString("vi-VN");
+      p.textContent=(PRIVACY_TYPE[r.request_type]||r.request_type)+" · "+(PRIVACY_STATUS[r.status]||r.status)+" · gửi "+new Date(r.submitted_at).toLocaleDateString("vi-VN")+
+        (r.admin_note?" · Ghi chú: "+r.admin_note:"");
       box.append(p);
     });
   }
@@ -234,17 +237,19 @@
     if(!window.confirm("Gửi yêu cầu xóa tài khoản? Quản trị viên sẽ cần xác minh danh tính trước khi thực hiện. Đây chưa phải thao tác xóa ngay."))return;
     var btn=this;btn.disabled=true;
     try{
-      var old=await supabase.from("member_privacy_requests").select("id").eq("user_id",current.id)
-        .eq("request_type","delete_account").eq("status","pending");
+      var old=await supabase.from("member_privacy_requests").select("id,status").eq("user_id",current.id)
+        .eq("request_type","delete_account");
       if(old.error)throw old.error;
-      if((old.data||[]).length){showStatus("Yêu cầu xóa tài khoản đang được tiếp nhận.",false);return;}
+      if((old.data||[]).some(function(x){return x.status==="pending"||x.status==="in_review";})){showStatus("Bạn đã có yêu cầu xóa tài khoản đang được xử lý.",false);return;}
       var response=await supabase.from("member_privacy_requests").insert({
         user_id:current.id,site_id:brand.id,request_type:"delete_account",status:"pending"
       });
       if(response.error)throw response.error;
       await loadPrivacyRequests();
-      showStatus("Đã ghi nhận yêu cầu xóa tài khoản. Quản trị viên sẽ kiểm tra và xác minh.",false);
-    }catch(_){showStatus("Chưa thể gửi yêu cầu xóa. Vui lòng thử lại.",true);}
+      showStatus("Đã ghi nhận yêu cầu xóa tài khoản. Bạn sẽ nhận thông báo khi yêu cầu được xử lý.",false);
+    }catch(e){
+      if(/duplicate|23505/.test(String(e&&(e.code||e.message)))){showStatus("Bạn đã có yêu cầu xóa tài khoản đang được xử lý.",false);await loadPrivacyRequests();return;}
+      showStatus("Chưa thể gửi yêu cầu xóa. Vui lòng thử lại.",true);}
     finally{btn.disabled=false;}
   });
   if(current)loadPrivacyRequests().catch(function(){});

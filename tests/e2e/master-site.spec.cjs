@@ -902,3 +902,195 @@ test.describe("Liên kết trong email (xác minh / đặt lại mật khẩu)",
     expect(issues).toEqual([]);
   });
 });
+
+/* ===================================================================== Đa website (chuẩn bị đồng bộ 5 site) */
+const SITES5 = [["xuongphim", "XưởngPhim"], ["khophim", "KhoPhim"], ["phephim", "PhêPhim"], ["phimhay", "PhimHay"], ["ghienphim", "GhiềnPhim"]];
+const KADMIN = { id: "00000000-0000-4000-8000-0000000000bb", email: "kho-admin@example.test", created_at: "2026-10-01T00:00:00Z", user_metadata: { display_name: "Admin Kho" } };
+function epId(i, n) { return "33333333-3333-4333-8333-" + String(i * 10 + n).padStart(12, "0"); }
+function withNetwork(page, extra = {}) {
+  return page.addInitScript(({ sites, extra }) => {
+    const s = window.__AFN_MOCK_SEED; if (!s) return;
+    const id = (i, n) => "33333333-3333-4333-8333-" + String(i * 10 + n).padStart(12, "0");
+    sites.forEach((site, i) => {
+      s.tables.site_films.push({ id: "nf" + i, site_id: site, film_id: "phim-" + site, title: "Phim thử " + site, synopsis: "Phim thử nghiệm đa website.",
+        genres: ["Viễn tưởng"], year: 2026, film_type: "bo", source_kind: "youtube", youtube_id: ("F" + i).padEnd(11, "x"), rights_attested: true, published: true, created_at: "2026-10-30T00:00:00Z" });
+      s.tables.site_episodes.push(
+        { id: id(i, 1), site_id: site, film_id: "phim-" + site, episode_no: 1, title: "Tập mở", access_tier: "free", price_points: 0, free_from: null, access_days: null, published: true },
+        { id: id(i, 2), site_id: site, film_id: "phim-" + site, episode_no: 2, title: "Tập sớm", access_tier: "early", price_points: 30, free_from: null, access_days: null, published: true });
+      s.tables.episode_sources.push({ episode_id: id(i, 1), source_kind: "youtube", youtube_id: ("S" + i + "E1").padEnd(11, "x"), video_url: null },
+        { episode_id: id(i, 2), source_kind: "youtube", youtube_id: ("S" + i + "E2").padEnd(11, "x"), video_url: null });
+    });
+    Object.keys(extra.tables || {}).forEach(t => { s.tables[t] = (s.tables[t] || []).concat(extra.tables[t]); });
+    s.emails = extra.emails || {};
+  }, { sites: SITES5.map(x => x[0]), extra });
+}
+
+test.describe("Đa website — ma trận chức năng (5 site, cùng Shared Core)", () => {
+  SITES5.forEach(([id, name], i) => {
+    test(id + ": nhận diện, điểm danh, mở khóa + phát, chat phòng phim, Member Hub, cách ly nội dung", async ({ page }) => {
+      const issues = await setup(page, { user: VIEWER, balance: 60 });
+      await withNetwork(page);
+      await page.goto("/?site=" + id);
+      await expect(page.locator("#logo .name")).toContainText(name);
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www." + id + ".ai/");
+      await expect(page.locator(".legal-links a")).toHaveCount(2);
+      await expect(page.locator("#side-me [data-chat-open]")).toBeVisible();
+      // điểm danh (ví dùng chung)
+      await page.locator(".afn-reward-chip").click();
+      await page.locator(".afn-checkin-btn").click();
+      await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("70");
+      // nội dung riêng site: phim của site khác không xuất hiện
+      const other = SITES5[(i + 1) % 5][0];
+      await page.locator("#q").fill("Phim thử " + other);
+      await expect(page.locator("#content")).toContainText("0 phim");
+      // mở khóa + phát
+      await page.goto("/?site=" + id + "&film=phim-" + id + "&tap=2");
+      await page.locator("#play-btn").click();
+      await page.locator(".player-gate button", { hasText: "Mở khóa · 30 điểm" }).click();
+      await expect(page.locator('#player iframe[src*="' + ("S" + i + "E2").padEnd(11, "x") + '"]')).toHaveCount(1);
+      await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("40");
+      // chat phòng phim đúng site
+      const fc = page.locator("#film-chat");
+      await fc.locator("textarea").fill("Bàn luận " + id);
+      await fc.getByRole("button", { name: "Gửi" }).click();
+      await expect(fc.locator(".afn-chat-msg.mine")).toContainText("Bàn luận " + id);
+      const db = await mock(page);
+      expect(db.chat_messages.find(m => m.body === "Bàn luận " + id).room).toBe("film:" + id + ":phim-" + id);
+      expect(db.content_entitlements.map(c => c.site_id)).toEqual([id]);
+      expect(db.wallet_ledger.find(l => l.kind === "unlock").site_id).toBe(id);
+      expect(db.wallets[0].balance).toBe(40);
+      // Member Hub cùng ví
+      await page.goto("/member.html?site=" + id + "#rewards");
+      await expect(page.locator(".rw-card").first()).toContainText("40");
+      await expect(page.locator("#rewards-root")).toContainText("phim-" + id + " · Tập 2");
+      await page.goto("/account.html?site=" + id);
+      await expect(page.locator("h1")).toHaveText("Hồ sơ cá nhân");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      expect(await cspViolations(page)).toEqual([]);
+      expect(issues).toEqual([]);
+    });
+  });
+
+  test("điểm danh 1 lần/ngày trên TOÀN mạng: đã điểm danh ở phephim thì ghienphim báo đã điểm danh, cùng số dư", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 5 });
+    await page.goto("/?site=phephim");
+    await page.locator(".afn-reward-chip").click();
+    await page.locator(".afn-checkin-btn").click();
+    await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("15");
+    await page.goto("/?site=ghienphim");
+    await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("15");
+    await page.locator(".afn-reward-chip").click();
+    await expect(page.locator(".afn-checkin-btn")).toBeDisabled();
+    expect((await mock(page)).daily_checkins).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("quản trị cách ly: admin Kho Phim chỉ có Dashboard khophim; mở ?site=xuongphim được báo không có quyền", async ({ page }) => {
+    await setup(page, { user: KADMIN });
+    await page.addInitScript(() => { const s = window.__AFN_MOCK_SEED; s.tables.site_staff = [{ user_id: "00000000-0000-4000-8000-0000000000bb", site_id: "khophim", role: "admin" }]; s.tables.network_staff = []; });
+    await page.goto("/admin.html?site=khophim");
+    await expect(page.locator("#studio-app")).toBeVisible();
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#studio-status")).toContainText("Bạn không có quyền quản trị Xưởng Phim. Đang hiển thị Kho Phim.");
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    expect(await page.locator("#studio-site option").evaluateAll(o => o.map(x => x.value))).toEqual(["khophim"]);
+  });
+  test("chủ mạng mở Dashboard từ ?site=khophim → đúng Kho Phim (trước đây luôn mở Xưởng Phim)", async ({ page }) => {
+    await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=khophim");
+    await expect(page.locator("#studio-app")).toBeVisible();
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+  });
+});
+
+test.describe("Quyền riêng tư — yêu cầu xóa tài khoản (Level 4.3)", () => {
+  const REQ = "44444444-4444-4444-8444-000000000001";
+  const pending = { id: REQ, user_id: VIEWER.id, subject_id: VIEWER.id, site_id: "xuongphim", request_type: "delete_account", status: "pending", submitted_at: "2026-11-01T01:00:00Z", handled_at: null, admin_note: "" };
+
+  test("thành viên: gửi yêu cầu, thấy trạng thái tiếng Việt và ghi chú; không gửi trùng", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/account.html?site=xuongphim");
+    await page.locator("#afn-request-delete").click();
+    await expect(page.locator("#afn-privacy-requests")).toContainText("Yêu cầu xóa tài khoản · Chờ xử lý");
+    await page.locator("#afn-request-delete").click();
+    await expect(page.locator("body")).toContainText("Bạn đã có yêu cầu xóa tài khoản đang được xử lý");
+    expect((await mock(page)).member_privacy_requests).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("chủ mạng: nhận xử lý → xem trước dữ liệu → hủy khi không gõ email (không xóa gì); thành viên được thông báo", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await withNetwork(page, { tables: { member_privacy_requests: [pending], chat_messages: [{ id: "m1", room: "network", user_id: VIEWER.id, display_name: "Khán giả thử", body: "xin chào", hidden: false, created_at: "2026-11-01T00:00:00Z" }] },
+      emails: { [VIEWER.id]: VIEWER.email } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="privacy"]').click();
+    const item = page.locator("#studio-privacy .studio-item");
+    await expect(item).toContainText("Chờ xử lý");
+    await item.getByRole("button", { name: "Nhận xử lý" }).click();
+    await expect(item).toContainText("Đang xử lý");
+    await item.getByRole("button", { name: "Xem trước dữ liệu sẽ xóa" }).click();
+    await expect(item.locator(".privacy-preview")).toContainText("vi***@example.test");
+    await expect(item.locator(".privacy-preview")).toContainText("1 tin nhắn");
+    await item.getByRole("button", { name: "Xóa tài khoản vĩnh viễn" }).click();   // prompt trả về rỗng → hủy
+    await expect(page.locator("#studio-status")).toContainText("Đã hủy. Chưa xóa gì.");
+    const db = await mock(page);
+    expect(db.chat_messages).toHaveLength(1);
+    expect(db.member_privacy_requests[0].status).toBe("in_review");
+    expect(db.member_notifications.filter(n => n.user_id === VIEWER.id)).toHaveLength(1);
+    const calls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc === "admin_execute_account_deletion").map(c => c.args.p_dry_run));
+    expect(calls).toEqual([true, true]);
+    expect(issues).toEqual([]);
+  });
+
+  test("từ chối bắt buộc có lý do; admin site không thấy nút xóa vĩnh viễn", async ({ page }) => {
+    await setup(page, { user: KADMIN });
+    await page.addInitScript(r => { const s = window.__AFN_MOCK_SEED; s.tables.site_staff = [{ user_id: "00000000-0000-4000-8000-0000000000bb", site_id: "khophim", role: "admin" }]; s.tables.network_staff = [];
+      s.tables.member_privacy_requests = [Object.assign({}, r, { site_id: "khophim", status: "in_review" })]; }, pending);
+    await page.goto("/admin.html?site=khophim");
+    await page.locator('[data-studio-tab="privacy"]').click();
+    const item = page.locator("#studio-privacy .studio-item");
+    await expect(item).toContainText("Chỉ chủ mạng thực hiện xóa tài khoản");
+    await expect(item.getByRole("button", { name: "Xóa tài khoản vĩnh viễn" })).toHaveCount(0);
+    await item.getByRole("button", { name: "Từ chối" }).click();          // prompt rỗng → chặn
+    await expect(page.locator("#studio-status")).toContainText("Cần ghi lý do từ chối");
+    expect((await mock(page)).member_privacy_requests[0].status).toBe("in_review");
+  });
+
+  test("xuất dữ liệu đầy đủ gồm ví, sổ điểm và chat", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 25 });
+    await page.goto("/member.html?site=xuongphim#settings");
+    const download = page.waitForEvent("download");
+    await page.locator("#export-data").click();
+    const file = await (await download).path();
+    const data = JSON.parse(require("node:fs").readFileSync(file, "utf8"));
+    expect(data.data.wallet.balance).toBe(25);
+    expect(data.data.wallet_ledger).toHaveLength(1);
+    expect(Array.isArray(data.data.chat_messages)).toBe(true);
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Cổng phát hành Community Chat", () => {
+  test("tên miền thật (www.xuongphim.ai) chưa được phép: không có lối vào chat, không mở kết nối chat", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.route(/^https:\/\/www\.xuongphim\.ai\//, async r => {
+      const u = new URL(r.request().url());
+      r.fulfill({ response: await r.fetch({ url: "https://127.0.0.1:4173" + u.pathname + u.search }) });
+    });
+    await page.goto("https://www.xuongphim.ai/");
+    await expect(page.locator("#logo .name")).toContainText("XưởngPhim");
+    expect(await page.evaluate(() => window.AFN.chatEnabled)).toBe(false);
+    expect(await page.evaluate(() => !!(window.AFN_CHAT && window.AFN_CHAT.disabled))).toBe(true);
+    await expect(page.locator("[data-chat-open]:visible")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc === "send_chat_message").length)).toBe(0);
+    await expect(page.locator(".afn-reward-chip")).toBeVisible();      // phần còn lại vẫn hoạt động
+    expect(issues).toEqual([]);
+  });
+  test("Preview vẫn bật chat để kiểm thử", async ({ page }) => {
+    await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    expect(await page.evaluate(() => window.AFN.chatEnabled)).toBe(true);
+    await expect(page.locator("#side-me [data-chat-open]")).toBeVisible();
+  });
+});

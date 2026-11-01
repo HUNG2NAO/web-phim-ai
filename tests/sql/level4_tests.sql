@@ -242,6 +242,127 @@ begin; set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-0
 select t.ok((public.send_chat_message('network', 'Không có tên')).display_name = 'Thành viên', 'member without any name shows neutral label, never the e-mail');
 commit;
 
+-- 7. Level 4.3: cách ly quản trị theo website + quy trình yêu cầu quyền riêng tư --------------
+\set U1 '''aaaaaaaa-0000-4000-8000-0000000000a1'''
+\set U2 '''aaaaaaaa-0000-4000-8000-0000000000a2'''
+insert into auth.users(id, email, email_confirmed_at, raw_user_meta_data) values
+ ('aaaaaaaa-0000-4000-8000-0000000000a1', 'privacy-u1@example.test', now(), '{"display_name":"U1"}'),
+ ('aaaaaaaa-0000-4000-8000-0000000000a2', 'privacy-u2@example.test', now(), '{"display_name":"U2"}'),
+ ('aaaaaaaa-0000-4000-8000-0000000000a3', 'creator-u3@example.test', now(), '{}');
+begin; set local role authenticated; select t.as_user(:U1);
+select public.claim_daily_checkin('xuongphim');
+select public.send_chat_message('film:khophim:kiem-khach', 'U1 ở phòng Kho Phim');
+select public.send_chat_message('film:xuongphim:tin-hieu-47', 'U1 ở phòng Xưởng Phim');
+select public.send_chat_message('network', 'U1 ở phòng chung');
+commit;
+begin; set local role authenticated; select t.as_user(:U2);
+select public.report_chat_message(id, 'spam', 'QA 4.3') from public.chat_messages where user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1';
+select t.ok((select count(*) from public.chat_reports where reporter = auth.uid()) = 3, 'U2 reads the 3 reports it filed');
+commit;
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.ok((select count(*) from public.chat_reports r join public.chat_messages m on m.id = r.message_id where m.room like 'film:xuongphim:%') = 0, 'khophim admin cannot read reports from xuongphim rooms (isolation fix)');
+select t.ok((select count(*) from public.chat_reports r join public.chat_messages m on m.id = r.message_id where m.user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' and m.room = 'film:khophim:kiem-khach') = 1, 'khophim admin reads reports from its own film room');
+select t.ok((select count(*) from public.chat_reports r join public.chat_messages m on m.id = r.message_id where m.user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' and m.room = 'network') = 1, 'site admin reads network-room reports (network room moderated by admins)');
+select t.ok((select count(*) from public.chat_reports where reporter = 'aaaaaaaa-0000-4000-8000-0000000000a2') = 2, 'khophim admin sees exactly 2 of U2 reports');
+commit;
+begin; set local role authenticated; select t.as_user(:XMOD);
+select t.ok((select count(*) from public.chat_reports where reporter = 'aaaaaaaa-0000-4000-8000-0000000000a2') = 1, 'xuongphim moderator sees only the xuongphim-room report');
+select t.ok((select count(*) from public.chat_reports r join public.chat_messages m on m.id = r.message_id where m.room = 'network') = 0, 'moderator (non-admin) cannot read network-room reports');
+commit;
+begin; set local role authenticated; select t.as_user(:OWNER);
+select public.chat_set_mute('aaaaaaaa-0000-4000-8000-0000000000a1', 60, 'QA 4.3 mute');
+select t.ok((select count(*) from public.chat_reports where reporter = 'aaaaaaaa-0000-4000-8000-0000000000a2') = 3, 'network owner reads all reports');
+commit;
+begin; set local role authenticated; select t.as_user(:XMOD);
+select t.ok((select count(*) from public.chat_mutes) = 0, 'moderator cannot read the network mute list');
+commit;
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.ok((select count(*) from public.chat_mutes where user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1') = 1, 'site admin can read mutes (mute is network-wide, admins enforce it)');
+commit;
+begin; set local role authenticated; select t.as_user(:U1);
+select t.ok((select count(*) from public.chat_mutes) = 1, 'muted member sees own mute');
+commit;
+begin; set local role authenticated; select t.as_user(:OWNER);
+select public.chat_set_mute('aaaaaaaa-0000-4000-8000-0000000000a1', 0, 'QA 4.3 unmute');
+commit;
+
+-- privacy requests
+begin; set local role authenticated; select t.as_user(:U1);
+insert into public.member_privacy_requests(user_id, site_id, request_type) values (auth.uid(), 'xuongphim', 'delete_account');
+select t.err($$insert into public.member_privacy_requests(user_id, site_id, request_type) values (auth.uid(), 'khophim', 'delete_account')$$, 'duplicate key', 'only one open delete request per member');
+select t.err($$insert into public.member_privacy_requests(user_id, site_id, request_type) values ('aaaaaaaa-0000-4000-8000-0000000000a2', 'xuongphim', 'delete_account')$$, 'row-level security', 'cannot file a request for someone else');
+select t.err($$update public.member_privacy_requests set status = 'completed'$$, 'permission denied', 'member cannot change request status');
+select t.ok((select subject_id = user_id from public.member_privacy_requests), 'subject_id set server-side');
+commit;
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.ok((select count(*) from public.member_privacy_requests where site_id = 'xuongphim') = 0, 'khophim admin cannot read xuongphim privacy requests');
+select t.err($$select public.admin_privacy_request_set_status((select id from public.member_privacy_requests where subject_id is not null limit 1), 'in_review')$$, 'not_found|forbidden', 'khophim admin cannot handle xuongphim requests');
+select t.err($$update public.member_privacy_requests set status = 'in_review'$$, 'permission denied', 'direct UPDATE no longer allowed for staff');
+commit;
+begin; set local role authenticated; select t.as_user(:XMOD);
+select t.ok((select count(*) from public.member_privacy_requests) = 0, 'moderator (non-admin) cannot read privacy requests');
+commit;
+select set_config('t.req', (select id::text from public.member_privacy_requests where subject_id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), false);
+begin; set local role authenticated; select t.as_user(:OWNER);
+select t.err($$select public.admin_privacy_request_set_status(current_setting('t.req')::uuid, 'completed')$$, 'invalid_transition', 'pending cannot jump to completed');
+select t.err($$select public.admin_privacy_request_set_status(current_setting('t.req')::uuid, 'rejected', 'x')$$, 'note_required', 'rejecting requires a reason');
+select t.ok((public.admin_privacy_request_set_status(current_setting('t.req')::uuid, 'in_review', 'Đang xác minh'))->>'status' = 'in_review', 'owner moves request to in_review');
+select t.err($$select public.admin_privacy_request_set_status(current_setting('t.req')::uuid, 'completed')$$, 'use_account_deletion', 'delete requests can only complete through the deletion executor');
+commit;
+select t.ok((select count(*) from public.member_notifications where user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1' and event_key like 'privacy:%:in_review') = 1, 'member is notified when request goes in_review');
+select t.ok(exists (select 1 from public.admin_audit_log where action = 'privacy.in_review'), 'status change is audited');
+begin; set local role authenticated; select t.as_user(:U1);
+select t.ok((select count(*) from public.member_notifications where event_key like 'privacy:%') = 1, 'member reads the status notification');
+commit;
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.err($$select public.admin_execute_account_deletion(current_setting('t.req')::uuid, 'privacy-u1@example.test', false)$$, 'forbidden', 'site admin cannot execute account deletion');
+commit;
+begin; set local role authenticated; select t.as_user(:OWNER);
+select t.err($$select public.admin_execute_account_deletion(current_setting('t.req')::uuid, 'sai@example.test', false)$$, 'email_mismatch', 'deletion requires typing the member e-mail');
+select t.ok((public.admin_execute_account_deletion(current_setting('t.req')::uuid, ''))->>'status' = 'dry_run', 'default call is a dry run (no e-mail needed to preview)');
+select t.ok((public.admin_execute_account_deletion(current_setting('t.req')::uuid, ''))->>'email_hint' = 'pr***@example.test', 'dry run shows a masked e-mail hint only');
+select t.ok(((public.admin_execute_account_deletion(current_setting('t.req')::uuid, 'privacy-u1@example.test'))->'counts'->>'chat_messages')::int = 3, 'dry run counts the member chat messages');
+commit;
+select t.ok(exists (select 1 from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), 'dry run deletes nothing');
+begin; set local role authenticated; select t.as_user(:OWNER);
+select t.ok((public.admin_execute_account_deletion(current_setting('t.req')::uuid, ' PRIVACY-U1@example.test ', false))->>'status' = 'deleted', 'owner executes deletion (e-mail compared case-insensitively)');
+commit;
+select t.ok(not exists (select 1 from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), 'account removed');
+select t.ok(not exists (select 1 from public.wallet_ledger where user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1')
+        and not exists (select 1 from public.chat_messages where user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1')
+        and not exists (select 1 from public.daily_checkins where user_id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), 'wallet ledger, chat and check-ins of the deleted member are gone');
+select t.ok((select status = 'completed' and user_id is null from public.member_privacy_requests where subject_id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), 'request record kept (pseudonymous subject_id) as proof of handling');
+select t.ok(exists (select 1 from public.admin_audit_log where action = 'privacy.account_deleted' and details->>'subject' = 'aaaaaaaa-0000-4000-8000-0000000000a1' and details::text not like '%@%'), 'deletion audited without e-mail');
+select t.ok((select count(*) from public.chat_reports where reporter = 'aaaaaaaa-0000-4000-8000-0000000000a2') = 0, 'reports on the deleted member messages are gone with the messages');
+
+-- staff accounts cannot be deleted through the member flow
+begin; set local role authenticated; select t.as_user(:XMOD);
+insert into public.member_privacy_requests(user_id, site_id, request_type) values (auth.uid(), 'xuongphim', 'delete_account');
+commit;
+select set_config('t.req2', (select id::text from public.member_privacy_requests where subject_id = 'aaaaaaaa-0000-4000-8000-000000000005'), false);
+begin; set local role authenticated; select t.as_user(:OWNER);
+select public.admin_privacy_request_set_status(current_setting('t.req2')::uuid, 'in_review');
+select t.err($$select public.admin_execute_account_deletion(current_setting('t.req2')::uuid, 'xp-mod@example.test', false)$$, 'target_is_staff', 'staff must lose their role before deletion');
+select t.ok((public.admin_privacy_request_set_status(current_setting('t.req2')::uuid, 'rejected', 'Tài khoản quản trị: gỡ quyền trước'))->>'status' = 'rejected', 'owner rejects with a reason');
+commit;
+
+-- creators can be deleted: films stay, created_by becomes NULL
+insert into public.site_films(site_id, film_id, title, source_kind, youtube_id, rights_attested, published, created_by, film_type)
+values ('khophim', 'phim-cua-u3', 'Phim của U3', 'youtube', 'DDDDDDDDDDD', true, false, 'aaaaaaaa-0000-4000-8000-0000000000a3', 'le');
+delete from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000a3';
+select t.ok((select created_by is null from public.site_films where film_id = 'phim-cua-u3'), 'deleting a creator keeps the film (created_by → NULL)');
+delete from public.site_films where film_id = 'phim-cua-u3';
+
+-- self export
+begin; set local role anon;
+select t.err($$select public.my_data_export()$$, 'permission denied', 'anon cannot export');
+commit;
+begin; set local role authenticated; select t.as_user(:U2);
+select t.ok((public.my_data_export())->'account'->>'email' = 'privacy-u2@example.test', 'export contains own account');
+select t.ok(jsonb_typeof((public.my_data_export())->'wallet_ledger') = 'array' and jsonb_typeof((public.my_data_export())->'chat_messages') = 'array', 'export includes ledger and chat sections');
+select t.ok(not ((public.my_data_export())::text like '%privacy-u1%' or (public.my_data_export())::text like '%viewer-a@%'), 'export contains no other member data');
+commit;
+
 -- 6. Invariants -------------------------------------------------------------------
 select t.ok(not exists (select 1 from public.wallets w where w.balance <> (select coalesce(sum(delta),0) from public.wallet_ledger l where l.user_id = w.user_id)), 'every wallet balance equals the sum of its ledger');
 select t.ok(not exists (select 1 from public.wallets where balance < 0), 'no negative balances');

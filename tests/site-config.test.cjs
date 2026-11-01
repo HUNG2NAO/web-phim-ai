@@ -142,3 +142,16 @@ test("privacy policy RC3: only discloses third-party hosts the site actually loa
   }
   assert.doesNotMatch(html, /Một số nhật ký kiểm duyệt và giao dịch điểm có thể được giữ lại/, "giao dịch điểm bị xóa kèm tài khoản (ON DELETE CASCADE)");
 });
+
+test("Shared Core package: cả 5 website đạt kiểm tra cấu hình (nhận diện, danh mục, sitemap, tương phản màu)", () => {
+  const r = require("node:child_process").spawnSync(process.execPath, [path.join(ROOT, "tools/site-package.cjs"), "check"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  for (const id of ["xuongphim", "khophim", "phephim", "phimhay", "ghienphim"]) assert.match(r.stdout, new RegExp("OK\\s+" + id));
+});
+
+test("cổng pháp lý: Community Chat chưa mở công khai trên tên miền thật nào (đổi danh sách này cần kết luận pháp lý)", () => {
+  const core = fs.readFileSync(path.join(ROOT, "assets/afn-core.js"), "utf8");
+  assert.match(core, /var CHAT_PUBLIC_DOMAINS = \[\];/);
+  const chat = fs.readFileSync(path.join(ROOT, "assets/community-chat.js"), "utf8");
+  assert.match(chat, /AFN\.chatEnabled === false/, "community-chat.js phải tôn trọng cổng chatEnabled");
+});
