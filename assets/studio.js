@@ -95,8 +95,14 @@ try{
  roles=await get("site_staff",{user_id:owner.id});
  try{isNetworkOwner=(await get("network_staff",{user_id:owner.id})).length>0;}catch(_){isNetworkOwner=false;}
  if(!roles.length){screen("denied");$("#studio-denied-reason").textContent="Bạn chưa được cấp quyền quản trị.";return;}
+ // Tên miền thật / Preview khóa theo site (assets/sites.js): Studio CHỈ quản trị đúng website đó, không chuyển sang site khác.
+ const lock=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE():null;
+ const lockedSite=lock&&lock.locked&&lock.site?lock.site.id:null;
+ if(lockedSite){roles=roles.filter(x=>x.site_id===lockedSite);
+   if(!roles.length){screen("denied");$("#studio-denied-reason").textContent="Bạn chưa được cấp quyền quản trị "+(lock.site.name||lockedSite)+".";return;}}
  roles.forEach(x=>{$("#studio-site").add(new Option(brandData.find(b=>b.id===x.site_id)?.name||x.site_id,x.site_id));});
- const wanted=new URLSearchParams(location.search).get("site");
+ if(lockedSite)$("#studio-site").disabled=true;
+ const wanted=lockedSite||new URLSearchParams(location.search).get("site");
  site=roles.some(x=>x.site_id===wanted)?wanted:(roles.some(x=>x.site_id==="xuongphim")?"xuongphim":roles[0].site_id);
  $("#studio-site").value=site;setLinks();screen("app");
  if(window.AFN_MFA)window.AFN_MFA.render(db).catch(()=>{});

@@ -1559,6 +1559,20 @@ test.describe("Độc lập từng website — Preview khóa theo site, lớp gi
     expect(issues).toEqual([]);
   });
 
+  test("Studio trên alias khóa site: chỉ quản trị đúng website đó (bỏ qua ?site=), không có quyền site đó → từ chối", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });                                   // OWNER: admin Xưởng Phim + Kho Phim
+    await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/admin.html?site=xuongphim`);
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    await expect(page.locator("#studio-site")).toBeDisabled();
+    await expect(page.locator("#studio-site option")).toHaveCount(1);
+    await page.goto(`https://site-phimhay.web-phim-ai-5sites.pages.dev:${PORT}/admin.html`);
+    await expect(page.locator("#studio-denied-reason")).toContainText("Bạn chưa được cấp quyền quản trị Phim Hay");
+    await page.goto("/admin.html?site=khophim");                                           // Preview chung: vẫn chọn được site
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    await expect(page.locator("#studio-site")).toBeEnabled();
+    expect(issues).toEqual([]);
+  });
+
   test("cờ tính năng: tắt chat/điểm danh/Social/mở khóa cho riêng Phê Phim; Xưởng Phim không bị ảnh hưởng", async ({ page }) => {
     await page.addInitScript(() => {
       let v; Object.defineProperty(window, "SITES", { configurable: true, get: () => v,
