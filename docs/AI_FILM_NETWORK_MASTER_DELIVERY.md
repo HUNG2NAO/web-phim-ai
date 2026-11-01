@@ -75,15 +75,23 @@ Chỉ sửa DEV/Preview (`feature/master-site-xuongphim-2026-10-31`). Không nâ
 
 Hai thiết lập đầu do chủ hệ thống bấm trong Dashboard → Authentication → Sign In / Providers → Email.
 
-### 5. Backup mới bằng khóa công khai (chuẩn bị xong, chờ khóa của anh)
-1. Trên PC, trong thư mục dự án: `powershell -ExecutionPolicy Bypass -File tools\setup-age-key.ps1`.
-   - Script tải age chính thức và tạo khóa bí mật tại `%USERPROFILE%\afn-backup-key.txt` (ngoài repo, chỉ tài khoản Windows của anh đọc được).
-   - Script ghi **khóa công khai** vào `backups\supabase\recipient.txt`, không in khóa bí mật.
-2. Claude đọc `recipient.txt`, xuất dữ liệu (chỉ đọc), thử khôi phục vào CSDL cô lập, mã hóa bằng `tools/backup-encrypt-age.sh` (bản rõ bị xóa), rồi ghi `.json.age` + manifest SHA-256 lên PC.
-3. Anh kiểm tra: `tools\verify-backup-age.ps1 -File … -Key %USERPROFILE%\afn-backup-key.txt`. Bản rõ tạm bị xóa ngay sau khi đối chiếu.
-
-- `.gitignore` chặn `afn-backup-key*`. Kiểm thử quét repo không có `AGE-SECRET-KEY`, `sb_secret_` hay JWT `service_role`.
-- Các tệp `.zip` cũ dùng mật khẩu đã lộ: anh có thể tự xóa sau khi bản `.age` mới đã kiểm tra đạt.
+### 5. Backup mới bằng khóa công khai — tự động hóa trên PC (cập nhật 15:55)
+- **`age` trên PC:** chưa cài. Bản dùng là `age-v1.2.1-windows-amd64.zip` (5.526.045 byte) từ github.com/FiloSottile/age. SHA-256 `46DB0DB7…89FB` **trùng** manifest winget của Microsoft (`FiloSottile.age` 1.2.1), được kiểm độc lập qua kho `microsoft/winget-pkgs`. Script **ghim** hash này; sai hash thì không giải nén.
+- **Script `tools\afn-backup-key.ps1`** (chạy bằng cách nháy đúp `tools\Tao-Khoa-Backup.cmd`):
+  1. Cài age cho riêng tài khoản (`%LOCALAPPDATA%\Programs\age-afn`): không cần admin, không sửa PATH, chỉ dùng `-ExecutionPolicy Bypass` cho tiến trình này.
+  2. Tạo khóa riêng tại `%LOCALAPPDATA%\AFN-Backup-Key\afn-backup-key.txt`: ngoài repo, ngoài OneDrive (script dừng nếu đường dẫn nằm trong thư mục đồng bộ). Script gỡ quyền thừa kế và chỉ cấp quyền cho tài khoản Windows hiện tại. Đã có khóa thì giữ nguyên.
+  3. Ghi **chỉ khóa công khai** vào `backups\supabase\recipient.txt`.
+  4. Chờ tối đa 45 phút cho bản `.json.age` mới, giải mã **ra luồng và băm trong bộ nhớ** (bản rõ không chạm đĩa), so với `plain_sha256`/`cipher_sha256` của manifest, rồi ghi `verify-<tên>.txt` (ĐẠT/KHÔNG ĐẠT, không chứa khóa hay dữ liệu).
+- **Rà soát:**
+  - Chỉ 1 lệnh mạng (tải age); không có lệnh xóa, `Start-Transcript` hay thay đổi chính sách hệ thống.
+  - Khóa riêng chỉ được truyền dưới dạng đường dẫn tệp cho `age`/`age-keygen`.
+  - Cú pháp đạt (pwsh). Phần "giải mã ra luồng → băm" đã chạy thử với khóa dùng thử: hash trùng bản rõ.
+  - `setup-age-key.ps1` (bản cũ có lệnh dọn tệp tạm) đã được thay bằng tệp chỉ dẫn, không còn thao tác nào.
+- **Vì sao vẫn cần một lần nháy đúp:** PC không có shell từ xa. Quyền điều khiển màn hình cho PowerShell/Explorer chỉ ở mức "click", không gõ được, và Claude không vòng qua giới hạn này. Cửa sổ Explorer cũng không hiện được trong ảnh chụp để bấm.
+- **Phía Claude:**
+  - Đã xuất dữ liệu (chỉ đọc, 14 migration) và thử khôi phục vào CSDL cô lập: **khớp 31/31**.
+  - Bản rõ đã **hủy** trong lúc chờ khóa. Khi `recipient.txt` có, Claude xuất lại, thử khôi phục lại, mã hóa bằng `tools/backup-encrypt-age.sh` (bản rõ bị hủy ngay sau đó), rồi ghi `.json.age` + manifest lên PC.
+- **Bản cũ:** giữ nguyên toàn bộ 4 tệp `.zip` cho tới khi bản `.age` đã ĐẠT.
 
 ### Kết luận vòng này
 | Hạng mục | Trạng thái |
