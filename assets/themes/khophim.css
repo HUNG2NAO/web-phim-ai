@@ -5,4 +5,6 @@
    • Màu nhấn, tên, ấn triện, danh mục, Social, SEO: sửa trong assets/sites.js (mục "khophim") hoặc Studio — không ở đây.
    • Thay đổi Shared Core (assets/*.js, assets/*.css chung) phải chạy hồi quy cho cả 5 website.
    Ví dụ: [data-site="khophim"] .hero h1 { letter-spacing: .01em; } */
-[data-site="khophim"] { --site-theme-version: 1; }
+[data-site="khophim"] { --site-theme-version: 2; }
+/* Kiểm chứng phát hành độc lập 4.6.2: viền nhấn màu ngọc dưới thanh đầu trang — chỉ Kho Phim. */
+[data-site="khophim"] .site-header { box-shadow: inset 0 -3px 0 #4FB08F; }
