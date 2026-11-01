@@ -599,6 +599,44 @@ test.describe("Community Chat (Level 4.2)", () => {
     expect(issues).toEqual([]);
   });
 
+  test("RC3: form Đăng ký có liên kết Chính sách riêng tư và Quy tắc cộng đồng; form Đăng nhập không có", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    await page.locator("#chat-drawer").getByRole("button", { name: "Đăng nhập để trò chuyện" }).click();
+    const dlg = page.locator(".afn-auth-dialog");
+    await expect(dlg).toBeVisible();
+    const notice = dlg.locator("#afn-signup-notice");
+    await expect(notice).toBeHidden();
+    await dlg.locator('[data-mode="signup"]').click();
+    await expect(notice).toBeVisible();
+    await expect(notice.locator('a[href="/chinh-sach.html#rieng-tu"]')).toHaveAttribute("target", "_blank");
+    await expect(notice.locator('a[href="/chinh-sach.html#cong-dong"]')).toBeVisible();
+    await dlg.locator('[data-mode="login"]').click();
+    await expect(notice).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+
+  test("RC3: trang chính sách là bản dự thảo, không lộ ghi chú nội bộ, đọc được trên điện thoại", async ({ page }) => {
+    const issues = await setup(page);
+    await page.setViewportSize({ width: 360, height: 760 });
+    await page.goto("/chinh-sach.html");
+    await expect(page.locator(".draft")).toContainText("Bản dự thảo — chưa phải chính sách chính thức");
+    await expect(page.locator(".draft")).toContainText("DRAFT RC3");
+    await expect(page.locator('[data-owner-input="controller"]')).toContainText("Hungcreator");
+    await expect(page.locator('[data-owner-input="contact-email"]')).toHaveText("Chưa xác định");
+    const body = await page.locator("body").innerText();
+    expect(body).not.toMatch(/CẦN CHỦ WEBSITE|TODO|\[.*CUNG CẤP/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const headings = await page.locator("h1, h2, h3").evaluateAll(hs => hs.map(h => +h.tagName[1]));
+    expect(headings[0]).toBe(1);
+    for (let i = 1; i < headings.length; i++) expect(headings[i] - headings[i - 1]).toBeLessThanOrEqual(1);
+    const small = await page.locator("nav.toc a, a.back").evaluateAll(as => as.filter(a => a.getBoundingClientRect().height < 44).length);
+    expect(small).toBe(0);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    expect(issues).toEqual([]);
+  });
+
   test("hai thành viên trò chuyện trực tiếp: thấy tin nhau không cần tải lại, đúng tên, emoji, lịch sử còn sau refresh, không chèn HTML", async ({ page, context }) => {
     const issuesA = await setup(page, { user: VIEWER });
     await withProfiles(page);

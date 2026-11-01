@@ -3,17 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Chính sách riêng tư và Quy tắc cộng đồng · AI Film Network</title>
-<meta name="description" content="Dữ liệu chúng tôi thu thập, cách sử dụng, quyền của bạn và quy tắc khi trò chuyện trong cộng đồng AI Film Network.">
-<!-- BẢN NHÁP: cần chủ website và tư vấn pháp lý duyệt trước khi bỏ noindex. -->
+<title>Chính sách riêng tư và Quy tắc cộng đồng (dự thảo) · Xưởng Phim</title>
+<meta name="description" content="Bản dự thảo: dữ liệu Xưởng Phim thu thập, cách sử dụng, quyền của bạn và quy tắc khi trò chuyện trong cộng đồng.">
+<!-- DRAFT RC3: chưa được duyệt pháp lý. Giữ noindex cho tới khi chủ website phê duyệt bản chính thức. -->
 <meta name="robots" content="noindex,follow">
 <meta name="theme-color" content="#0E0C0A">
+<meta name="policy-version" content="DRAFT RC3">
 <style>
   :root { color-scheme: dark; --bg: #0e0c0a; --fg: #f0e7d6; --muted: #b3a58d; --line: #2c261f; --accent: #d9a441; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.7 "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
   a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
   .back { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; text-decoration: none; }
   h1 { font-size: 28px; line-height: 1.25; margin: 12px 0 8px; }
   h2 { font-size: 21px; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
@@ -21,18 +23,33 @@
   p, li { color: var(--fg); } .muted { color: var(--muted); }
   ul { padding-left: 22px; } li { margin: 4px 0; }
   .draft { border: 1px solid var(--accent); border-radius: 10px; padding: 12px 14px; color: var(--fg); background: rgb(217 164 65 / .08); }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0 0; }
+  .facts dt { color: var(--muted); } .facts dd { margin: 0; }
   nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
   nav.toc a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; }
+  .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; } th, td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
-  @media (max-width: 560px) { table, tbody, tr, th, td { display: block; } thead { display: none; } td { border: 0; padding: 2px 0; } tr { padding: 10px 0; border-bottom: 1px solid var(--line); } td:first-child { font-weight: 700; } }
+  code { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+  @media (max-width: 560px) {
+    .facts { grid-template-columns: 1fr; } .facts dd { margin-bottom: 6px; }
+    table, tbody, tr, th, td { display: block; } thead { display: none; } td { border: 0; padding: 2px 0; } tr { padding: 10px 0; border-bottom: 1px solid var(--line); } td:first-child { font-weight: 700; }
+  }
 </style>
 </head>
 <body>
 <main>
   <a class="back" href="/">← Về trang chủ</a>
   <h1>Chính sách riêng tư và Quy tắc cộng đồng</h1>
-  <p class="muted">Áp dụng cho các website thuộc AI Film Network: xuongphim.ai, khophim.ai, phephim.ai, phimhay.ai, ghienphim.ai. Cập nhật: 31/10/2026.</p>
-  <p class="draft"><strong>Bản nháp.</strong> Nội dung mô tả đúng cách hệ thống hiện đang xử lý dữ liệu, nhưng cần chủ website bổ sung thông tin liên hệ và được tư vấn pháp lý duyệt trước khi phát hành chính thức.</p>
+  <section class="draft" aria-label="Trạng thái văn bản">
+    <p style="margin:0"><strong>Bản dự thảo — chưa phải chính sách chính thức.</strong> Nội dung mô tả cách website đang xử lý dữ liệu tại thời điểm cập nhật. Văn bản chưa được rà soát pháp lý và có thể thay đổi trước khi website hoạt động chính thức.</p>
+    <dl class="facts">
+      <dt>Phiên bản</dt><dd>DRAFT RC3 · cập nhật 01/11/2026</dd>
+      <dt>Áp dụng cho</dt><dd>Website Xưởng Phim (xuongphim.ai) thuộc AI Film Network</dd>
+      <dt>Đơn vị vận hành</dt><dd data-owner-input="controller">Hungcreator (tên thương hiệu; thông tin pháp nhân chưa được xác minh và công bố)</dd>
+      <dt>Email hỗ trợ</dt><dd data-owner-input="contact-email">Chưa xác định</dd>
+      <dt>Thời hạn lưu trữ</dt><dd data-owner-input="retention">Chưa được phê duyệt (xem mục 1.7)</dd>
+    </dl>
+  </section>
   <nav class="toc" aria-label="Mục lục">
     <a href="#rieng-tu">Chính sách riêng tư</a>
     <a href="#cong-dong">Quy tắc cộng đồng</a>
@@ -40,59 +57,92 @@
   </nav>
 
   <h2 id="rieng-tu">1. Chính sách riêng tư</h2>
-  <h3>Dữ liệu chúng tôi lưu khi bạn có tài khoản</h3>
-  <table>
+
+  <h3>1.1. Dữ liệu được lưu khi bạn có tài khoản</h3>
+  <div class="table-wrap"><table>
     <thead><tr><th>Dữ liệu</th><th>Mục đích</th></tr></thead>
     <tbody>
-      <tr><td>Email, mật khẩu (được mã hóa bởi nhà cung cấp xác thực)</td><td>Đăng nhập, xác minh email, khôi phục mật khẩu.</td></tr>
-      <tr><td>Tên hiển thị</td><td>Hiện cạnh bình luận và tin nhắn trò chuyện. Email <strong>không bao giờ</strong> hiện công khai.</td></tr>
-      <tr><td>Điểm danh, ví điểm, lịch sử cộng/trừ điểm, tập đã mở khóa</td><td>Vận hành hệ thống điểm thưởng và quyền xem tập.</td></tr>
-      <tr><td>Tin nhắn trò chuyện, báo cáo vi phạm, lịch sử kiểm duyệt</td><td>Hiển thị trò chuyện cộng đồng, chống spam và xử lý vi phạm.</td></tr>
-      <tr><td>Hồ sơ người xem, tiến độ xem (nếu bạn bật)</td><td>Gợi ý “xem tiếp”.</td></tr>
+      <tr><td>Email và mật khẩu</td><td>Đăng nhập, xác minh email, khôi phục mật khẩu. Mật khẩu được nhà cung cấp xác thực lưu dưới dạng băm một chiều; chúng tôi không xem được mật khẩu của bạn.</td></tr>
+      <tr><td>Tên hiển thị</td><td>Hiện cạnh tin nhắn trò chuyện. Email <strong>không</strong> hiện công khai.</td></tr>
+      <tr><td>Thông tin phiên đăng nhập: thời điểm đăng nhập, địa chỉ IP, loại trình duyệt</td><td>Duy trì đăng nhập và bảo vệ tài khoản (phát hiện phiên bất thường). Do nhà cung cấp xác thực lưu trong thời gian phiên còn hiệu lực.</td></tr>
+      <tr><td>Điểm danh, ví điểm, lịch sử cộng/trừ điểm, tập đã mở khóa</td><td>Vận hành điểm thưởng và quyền xem tập. Điểm không có giá trị quy đổi thành tiền.</td></tr>
+      <tr><td>Tin nhắn trò chuyện, báo cáo vi phạm, quyết định kiểm duyệt</td><td>Hiển thị trò chuyện cộng đồng, chống spam và xử lý vi phạm.</td></tr>
+      <tr><td>Hồ sơ người xem, sở thích, danh sách phim, đánh giá phim</td><td>Quản lý hồ sơ trong tài khoản và gợi ý phim. Gợi ý cá nhân hóa <strong>chỉ bật khi bạn chọn</strong>. Đánh giá phim được quản trị viên duyệt mới hiển thị công khai, chỉ gồm số sao và nội dung, không kèm tên.</td></tr>
+      <tr><td>Tiến độ xem</td><td><strong>Mặc định tắt.</strong> Chỉ lưu khi bạn bật “ghi nhớ tiến độ xem”; bạn có thể tắt và xóa lịch sử trong trang thành viên.</td></tr>
     </tbody>
-  </table>
-  <h3>Dữ liệu khi bạn chỉ xem, không đăng nhập</h3>
+  </table></div>
+
+  <h3>1.2. Khi bạn chỉ xem, không đăng nhập</h3>
   <ul>
-    <li>Thống kê lượt truy cập ẩn danh: trang, phim, nguồn giới thiệu (utm, mã giới thiệu). Bảng thống kê này không lưu địa chỉ IP hay email (nhà cung cấp hạ tầng có thể ghi nhật ký kỹ thuật kèm IP trong thời gian ngắn để vận hành và chống tấn công).</li>
-    <li>Trên trình duyệt của bạn (localStorage): phim đang xem dở, trạng thái thanh bên, mã giới thiệu. Bạn xóa được bằng cách xóa dữ liệu trang web trong trình duyệt.</li>
+    <li>Website <strong>không đặt cookie</strong> và không dùng công cụ quảng cáo hay theo dõi hành vi.</li>
+    <li>Chỉ khi bạn mở website qua liên kết chiến dịch (có tham số như <code>utm_source</code> hoặc mã giới thiệu), hệ thống ghi một lượt truy cập gồm: trang, phim, nguồn chiến dịch, mã giới thiệu và thời điểm. Bản ghi này <strong>không</strong> chứa địa chỉ IP, thông tin trình duyệt hay tài khoản.</li>
+    <li>Nhà cung cấp hạ tầng có thể ghi nhật ký kỹ thuật kèm địa chỉ IP trong thời gian ngắn để vận hành và chống tấn công.</li>
   </ul>
-  <h3>Nơi lưu trữ và bên thứ ba</h3>
+
+  <h3>1.3. Dữ liệu lưu trên trình duyệt của bạn</h3>
   <ul>
-    <li>Cơ sở dữ liệu và xác thực: Supabase, máy chủ đặt tại Singapore.</li>
-    <li>Phân phối website: Cloudflare.</li>
-    <li>Video nhúng từ YouTube dùng chế độ youtube-nocookie; khi bạn bấm phát, YouTube (Google) có thể xử lý dữ liệu theo chính sách của họ.</li>
-    <li>Gửi email xác minh tài khoản và đặt lại mật khẩu: Resend (máy chủ gửi thư tại Tokyo), từ địa chỉ no-reply@mail.xuongphim.ai.</li>
-    <li>Phông chữ: Google Fonts.</li>
-    <li>Chúng tôi không bán dữ liệu cá nhân và không dùng quảng cáo theo dõi.</li>
+    <li><code>afn-film-auth-v1</code>: phiên đăng nhập (chỉ khi bạn đăng nhập).</li>
+    <li><code>afn-cw:*</code>: phim đang xem dở trên thiết bị này; <code>afn-side</code>: trạng thái thanh bên.</li>
+    <li><code>afn-active-viewer:*</code>: hồ sơ người xem đang chọn; <code>afn-ref</code>: mã giới thiệu từ liên kết chiến dịch.</li>
+    <li>Các mục này nằm trong bộ nhớ trình duyệt (localStorage/sessionStorage), không gửi cho bên thứ ba. Bạn xóa được bằng cách đăng xuất hoặc xóa dữ liệu trang web trong trình duyệt.</li>
   </ul>
-  <h3>Quyền của bạn</h3>
+
+  <h3>1.4. Nơi lưu trữ, nhà cung cấp và chuyển dữ liệu ra nước ngoài</h3>
+  <p>Website dùng các nhà cung cấp dịch vụ sau. Một phần dữ liệu cá nhân vì vậy được lưu trữ hoặc xử lý ngoài Việt Nam.</p>
   <ul>
-    <li>Xem và sửa tên hiển thị trong trang Tài khoản.</li>
-    <li>Gửi yêu cầu xóa tài khoản ngay trong trang <a href="/account.html">Tài khoản</a> (mục Quyền riêng tư); quản trị viên xác minh danh tính trước khi xóa. Yêu cầu xuất dữ liệu gửi qua địa chỉ ở mục <a href="#lien-he">Liên hệ</a>. Một số nhật ký kiểm duyệt và giao dịch điểm có thể được giữ lại trong thời gian cần thiết để chống gian lận.</li>
-    <li>Rút lại sự đồng ý bất cứ lúc nào bằng cách ngừng sử dụng và yêu cầu xóa tài khoản.</li>
-    <li>Thời hạn lưu dữ liệu sau khi xóa tài khoản: <strong data-owner-input="retention">[CẦN CHỦ WEBSITE CUNG CẤP: số ngày lưu nhật ký giao dịch điểm và kiểm duyệt sau khi xóa tài khoản]</strong>.</li>
+    <li><strong>Supabase</strong>: cơ sở dữ liệu và xác thực tài khoản, máy chủ đặt tại Singapore.</li>
+    <li><strong>Cloudflare</strong>: phân phối website qua mạng máy chủ toàn cầu.</li>
+    <li><strong>Resend</strong>: gửi email xác minh tài khoản và đặt lại mật khẩu (máy chủ gửi thư tại Tokyo, Nhật Bản), từ địa chỉ no-reply@mail.xuongphim.ai.</li>
+    <li><strong>YouTube (Google)</strong>: video nhúng dùng chế độ youtube-nocookie; khi bạn phát video, trình phát YouTube được tải từ máy chủ của Google và Google có thể xử lý dữ liệu theo chính sách của họ.</li>
+    <li><strong>Google Fonts</strong> (phông chữ) và <strong>jsDelivr</strong> (thư viện kết nối cơ sở dữ liệu): trình duyệt của bạn tải tệp trực tiếp từ các dịch vụ này.</li>
+    <li>Chúng tôi không bán dữ liệu cá nhân.</li>
+  </ul>
+
+  <h3>1.5. Trò chuyện cộng đồng</h3>
+  <ul>
+    <li>Tin nhắn hiển thị cho thành viên đã đăng nhập, kèm tên hiển thị và thời điểm gửi.</li>
+    <li>Tin bị ẩn vẫn được lưu; chỉ người gửi và quản trị viên còn xem được.</li>
+    <li>Danh tính người báo cáo chỉ người báo cáo và quản trị viên biết.</li>
+    <li>Mỗi thao tác kiểm duyệt (ẩn tin, khóa hoặc mở khóa chat) được ghi nhật ký, gồm người thực hiện, mã tài khoản liên quan, lý do và thời điểm.</li>
+  </ul>
+
+  <h3>1.6. Quyền của bạn</h3>
+  <ul>
+    <li><strong>Xem và sửa</strong> tên hiển thị trong trang <a href="/account.html">Tài khoản</a>.</li>
+    <li><strong>Tải dữ liệu</strong>: trong trang thành viên, bạn tự tải tệp JSON gồm hồ sơ, hồ sơ người xem, sở thích, danh sách phim, tiến độ xem, đánh giá và thông báo. Dữ liệu ví điểm, giao dịch và tin nhắn hiện chưa có trong tệp tải về.</li>
+    <li><strong>Xóa lịch sử xem</strong> của từng hồ sơ ngay trong trang thành viên.</li>
+    <li><strong>Yêu cầu xóa tài khoản</strong> trong trang <a href="/account.html">Tài khoản</a> (mục Quyền riêng tư). Yêu cầu gửi từ chính tài khoản đang đăng nhập và được quản trị viên xử lý thủ công. Khi tài khoản bị xóa, hệ thống xóa kèm hồ sơ, ví điểm, lịch sử điểm, tập đã mở khóa, tin nhắn và báo cáo của bạn. Nhật ký kiểm duyệt chỉ còn mã tài khoản, không còn email.</li>
+    <li><strong>Rút lại sự đồng ý</strong> bằng cách ngừng sử dụng và yêu cầu xóa tài khoản.</li>
+    <li>Website hiện chưa có cơ chế xác minh độ tuổi. Nếu bạn chưa đủ 16 tuổi, hãy chỉ sử dụng khi có sự đồng ý và giám sát của cha mẹ hoặc người giám hộ.</li>
+  </ul>
+
+  <h3 id="luu-tru">1.7. Thời hạn lưu trữ</h3>
+  <p>Thời hạn lưu trữ cho từng loại dữ liệu <strong>chưa được phê duyệt</strong>. Hiện tại:</p>
+  <ul>
+    <li>Dữ liệu tài khoản được lưu cho tới khi tài khoản bị xóa; hệ thống chưa tự động xóa theo thời hạn.</li>
+    <li>Bản sao lưu cơ sở dữ liệu được mã hóa và lưu riêng. Dữ liệu đã xóa có thể còn trong bản sao lưu cho tới khi bản đó bị hủy.</li>
   </ul>
 
   <h2 id="cong-dong">2. Quy tắc cộng đồng</h2>
   <ul>
     <li>Tôn trọng người khác. Không xúc phạm, phân biệt đối xử, đe dọa hay quấy rối.</li>
     <li>Không đăng thông tin cá nhân của mình hoặc người khác (số điện thoại, địa chỉ, giấy tờ, tài khoản ngân hàng).</li>
-    <li>Không spam, quảng cáo, lừa đảo, hay đăng liên kết độc hại. Hệ thống tự giới hạn 5 tin trong 30 giây và chặn tin trùng lặp.</li>
-    <li>Không đăng nội dung khiêu dâm, bạo lực cực đoan, hoặc nội dung vi phạm pháp luật.</li>
+    <li>Không spam, quảng cáo, lừa đảo hay đăng liên kết độc hại. Mỗi tin tối đa 500 ký tự; hệ thống tự giới hạn 5 tin trong 30 giây và chặn tin trùng lặp.</li>
+    <li>Không đăng nội dung khiêu dâm, bạo lực cực đoan hoặc vi phạm pháp luật.</li>
     <li>Không tiết lộ nội dung phim (spoiler) trong phòng chung khi chưa cảnh báo.</li>
     <li>Không mạo danh thành viên, quản trị viên hay đội ngũ website.</li>
   </ul>
   <h3>Báo cáo và xử lý</h3>
   <ul>
     <li>Bấm “Báo cáo” cạnh tin nhắn để gửi cho quản trị viên. Người bị báo cáo không biết ai đã báo cáo.</li>
-    <li>Quản trị viên có thể ẩn tin, tạm khóa hoặc khóa vĩnh viễn quyền trò chuyện. Mọi thao tác kiểm duyệt đều được ghi nhật ký.</li>
+    <li>Quản trị viên có thể ẩn tin và tạm khóa quyền trò chuyện (thường là 24 giờ, lâu hơn với vi phạm nghiêm trọng). Mọi thao tác kiểm duyệt đều được ghi nhật ký.</li>
     <li>Báo cáo sai sự thật nhiều lần cũng là vi phạm.</li>
   </ul>
 
   <h2 id="lien-he">3. Liên hệ</h2>
-  <p>Đơn vị/cá nhân chịu trách nhiệm xử lý dữ liệu: <strong data-owner-input="controller">[CẦN CHỦ WEBSITE CUNG CẤP: tên cá nhân hoặc đơn vị vận hành AI Film Network]</strong>.</p>
-  <p>Email hỗ trợ và yêu cầu về dữ liệu: <strong data-owner-input="contact-email">[CẦN CHỦ WEBSITE CUNG CẤP: email liên hệ]</strong>.</p>
-  <p class="muted">Toàn bộ phim, hình ảnh và nhân vật trên hệ thống được tạo bằng công cụ trí tuệ nhân tạo.</p>
+  <p>Đơn vị vận hành: Hungcreator (tên thương hiệu; thông tin pháp nhân chưa được xác minh và công bố).</p>
+  <p>Kênh liên hệ chính thức về dữ liệu cá nhân <strong>chưa được công bố</strong>. Trong thời gian này, bạn có thể gửi yêu cầu xóa tài khoản trong trang <a href="/account.html">Tài khoản</a>.</p>
+  <p class="muted">Phim do AI Film Network sản xuất được tạo bằng công cụ trí tuệ nhân tạo. Nội dung của bên thứ ba (nếu có) ghi rõ nguồn và giấy phép.</p>
 </main>
 </body>
 </html>
