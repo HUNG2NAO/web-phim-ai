@@ -7,5 +7,6 @@ backups/
 tools/pgsql/
 
 # Level 4.6: khóa bí mật sao lưu không bao giờ vào repo
-afn-backup-key*
+afn-backup-key*.txt
+afn-backup-key*.age
 *.agekey
