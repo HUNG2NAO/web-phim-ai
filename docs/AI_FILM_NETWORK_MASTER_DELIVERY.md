@@ -13,6 +13,29 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 16:20 — LEVEL 4.6 STAGING VERIFIED
+
+Chủ hệ thống phê duyệt lúc 16:16. Migration `level4_6_staff_mfa` đã áp lên `jurvphonehknrxjpowoe` (Staging) và được kiểm chứng **trên Supabase thật**.
+
+| Kiểm tra sau migration | Kết quả |
+|---|---|
+| Migration | 15; mới nhất `level4_6_staff_mfa` |
+| Cấu trúc | 27 policy RESTRICTIVE `mfa_gate_*` trên 13 bảng (đều `to authenticated`, qua `afn_staff_gate()`); RLS 28/28; 86 policy; 53 hàm |
+| Quyền | `dangerous_grants()` = **0**; role API còn 0 quyền sequence; `service_role` còn 0 TRUNCATE (đã ghi 46 mục trong `grant_hardening_log2` để gỡ chính xác). `anon` chỉ gọi được `get_playback_source`, `log_landing`; 0 hàm `private` lộ ra |
+| Cài đặt | `staff_mfa_required = false` (chưa bắt buộc) |
+| Dữ liệu | Dấu vân tay trước và sau migration **khớp 31/31**: không dòng nào bị sửa |
+| Chức năng (phiên mô phỏng JWT, giao dịch tự hủy, 20/20) | Chủ mạng chưa bật MFA: giữ toàn quyền (ví, danh sách nhân sự, phim); không tự bật "bắt buộc" khi chưa có factor (`mfa_required`). QA Admin chưa bật MFA: quản trị Xưởng Phim bình thường, Kho Phim `forbidden`. QA Admin có factor + AAL1: RPC quản trị, xem tin đã ẩn, khóa chat đều bị chặn; ví riêng vẫn đọc được. Có factor + AAL2: có lại quyền. Thành viên QA2: quản trị `forbidden`; điểm danh `claimed`, sổ cái khớp; `nextval` → `permission denied` |
+| Sau giao dịch thử | 0 factor, 5 lượt điểm danh, 9 dòng sổ cái, nhật ký 21 dòng: không còn dấu vết |
+| Preview thật (SIGNUP1) | `my_security_status`: thành viên, `mfa_ok=true`; RPC quản trị `forbidden`; ví, catalog, chat (9 tin, 0 tin ẩn) bình thường |
+| Advisor bảo mật | Không có cảnh báo mới ngoài nhóm hàm SECURITY DEFINER có chủ đích (mỗi hàm tự kiểm quyền) và Leaked Password Protection (gói Pro) |
+
+**Kết luận:** **LEVEL 4.6 STAGING VERIFIED.** MFA chưa bật cho tài khoản thật nào, chế độ bắt buộc đang tắt.
+- **Khôi phục:** `db/staging/94_mfa_break_glass.sql` (mất thiết bị, tắt chế độ bắt buộc) và `db/staging/95_rollback_level4_6.sql` (gỡ toàn bộ, giữ dữ liệu).
+- **Backup trước migration:** `afn_data_20261101_1611_pre46.json.age` (giải mã trên PC: ĐẠT).
+- **PRODUCTION: ON HOLD.**
+
+---
+
 ## Cập nhật 01/11/2026 16:15 — Backup mã hóa age: ĐẠT
 
 | Hạng mục | Kết quả / bằng chứng |
