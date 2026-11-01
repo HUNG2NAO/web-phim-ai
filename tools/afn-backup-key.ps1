@@ -32,10 +32,30 @@ trap {
 }
 Log ("Bắt đầu — PowerShell " + $PSVersionTable.PSVersion + ", người dùng " + [Environment]::UserName)
 
-# Khóa không được nằm trong thư mục đồng bộ hay trong dự án
-foreach ($sync in @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial, $root) | Where-Object { $_ }) {
-  if ($keyDir.StartsWith($sync, [StringComparison]::OrdinalIgnoreCase)) { throw "Thư mục khóa nằm trong $sync — dừng." }
+# Khóa không được nằm trong thư mục đồng bộ (OneDrive, Syncthing, H2N bridge…) hay trong dự án
+$blocked = @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial, $root, "C:\tools\h2n_bridge_manager",
+  (Join-Path $env:USERPROFILE "Google Drive"), (Join-Path $env:USERPROFILE "Dropbox")) | Where-Object { $_ }
+$stCfg = Join-Path $env:LOCALAPPDATA "Syncthing\config.xml"
+$stCount = 0
+if (Test-Path $stCfg) {
+  try {
+    [xml]$stXml = [IO.File]::ReadAllText($stCfg)
+    foreach ($f in @($stXml.configuration.folder)) {
+      if (-not $f.path) { continue }
+      $fp = [Environment]::ExpandEnvironmentVariables(($f.path -replace '^~', $env:USERPROFILE)).TrimEnd('\')
+      $blocked += $fp; $stCount++
+    }
+  } catch { throw "Không đọc được cấu hình Syncthing ($stCfg) — dừng để an toàn." }
 }
+foreach ($sync in $blocked) {
+  $sp = $sync.TrimEnd('\')
+  if ($keyDir.StartsWith($sp + '\', [StringComparison]::OrdinalIgnoreCase) -or $keyDir -ieq $sp -or $sp.StartsWith($keyDir, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Thư mục khóa nằm trong (hoặc chứa) thư mục đồng bộ/dự án: $sync — dừng."
+  }
+  # Thư mục cha của khóa (vd. cả AppData\Local) bị đồng bộ cũng bị chặn
+  if ($env:LOCALAPPDATA.StartsWith($sp + '\', [StringComparison]::OrdinalIgnoreCase) -or $env:LOCALAPPDATA -ieq $sp) { throw "AppData\Local nằm trong thư mục đồng bộ $sync — dừng." }
+}
+Log ("Kiểm tra đồng bộ: OneDrive/Google Drive/Dropbox/H2N bridge/dự án + " + $stCount + " thư mục Syncthing — khóa KHÔNG nằm trong thư mục nào")
 
 Step "1/4 Công cụ age"
 $age = Join-Path $ageDir "age.exe"; $keygen = Join-Path $ageDir "age-keygen.exe"
@@ -55,7 +75,7 @@ $ver = (& $age --version).Trim(); Write-Host "Phiên bản: $ver"
 
 Step "2/4 Khóa bí mật (chỉ trên máy này)"
 if (Test-Path $keyFile) {
-  Write-Host "Đã có khóa — giữ nguyên, không tạo đè."
+  Write-Host "Đã có khóa — giữ nguyên, không tạo đè."; Log "Khóa đã tồn tại — dùng lại, không tạo mới"
 } else {
   New-Item -ItemType Directory -Force $keyDir | Out-Null
   # Windows PowerShell 5.1: age-keygen in khóa CÔNG KHAI ra stderr; với ErrorActionPreference=Stop, chuyển hướng stderr
@@ -72,12 +92,20 @@ foreach ($p in @($keyDir, $keyFile)) {
   icacls $p /inheritance:r /grant:r "${me}:(F)" | Out-Null
   if ($LASTEXITCODE) { throw "Không đặt được quyền cho $p" }
 }
-$acl = (Get-Acl $keyFile).Access | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique
-Write-Host ("Quyền đọc tệp khóa: " + ($acl -join ", "))
+$aclF = (Get-Acl $keyFile); $aclD = (Get-Acl $keyDir)
+$who = @($aclF.Access + $aclD.Access) | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique
+$inh = $aclF.AreAccessRulesProtected -and $aclD.AreAccessRulesProtected
+Write-Host ("Quyền trên khóa: " + ($who -join ", ") + " | chặn thừa kế: " + $inh)
+Log ("ACL khóa: " + ($who -join ", ") + " | chặn thừa kế: " + $inh)
+if (@($who | Where-Object { $_ -ne $me }).Count -gt 0 -or -not $inh) { throw "ACL chưa đúng (chỉ được có $me)" }
 
 Step "3/4 Khóa công khai → recipient.txt"
-$pub = (& $keygen -y $keyFile).Trim()
-if ($pub -notmatch '^age1[0-9a-z]{58}$') { throw "Không đọc được khóa công khai" }
+$ErrorActionPreference = "Continue"
+$pub = ((& $keygen -y $keyFile 2>$null) | Out-String).Trim()
+$ErrorActionPreference = "Stop"
+# Khóa cũ hỏng → DỪNG (không tạo đè, để chủ hệ thống quyết định)
+if ($pub -notmatch '^age1[02-9ac-hj-np-z]{58}$') { throw "Khóa riêng hiện có không trích được khóa công khai hợp lệ — KHÔNG tạo đè, cần kiểm tra thủ công" }
+Log ("Khóa riêng hợp lệ; khóa công khai " + $pub.Substring(0,12) + "…" + $pub.Substring($pub.Length-6))
 New-Item -ItemType Directory -Force $bk | Out-Null
 Set-Content -Path $recipient -Value $pub -Encoding ascii -NoNewline
 Write-Host "Đã ghi khóa công khai: $recipient ($($pub.Substring(0,12))…)"; Log "recipient.txt đã ghi"
