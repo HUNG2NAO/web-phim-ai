@@ -84,6 +84,7 @@
         '<input id="afn-email" type="email" name="email" autocomplete="email" required></div>',
         '<div class="afn-field afn-password-wrap"><label for="afn-password">Mật khẩu</label>',
         '<input id="afn-password" type="password" name="password" minlength="8" autocomplete="current-password" required></div>',
+        '<p class="afn-auth-hint afn-signup-notice afn-auth-hidden" id="afn-signup-notice">Email và tên hiển thị của bạn được xử lý theo <a href="/chinh-sach.html#rieng-tu" target="_blank" rel="noopener">Chính sách riêng tư</a> (bản dự thảo). Khi trò chuyện, hãy tuân thủ <a href="/chinh-sach.html#cong-dong" target="_blank" rel="noopener">Quy tắc cộng đồng</a>.</p>',
         '<button class="afn-auth-primary" id="afn-submit" type="submit">Đăng nhập</button>',
       '</form>',
       '<button type="button" class="afn-auth-google" id="afn-google">Tiếp tục với Google</button>',
@@ -170,6 +171,8 @@
       b.setAttribute("aria-selected", String(b.dataset.mode === mode));
     });
     nameWrap.classList.toggle("afn-auth-hidden", mode !== "signup");
+    var notice = dialog.querySelector("#afn-signup-notice");
+    if (notice) notice.classList.toggle("afn-auth-hidden", mode !== "signup");
     emailWrap.classList.toggle("afn-auth-hidden", mode === "update");
     passwordWrap.classList.toggle("afn-auth-hidden", mode === "recover");
     passEl.autocomplete = mode === "login" ? "current-password" : "new-password";

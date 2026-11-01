@@ -45,6 +45,7 @@
   border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .afn-auth-message[data-kind="error"] { border-color: #c75c55; }
 .afn-auth-hint { color: var(--muted); font-size: 12px; margin: 0; line-height: 1.45; }
+.afn-signup-notice a { color: var(--fg); text-decoration: underline; text-underline-offset: 2px; }
 .afn-auth-hidden { display: none !important; }
 @media (max-width: 620px) {
   .afn-account-slot { margin-left: 0; }

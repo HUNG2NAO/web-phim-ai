@@ -110,15 +110,35 @@ test("SEO: functions/_site.js domains match SITES and sitemaps are up to date", 
   assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=evil")).id, "xuongphim");
 });
 
-test("privacy policy: owner-supplied fields are explicit placeholders until filled; release must replace them", () => {
+test("privacy policy RC3: owner fields are either unconfirmed (shown honestly) or real values; draft stays noindex", () => {
   const html = fs.readFileSync(path.join(ROOT, "chinh-sach.html"), "utf8");
-  const fields = [...html.matchAll(/data-owner-input="([a-z-]+)">([^<]*)</g)].map(m => [m[1], m[2]]);
-  assert.deepEqual(fields.map(f => f[0]).sort(), ["contact-email", "controller", "retention"]);
-  for (const [k, v] of fields) {
-    // Either still an explicit placeholder, or a real value (email must look like an email).
-    if (/^\[CẦN CHỦ WEBSITE CUNG CẤP/.test(v)) continue;
-    if (k === "contact-email") assert.match(v.trim(), /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i, "contact email");
-    else assert.ok(v.trim().length > 3, k);
+  const fields = Object.fromEntries([...html.matchAll(/data-owner-input="([a-z-]+)">([^<]*)</g)].map(m => [m[1], m[2].trim()]));
+  assert.deepEqual(Object.keys(fields).sort(), ["contact-email", "controller", "retention"]);
+  // Không lộ ghi chú nội bộ cho người dùng.
+  assert.doesNotMatch(html.replace(/<!--[\s\S]*?-->/g, ""), /CẦN CHỦ WEBSITE|\[CẦN/);
+  assert.ok(fields.controller.startsWith("Hungcreator"), "đơn vị vận hành do chủ dự án xác nhận");
+  if (fields["contact-email"] !== "Chưa xác định")
+    assert.match(fields["contact-email"], /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i, "contact email must be a real address");
+  assert.ok(fields.retention.length > 3);
+  const unconfirmed = /chưa được xác minh/.test(fields.controller) || fields["contact-email"] === "Chưa xác định" || /Chưa được phê duyệt/.test(fields.retention);
+  if (unconfirmed) {
+    assert.match(html, /<meta name="robots" content="noindex/, "bản dự thảo phải giữ noindex");
+    assert.match(html, /<meta name="policy-version" content="DRAFT RC\d+">/);
+    assert.match(html, /Bản dự thảo — chưa phải chính sách chính thức/);
   }
-  assert.match(html, /<meta name="robots" content="noindex/, "policy stays noindex while it is a draft");
+});
+
+test("privacy policy RC3: only discloses third-party hosts the site actually loads", () => {
+  const html = fs.readFileSync(path.join(ROOT, "chinh-sach.html"), "utf8");
+  const used = new Set();
+  for (const f of ["index.html", "account.html", "member.html", ...fs.readdirSync(path.join(ROOT, "assets")).filter(n => n.endsWith(".js")).map(n => "assets/" + n)])
+    for (const m of fs.readFileSync(path.join(ROOT, f), "utf8").matchAll(/https:\/\/([a-z0-9.-]+)\//g)) used.add(m[1]);
+  const disclose = { "fonts.googleapis.com": /Google Fonts/, "fonts.gstatic.com": /Google Fonts/, "cdn.jsdelivr.net": /jsDelivr/,
+    "www.youtube-nocookie.com": /youtube-nocookie/, "www.youtube.com": /YouTube/, "jurvphonehknrxjpowoe.supabase.co": /Supabase/ };
+  for (const host of used) {
+    if (/xuongphim\.ai|khophim\.ai|phephim\.ai|phimhay\.ai|ghienphim\.ai|pages\.dev|download\.blender\.org|img\.youtube\.com|i\.ytimg\.com/.test(host)) continue;
+    assert.ok(disclose[host], "chưa khai báo nhà cung cấp: " + host);
+    assert.match(html, disclose[host], host);
+  }
+  assert.doesNotMatch(html, /Một số nhật ký kiểm duyệt và giao dịch điểm có thể được giữ lại/, "giao dịch điểm bị xóa kèm tài khoản (ON DELETE CASCADE)");
 });
