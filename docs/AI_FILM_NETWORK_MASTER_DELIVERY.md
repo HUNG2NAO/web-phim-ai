@@ -13,6 +13,162 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 20:15 — MFA SIGN-OFF · ĐỒNG BỘ 4 WEBSITE (PREVIEW) · TRIỂN KHAI ĐỘC LẬP
+
+Không merge `main`, không đổi DNS, không đụng Production (`c6dd520` vẫn phục vụ 10 tên miền), không áp migration mới, không xóa dữ liệu.
+
+### Phase 1 — Nghiệm thu MFA chủ mạng (đóng phạm vi)
+**Thiết bị dự phòng (17:50–18:16):**
+- Supabase gói hiện tại hỗ trợ tối đa 10 factor TOTP mỗi người.
+- Quy tắc của Supabase:
+  - đã có factor thì phải ở phiên AAL2 mới thêm được thiết bị mới;
+  - gỡ factor đã xác minh cũng cần AAL2;
+  - xác minh một factor mới sẽ đăng xuất các phiên khác.
+- Studio → Bảo mật (commit `0054af3`):
+  - danh sách thiết bị;
+  - **Thêm thiết bị dự phòng**: chỉ ở AAL2, không đụng factor đang hoạt động, tên thiết bị không trùng, chỉ báo thành công khi máy chủ xác nhận factor mới `verified`;
+  - **Thu hồi**: chỉ khi còn ≥ 2 thiết bị; phải xác nhận rồi nhập mã từ thiết bị **giữ lại**;
+  - chọn thiết bị khi nhập mã (Studio và trang công khai).
+
+| Bằng chứng (Supabase thật, chỉ đọc siêu dữ liệu) | Kết quả |
+|---|---|
+| 2 factor TOTP `verified` | `38e8…` "AFN Studio 2026-11-01" (chính, không đổi) · `28fb…` "Thiết bị dự phòng" (xác minh 18:03:28) |
+| Thêm thiết bị bằng phiên AAL2, không có lệnh gỡ factor nào | Có |
+| Phiên **mới** bằng thiết bị chính | Phiên `29e9…`: đăng nhập 18:08:08, nhập mã thiết bị chính lúc 18:08:27 → `aal2` |
+| Phiên **mới** bằng thiết bị dự phòng | Phiên `e3a1…`: đăng nhập 18:16:21, nhập mã thiết bị dự phòng lúc 18:16:35 → `aal2` (phiên hiện tại) |
+| Quyền quản trị sau MFA | Phiên 17:35 (bản 17:50): token AAL2 → `admin_staff_mfa_status` 200. Token phát hành khi xác minh thiết bị dự phòng (18:03:28) → `admin_staff_mfa_status` 200. **Phiên đăng nhập mới bằng thiết bị dự phòng (`e3a1…`) chưa gọi RPC quản trị nào** |
+| `staff_mfa_required` | `false` (giữ nguyên) |
+
+- **Kết luận:** **OWNER MFA DUAL FACTOR VERIFIED** · **PARTIAL ADMIN VERIFICATION**: quyền quản trị trên phiên mới dùng thiết bị dự phòng chưa được kiểm chứng.
+- **Bài QA Admin (QA Admin bật 2FA, thao tác quản trị có ghi nhật ký, giả lập mất thiết bị trên Staging): NOT RUN.** QA Admin chưa đăng nhập; chủ dự án quyết định đóng phạm vi.
+  - Quy trình mất thiết bị đã kiểm trên CSDL giả lập: `tests/sql/owner_mfa_recovery.sh` 23/23.
+  - Thêm/thu hồi thiết bị đã kiểm bằng E2E: 10 kịch bản.
+- Lưu ý vận hành:
+  - Phiên Hungcreator vẫn đang đăng nhập trong khung trình duyệt của Claude (tab Xưởng Phim). Claude không dùng phiên này. Nên đăng xuất khi tiện.
+  - Thiết bị dự phòng đang tên "Thiết bị dự phòng".
+
+### Phase 2 — Bản chuẩn
+| Mục | Giá trị |
+|---|---|
+| Nhánh phát triển | `feature/master-site-xuongphim-2026-10-31` (mới nhất `9767c1e`). Bản RC cũ (`release/xuongphim-l4-rc1/rc3`) **không dùng** |
+| Production | `main` `c6dd520` (bản demo tĩnh, không có Supabase) — project Pages `web-phim-ai-5sites`, 10 tên miền Active |
+| Supabase Staging | 15 migration, mới nhất `level4_6_staff_mfa` · 28/28 bảng RLS · 86 policy · 27 cổng 2FA · `dangerous_grants` 0 |
+| Shared Core | 35 tệp giao diện + 6 Pages Functions, giống hệt nhau cho 5 site (SHA-256 kiểm bằng `tools/site-package.cjs`) |
+| Riêng từng site | mục trong `assets/sites.js` (tên, ấn triện, màu, tagline, danh mục, hàng phim, Social dự phòng, cờ tính năng, release) · `assets/themes/<id>.css` · `sitemaps/<id>.xml` · dữ liệu Supabase theo `site_id` |
+
+### Phase 3–4 — Đồng bộ 4 website & phát triển độc lập (`0484f43`, `9767c1e`)
+Giữ kiến trúc Shared Core, không tách 4 repository.
+1. **Một bộ nhận diện site duy nhất** (`AFN_RESOLVE_SITE`). Trước đây có 6 bản sao logic; nay `afn-core`, `app.js`, Member Hub, Studio và `functions/_site.js` dùng chung quy tắc.
+2. **Preview khóa theo site:** host có nhãn `site-<id>` (alias nhánh `site/<id>`), `<id>-ai` hoặc `afn-<id>` (project Pages riêng sau này) chỉ phục vụ đúng site đó:
+   - bỏ qua `?site=`, không có thanh chuyển site;
+   - `/api/catalog`, robots, sitemap trả về đúng site;
+   - vẫn `noindex`.
+3. **Lớp giao diện riêng:** `assets/themes/<id>.css` chỉ được tải cho đúng site. Mọi quy tắc phải bắt đầu bằng `[data-site="<id>"]`; `site-package check` **chặn** quy tắc lan sang site khác, `@keyframes` không có tiền tố và `@import`.
+   - E2E chứng minh: sửa `khophim.css` thì Xưởng Phim không tải tệp đó và không đổi giao diện.
+4. **Cờ tính năng theo site** (`features`: memberHub, rewards, unlock, chat, social). Đây là cờ giao diện; quyền thật vẫn do máy chủ quyết định.
+   - E2E: tắt cho riêng Phê Phim thì Xưởng Phim không bị ảnh hưởng.
+5. **Phát hành độc lập:**
+   - Mỗi site có nhánh `site/<id>` = Shared Core + `releases/<id>.json` (commit core, `core_sha256`, phiên bản, thời điểm thăng cấp).
+   - Mỗi nhánh chỉ khác ở tệp của chính nó nên không xung đột; thăng cấp core cho từng site theo lịch riêng.
+   - `site-package manifest` có `core_sha256` và tệp riêng của từng site.
+6. **Lỗi phát hiện và đã sửa:** trên alias khóa site, Studio vẫn đọc `?site=`, nên admin có thể chuyển sang quản trị site khác.
+   - Nay Studio chỉ quản trị đúng site đó và khóa ô chọn site; không có quyền site đó thì báo "chưa được cấp quyền quản trị <site>". E2E đã có.
+
+### Phase 5 — Bảo mật & CSDL (Staging, chỉ đọc)
+| # | Kiểm tra | Kết quả |
+|---|---|---|
+| 1 | RLS | 28/28 bảng bật, 0 bảng tắt; 15 migration, không chạy lại |
+| 2 | Cách ly `site_id` | 19 bảng có `site_id`, ràng buộc CHECK theo 5 mã site; tập phim khóa ngoại tới `(site_id, film_id)` |
+| 3 | Quyền quản trị | Hàm `private.is_*` đều qua `mfa_ok`; 27 cổng 2FA |
+| 4 | Điểm danh 1 lần/ngày toàn mạng | PK `daily_checkins(user_id, checkin_date)`: một dòng mỗi người mỗi ngày, bất kể site |
+| 5 | Ví chung | PK `wallets(user_id)`; số dư ≥ 0; sổ cái chống trùng `(user_id, idempotency_key)` |
+| 6 | Mở khóa không chuyển nhầm site | `unlock_episode` lấy `site_id` từ chính tập phim; không có policy INSERT/UPDATE cho client; 0 bản ghi lệch site; chỉ 1 quyền `active` mỗi (người, tập) |
+| 7 | Chat bật/tắt tại backend | Trigger `chat_guard_message` → `private.chat_open(room)` từ chối khi tắt (`chat_disabled`); hiện cả 6 phạm vi đang bật trên Staging |
+| 8 | Quyền nguy hiểm | `dangerous_grants()` = 0 |
+| 9 | Backup mã hóa | `afn_data_20261101_1611_pre46.json.age`: giải mã trên PC ĐẠT, khôi phục cô lập 31/31 (mục 16:15) |
+
+### Phase 6 — Preview thật từng website (alias riêng, desktop + di động 375 px)
+Alias: `https://site-<id>.web-phim-ai-5sites.pages.dev/`. Bản đang chạy trên cả 4 alias: **release 4.6.1, Shared Core `9767c1e`** (đọc từ `releases/<id>.json` trên chính alias), đã gồm bản sửa Studio. Cả 4 alias không cuộn ngang ở 1365 px và 375 px.
+- **Giới hạn cấu hình Cloudflare:** project chỉ tự triển khai một số nhánh Preview, nên nhánh `site/*` bị *skipped*. Claude dùng "Retry deployment" (chỉ Preview) để build, không đổi cài đặt.
+- Muốn tự triển khai khi đẩy nhánh `site/*`: chủ thêm `site/*` vào Settings → Builds → Branch control → Preview branches.
+
+| Hạng mục | Kho Phim | Phê Phim | Phim Hay | Ghiền Phim |
+|---|---|---|---|---|
+| Homepage (thương hiệu, khóa site dù có `?site=` khác) | PASS | PASS | PASS | PASS |
+| Shared Core khớp SHA-256 (35 tệp) + lớp giao diện riêng | PASS | PASS | PASS | PASS |
+| Movie Catalog (thẻ phim) | PASS (17) | PASS (12) | PASS (38) | PASS (18) |
+| Movie Detail + nút phát (Player) | PASS | PASS | PASS | PASS |
+| Auth (hộp đăng nhập, email + mật khẩu) | PASS (khách) | PASS (khách) | PASS (khách) | PASS (khách) |
+| Daily Check-in / Wallet (chip hiển thị) | PASS (khách) | PASS (khách) | PASS (khách) | PASS (khách) |
+| Member Hub / tài khoản / Studio / chính sách (HTTP 200) | PASS | PASS | PASS | PASS |
+| Dashboard Permissions (Studio khóa đúng site) | PASS (E2E) | PASS (E2E) | PASS (E2E) | PASS (E2E + Preview thật: đúng site, giao diện khách) |
+| SEO/Routes (noindex, robots chặn, sitemap đúng domain, `/phim/<slug>` chuyển hướng) | PASS | PASS | PASS | PASS |
+| Cross-site Isolation (`/api/catalog` trả đúng site) | PASS | PASS | PASS | PASS |
+| Responsive (không cuộn ngang) | PASS | PASS | PASS | PASS |
+| Social Links | N/A (chưa cấu hình, không hiển thị) | N/A | N/A | N/A |
+| Critical regression | Không | Không | Không | Không |
+
+- **Giới hạn trung thực:**
+  - Danh mục 4 site là **dữ liệu mẫu (fixture)**. Supabase Staging chỉ có 1 phim thật (Xưởng Phim), nên **chưa thể tuyên bố nội dung Production đạt**.
+  - Đăng nhập, điểm danh, mở khóa và chat **bằng tài khoản thật** trên 4 site đã kiểm ở mục 13:00 (QA thật, Preview chung). Hôm nay chỉ kiểm phần khách trên alias riêng, còn phần tài khoản kiểm bằng E2E.
+  - Hai bài unit jsdom cũ không chạy được vì môi trường chặn registry npm (403).
+- Tự động: E2E **117/117** · site-config 14/14 · site-package 5/5 OK · SQL 253 + 23 + 23 + 27.
+
+### Phase 7 — Kế hoạch phát hành Production (CHƯA thực hiện, chờ phê duyệt từng đợt)
+- **Hiện trạng thực tế:** **một** project Pages `web-phim-ai-5sites` gắn **cả 10 tên miền**.
+  - Triển khai `main` lên project này sẽ đổi **cùng lúc 5 website**, nên **không rollback độc lập được**.
+- **Đề xuất (mỗi đợt cần anh phê duyệt):**
+  1. Tạo project Pages riêng cho từng site, tên `<id>-ai`. Bộ nhận diện đã khóa site theo nhãn này. Production branch = `site/<id>`.
+  2. Thêm `https://www.<id>.ai` vào Supabase Auth Redirect URLs.
+  3. Chuyển đúng 2 tên miền của site (apex + www) từ `web-phim-ai-5sites` sang project mới. Các site khác giữ nguyên trên `c6dd520`.
+  4. Chạy smoke test: `node tools/site-package.cjs verify https://www.<id>.ai <id>`, trang chủ, đăng nhập, điểm danh, phát phim.
+  5. **Rollback** = trả 2 tên miền về `web-phim-ai-5sites`.
+  6. **Điều kiện dừng:**
+     - `verify` lệch SHA-256;
+     - lỗi 5xx;
+     - đăng nhập hoặc điểm danh lỗi;
+     - lộ chat khi chưa duyệt pháp lý.
+- **Điều kiện bắt buộc trước Production (còn mở):**
+  - pháp lý (chính sách, chat, Luật Điện ảnh): **PENDING OWNER/LEGAL REVIEW**;
+  - nội dung phim thật và quyền phát;
+  - chat trên tên miền thật đang tắt ở giao diện (`CHAT_PUBLIC_DOMAINS = []`); cần quyết định công tắc máy chủ cho phạm vi thật;
+  - mật khẩu tối thiểu 10 ký tự trong Dashboard Supabase;
+  - Production dùng chung project Supabase với Staging hay tách riêng: cần chủ quyết định.
+
+### Phase 8 — Nền dữ liệu đa ngôn ngữ (Level 4.7 — CHUẨN BỊ, CHƯA áp Staging)
+- **Hiện trạng:** `episode_sources` chỉ có 1 nguồn + 1 dự phòng mỗi tập, chỉ `youtube`/`native`, không có ngôn ngữ, nên **chưa đáp ứng** đa ngôn ngữ.
+- `db/level4_7_media_languages.sql` **chỉ thêm**, không sửa bảng hay hàm cũ:
+  - `episode_media`: nhiều nguồn mỗi tập theo ngôn ngữ BCP 47 (vi/th/id…), loại bản gốc / lồng tiếng / phụ đề cứng.
+    - Nhà cung cấp: YouTube công khai, YouTube không công khai, Facebook công khai, Google Drive, URL https.
+    - Dự phòng theo `priority`; xuất bản phải có cam kết bản quyền.
+  - `episode_subtitles`: phụ đề WebVTT VI/TH/ID, một phụ đề mặc định.
+  - `get_playback_media(episode, language)`:
+    - dùng lại toàn bộ kiểm tra quyền xem của `get_playback_source` (tập bị khóa không lộ nguồn);
+    - đổi ngôn ngữ trên cùng Movie ID / tập phim, không tạo lại bản ghi;
+    - tập chưa có media thì trả nguồn cũ.
+  - RLS: chỉ admin đúng site / nhân sự mạng; thêm 8 cổng 2FA. Gỡ bằng `db/staging/93_rollback_level4_7.sql`.
+- Kiểm thử cục bộ: **27/27**, áp lại 2 lần (idempotent), gỡ và áp lại OK, `dangerous_grants` vẫn 0.
+- **Chưa làm (đúng phạm vi):**
+  - engine xử lý phim và giao diện chọn ngôn ngữ;
+  - CSP `frame-src` cho Facebook/Drive (thêm khi làm trình phát).
+- Không tạo dịch vụ lưu trữ trả phí.
+- Áp lên Staging cần anh phê duyệt.
+
+### Kết luận
+| Hạng mục | Trạng thái |
+|---|---|
+| **OWNER MFA** | **VERIFIED** (2 factor, mỗi thiết bị đã tạo một phiên AAL2 mới) — **PARTIAL ADMIN VERIFICATION** trên phiên mới dùng thiết bị dự phòng; bài QA Admin **NOT RUN** |
+| **MASTER WEBSITE** (Xưởng Phim) | **VERIFIED** trên Preview/Staging |
+| **KHO PHIM PREVIEW** | **PASS** |
+| **PHE PHIM PREVIEW** | **PASS** |
+| **PHIM HAY PREVIEW** | **PASS** |
+| **GHIEN PHIM PREVIEW** | **PASS** |
+| **SHARED CORE** | **READY** |
+| **MULTI-SITE DEPLOYMENT** | **READY FOR APPROVAL**: cần phê duyệt tạo project riêng và chuyển tên miền từng đợt |
+| **PRODUCTION** | **ON HOLD**: pháp lý, nội dung thật, quyết định Supabase Production |
+
+---
+
 ## Cập nhật 01/11/2026 17:50 — OWNER MFA PASS (Hungcreator, Staging/Preview)
 
 Chủ hệ thống tự bật xác thực 2 lớp trên trình duyệt riêng (Preview → Studio → Bảo mật). Claude **không thấy, không lưu, không yêu cầu** QR, khóa bí mật hay mã OTP; mọi kiểm tra dưới đây chỉ đọc siêu dữ liệu (trạng thái, thời điểm, mã phản hồi).
