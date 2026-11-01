@@ -13,6 +13,174 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 14:00 — Level 4.4/4.5: công tắc chat phía máy chủ, tăng cứng quyền, năng lực 1.000 người online
+
+Không thay đổi Production, DNS, `main`. Không đồng bộ 4 website Production. Không xóa dữ liệu QA hay người dùng thật.
+Pháp lý vẫn **PENDING OWNER/LEGAL REVIEW**. Không làm lại các hạng mục đã PASS.
+
+### 1. Trạng thái Community Chat trên 5 website (trước khi có 4.4)
+- **Giao diện:** cổng `CHAT_PUBLIC_DOMAINS = []`. Chat tắt trên 5 tên miền thật, bật trên Preview.
+- **Máy chủ:** **chưa có** công tắc. Gọi thẳng API `send_chat_message` vẫn gửi được tin.
+
+### 2. Công tắc chat phía máy chủ (Level 4.4, `db/level4_4_chat_switch.sql`)
+- **Bảng `chat_settings`:** 6 phạm vi (`network` và 5 site). Thiếu cấu hình thì coi như **đóng** (an toàn mặc định).
+- **Khi một phạm vi đóng:**
+
+| Thao tác | Hành vi | Cơ chế |
+|---|---|---|
+| Gửi tin (mọi đường ghi, kể cả quản trị viên, ghi thẳng bảng) | `chat_disabled` | Trigger `BEFORE INSERT` trên `chat_messages` |
+| Báo cáo tin | `chat_disabled` | Trigger trên `chat_reports` |
+| Thành viên đọc / nhận Realtime | Không thấy tin | RLS `chat_read` (Realtime tuân thủ RLS) |
+| Kiểm duyệt (đọc, ẩn/khôi phục, bỏ qua báo cáo, khóa/mở khóa) | Vẫn làm được | Giữ quyền nhân sự để dọn nội dung |
+| Dữ liệu | Giữ nguyên; mở lại là hiện lại | Không xóa |
+
+- **Quyền đổi** (RPC `admin_set_chat_enabled`, bắt buộc lý do, ghi nhật ký):
+  - **Mở:** chỉ chủ mạng.
+  - **Đóng:** quản trị viên đóng được site mình hoặc phòng chung.
+- **Giao diện:**
+  - Khung chat hiện "Trò chuyện ở phòng này đang tạm đóng", ẩn ô nhập.
+  - Khung chat đang mở đổi trạng thái ngay khi Dashboard bấm (qua kênh kiểm duyệt).
+  - Dashboard → Chat có bảng "Trạng thái chat theo phạm vi".
+- **Kiểm thử:**
+  - SQL +28 (gồm ghi thẳng bị chặn, phạm vi thiếu cấu hình = đóng, mở lại giữ dữ liệu).
+  - E2E +3 (đóng/mở thời gian thực giữa Dashboard và khung chat của thành viên).
+  - Script gỡ `97` trả schema về đúng 4.3.
+- **Staging** (sau backup mới, có kiểm tra môi trường, anh đã duyệt):
+  - Cấu trúc khớp bản cục bộ: 59 policy, RLS 28/28, 221 cột, 12 trigger, 44 hàm.
+  - 6 phạm vi đều **mở**, nên Preview giữ nguyên chức năng đã nghiệm thu.
+  - **Kiểm thử thật** trong giao dịch tự hủy, 17/17 đạt:
+    - Thành viên tự đóng chat → `forbidden`.
+    - QA Admin đóng Xưởng Phim → đóng được; đóng Kho Phim hoặc tự mở lại → `forbidden`.
+    - Khi đóng: QA2 gửi/báo cáo qua API → `chat_disabled`; đọc 0 tin. QA Admin gửi → `chat_disabled`; đọc đủ 10 tin.
+    - Phòng chung vẫn chạy.
+    - Chủ mạng mở lại → 9 tin cũ hiện lại, gửi được.
+    - Ghi thẳng vào phạm vi đóng → `chat_disabled`.
+  - Sau đó xác nhận không có dữ liệu nào thay đổi.
+- **Preview thật:**
+  - Chat phim nối realtime ("2 người đang xem"), 9 tin, ô nhập mở.
+  - Thành viên gọi công tắc → `forbidden`.
+
+### 3. Rà soát RLS và quyền của 28 bảng (Staging, đọc trực tiếp)
+- **RLS bật 28/28.**
+- **23 hàm SECURITY DEFINER công khai:** đều cố định `search_path`. 22 hàm tự kiểm tra danh tính hoặc quyền.
+  - `log_landing` là hàm dành cho khách: kiểm tra đầu vào, không chứa dữ liệu cá nhân, nay **có trần 300 lượt/phút/site**.
+  - `get_playback_source` dành cho khách: chỉ trả nguồn của tập miễn phí. Tập bị khóa không lộ nguồn (đã kiểm ở RC1).
+- **Schema `private`:** không role API nào có quyền USAGE; 0 hàm private bị lộ.
+- **Bảng đọc công khai có chủ đích:** `approved_reviews`, `reward_rules`, `chat_settings`; phim/tập/Social chỉ hiện khi đã phát hành.
+- **Phát hiện và sửa (Level 4.5, `db/level4_5_grant_hardening.sql`):**
+  - `authenticated` có **TRUNCATE/TRIGGER/REFERENCES** trên 8 bảng (mặc định Supabase; **TRUNCATE bỏ qua RLS**).
+  - Có quyền DELETE/UPDATE ở 5 chỗ không có policy.
+  - Đã thu hồi **29 quyền**. Áp cả cho bảng tạo về sau. Ghi vào `private.grant_hardening_log`.
+  - Script gỡ `96` cấp lại chính xác (đã kiểm thử).
+  - **Staging sau 4.5:** 0 quyền nguy hiểm, 0 quyền ghi không có policy.
+  - **Preview thật (SIGNUP1):** lưu hồ sơ vẫn được; xóa thành viên hoặc hồ sơ → `permission denied`.
+- **Cách ly 5 website:** đã kiểm ở 4.3 trên Staging với các phiên mô phỏng, cộng ma trận E2E 5 site. Bảng chi tiết ở mục 13:00.
+- **Ví chung, điểm danh 1 lần/ngày, quyền nội dung theo tập:**
+  - Thật: điểm danh ở Phê Phim xong, sang Ghiền Phim báo đã điểm danh.
+  - Mở khóa ghi theo `site_id` của tập.
+  - Dưới tải: 999 lượt điểm danh không trùng; 31.522 lượt mở khóa không trùng; ví khớp sổ cái 100% (mục 5).
+- **Không khẳng định "an toàn tuyệt đối".** Các kiểm thử tự động và kiểm tra thủ công chỉ chứng minh những kịch bản đã viết. Chưa có:
+  - Kiểm thử xâm nhập độc lập.
+  - Rà soát mã bởi bên thứ ba.
+  - Fuzzing API.
+
+### 4. Biện pháp thay thế khi chưa có Leaked Password Protection (gói Free)
+| Biện pháp | Chi phí | Trạng thái / đề xuất |
+|---|---|---|
+| Bắt xác minh email | 0 | **Đang bật** |
+| Giới hạn tần suất Auth (đăng nhập/đăng ký 30/5 phút/IP, email 30/giờ) | 0 | **Đang bật** |
+| Phát hiện dùng lại refresh token | 0 | **Đang bật** |
+| Mật khẩu tối thiểu 10 ký tự + yêu cầu chữ và số (Supabase "Password requirements") | 0 | **Đề xuất** bật trước Production (hiện là 8 ký tự, không yêu cầu loại ký tự) |
+| CAPTCHA Cloudflare Turnstile cho đăng ký/đăng nhập/quên mật khẩu (Supabase hỗ trợ sẵn) | 0 | **Đề xuất** trước Production; cần thêm widget ở form |
+| **MFA (TOTP) bắt buộc cho chủ mạng và quản trị viên** | 0 | **Đề xuất ưu tiên cao**: tài khoản quản trị mở được xóa tài khoản và đóng/mở chat |
+| Chặn mật khẩu phổ biến phía trình duyệt (danh sách cục bộ, không gửi đi đâu) | 0 | Tùy chọn; chỉ hỗ trợ, không thay được kiểm tra phía máy chủ |
+| Leaked Password Protection (HaveIBeenPwned) | Gói Pro | Bật khi nâng gói |
+
+### 5. Năng lực 1.000 người online
+- **Đo tải trên CSDL cô lập** (PostgreSQL cục bộ 2 vCPU/8 GB, dữ liệu giả lập: 1.000 thành viên, 5 site × 20 phim × 10 tập, 100.000 tin chat; `tools/loadtest/`).
+  - Không chạm Staging/Production. Script tự dừng nếu thấy dữ liệu QA thật.
+  - 50 kết nối đồng thời (≈ trần pooler gói nhỏ), mỗi bài 20 giây:
+
+| Thao tác (có RLS / RPC thật) | TPS | Độ trễ TB | Ghi chú |
+|---|---|---|---|
+| Danh mục (khách) | 3.936 | 12,7 ms | 3 truy vấn/lượt |
+| Lấy nguồn phát | 3.394 | 14,7 ms | |
+| Đọc 50 tin chat (RLS) | 4.178 | 12,0 ms | dùng chỉ mục `chat_messages_room_time`, 0,23 ms/truy vấn |
+| Điểm danh | 6.491 | 7,7 ms | 999 thành công, 0 trùng |
+| Mở khóa tập | 1.784 | 28,0 ms | 31.522 thành công, 0 trùng, 0 số dư âm |
+| Gửi chat | 7.961 | 6,3 ms | 4.995 tin (đúng trần 5 tin/30 giây/người), phần còn lại bị chặn có chủ đích |
+
+  > Máy đo mạnh hơn gói Free/Nano của Supabase (CPU dùng chung, 0,5 GB). Số liệu chỉ để thấy **CSDL và các truy vấn không phải điểm nghẽn**, không phải năng lực thật của Staging.
+- **Nhu cầu ước tính cho 1.000 người online** (giả định trong `tools/loadtest/k6-1000-online.js`):
+  - ~2 trang/phút/người × ~12 lời gọi Supabase ≈ **~400 request/giây** vào PostgREST/Auth.
+  - 30% mở chat ≈ **300 kết nối Realtime**; ~1 tin/2 phút/người ≈ 2–3 tin/giây.
+  - Mỗi tin trong phòng có N người đang xem tạo ra N lượt kiểm tra RLS ở Realtime.
+- **Điểm nghẽn theo thứ tự** (giới hạn chính thức của Supabase):
+  1. **Realtime:** Free **200** kết nối đồng thời / 100 tin/giây; Pro **500** / 500; Pro không giới hạn chi tiêu **10.000** / 2.500.
+     - Với 1.000 người online và 30% mở chat, **Free không đủ**; Pro đủ tới ~500 người mở chat cùng lúc.
+     - Postgres Changes xử lý **đơn luồng** và kiểm quyền **cho từng người nhận**. Supabase khuyến nghị chuyển sang Broadcast khi > ~3.000 người nhận cùng thay đổi.
+  2. **Kết nối CSDL:** Nano/Micro 60 trực tiếp / 200 qua pooler; Small 90/400. REST API dùng pool riêng nên không phải mỗi người một kết nối.
+  3. **Auth:** mỗi lần tải trang có ~3 lời gọi `/auth/v1/user`. Có thể giảm bằng cách dùng phiên cục bộ (`getSession`) cho phần hiển thị, chỉ gọi `getUser` trước thao tác nhạy cảm.
+  4. **Phát video:** YouTube nhúng (băng thông của YouTube) và tệp MP4 dự phòng (máy chủ nguồn), không đi qua Supabase. Website tĩnh trên Cloudflare Pages không giới hạn băng thông.
+- **Đề xuất trước khi phục vụ 1.000 người:**
+  1. **Nâng Supabase Pro** (bắt buộc cho Realtime > 200 và để có backup tự động/PITR).
+  2. Chỉ mở Realtime khi người dùng mở khung chat (**đã như vậy**). Tự đóng kết nối khi tab ẩn quá 5 phút.
+  3. Cache danh mục phim/tập theo site ở trình duyệt 60 giây (dữ liệu công khai, ít đổi). Giảm `getUser` lặp.
+  4. Khi chat đông (> vài trăm người cùng phòng): chuyển phân phối tin sang **Broadcast** (trigger → `realtime.send`), giữ RLS ở bước ghi.
+  5. Giữ các trần hiện có: 5 tin/30 giây, chống trùng, báo cáo/ngày, `log_landing` 300/phút/site.
+  6. Chạy `k6-1000-online.js` trên **project Supabase cô lập** (không phải Staging) trước khi phát hành; ngưỡng p95 < 800 ms, lỗi < 1%.
+- **Không** tạo tải lên Staging/Production và **không** phát sinh chi phí trong vòng này.
+
+### 6. Đồng bộ 5 website
+- **Shared Core:** `tools/site-package.cjs check` → **5/5 OK** (đã thêm `functions/phim/[[path]].js` vào manifest).
+- **Lỗi mới phát hiện và sửa trên Preview:**
+  - Link đẹp `/phim/<slug>?site=khophim` bị Cloudflare `_redirects` bỏ `?site=`, nên rơi về Xưởng Phim.
+  - Thay bằng Pages Function giữ nguyên toàn bộ tham số.
+  - **Đã kiểm thật trên Cloudflare:** `/phim/thanh-pho-khong-ngu?site=khophim` → `/?film=thanh-pho-khong-ngu&site=khophim`. Có thêm E2E.
+- **Phân biệt phạm vi thay đổi:**
+
+| Riêng từng website (đổi không ảnh hưởng site khác) | Toàn hệ thống (ảnh hưởng cả 5 site, phải chạy đủ kiểm thử 5 site) |
+|---|---|
+| Mục của site trong `assets/sites.js`: tên, ấn triện, tagline, `world`, màu nhấn, phim nổi bật, hàng phim, Social dự phòng | Mọi tệp `assets/*.js`, `*.css`, `*.html`, `functions/*`, `_headers`, `_redirects` |
+| `sitemaps/<site>.xml` (sinh từ danh mục) | Migration `db/*.sql` (RLS, RPC, ví, điểm danh, chat) |
+| Dữ liệu Supabase theo `site_id`: phim, tập, nguồn phát, Social, nhân sự, công tắc chat của site | `reward_rules` (quy tắc điểm danh toàn mạng), ví, sổ điểm |
+| Supabase Redirect URLs của tên miền đó; Pages project/tên miền của site đó | Cấu hình Auth/SMTP, mẫu email |
+
+- **SEO / Social riêng:**
+  - canonical, Open Graph, tiêu đề theo tên miền của site (`app.js setSeo`); sitemap riêng; Social theo `site_social_links`.
+  - Cổng lập chỉ mục `INDEXABLE` bật riêng từng site.
+  - Giao diện riêng sâu hơn (CSS riêng một site) chưa có cơ chế. Nếu cần: thêm trường `theme` trong `sites.js` và tệp `assets/themes/<site>.css`, coi là thay đổi toàn hệ thống một lần.
+- **Bản Preview độc lập để kiểm thử từng site** (cùng mã, khác site; dùng chung Staging):
+  - `https://feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev/?site=<xuongphim|khophim|phephim|phimhay|ghienphim>`. Link đẹp, Member Hub và Dashboard đều giữ đúng site.
+  - **Project Pages riêng cho mỗi site** (khi đồng bộ thật): theo runbook ở mục 13:00 §4. **Cần phê duyệt** vì là thay đổi Cloudflare.
+
+### 7. Kiểm thử
+- SQL functional **214**.
+- Concurrency/staging **21**, gồm chuỗi gỡ 96 → 97 → 98 → 99 về đúng Level 3 và áp lại 4 → 4.5.
+- E2E **96/96**; contract **11/11**; site-config **11/11**.
+- Kiểm thử hợp đồng phát hiện 2 chỗ cần cập nhật (danh sách site viết cứng trong Studio; RPC mới chưa có trong danh sách quét). Đã sửa.
+- Đo tải cục bộ: mục 5.
+
+### 8. Backup trước mỗi migration
+- **Trước 4.4:** bản logic mới `afn_supabase_backup_20261101_1251_pre44.zip` (AES-256, cùng mật khẩu).
+  - Lưu tại `C:\Users\PC\Downloads\WEB_PHIM_AI\WEB_PHIM_AI\backups\supabase\`. SHA-256 `8ab3acd3…2115`.
+  - Thử khôi phục khớp 30/30. Đọc lại từ PC trùng từng byte, giải mã đạt.
+- **Trước 4.5:** dữ liệu trùng 30/30 với bản 12:51 (chỉ thêm `chat_settings` mặc định), nên bản đó vẫn có hiệu lực.
+- Staging hiện có 14 migration.
+
+### Kết luận
+| Hạng mục | Trạng thái |
+|---|---|
+| **MIGRATION 4.3** | **VERIFIED** (mục 13:00) |
+| **CHAT BACKEND SWITCH** | **PASS**: chặn gửi/báo cáo ở máy chủ, ẩn tin với thành viên, giữ dữ liệu, mở lại bình thường; kiểm thật trên Staging |
+| **RLS & DATA ISOLATION** | **PASS** cho các kịch bản đã kiểm (không phải bảo đảm tuyệt đối; xem mục 3) |
+| **SHARED CORE** | **READY** |
+| **1.000 USER CAPACITY PLAN** | **COMPLETE** (kế hoạch, đo CSDL cô lập và kịch bản k6). Lưu ý: **chưa chạy k6** trên project cô lập vì cần tạo project (có thể phát sinh chi phí); gói Free không đủ Realtime cho 1.000 người |
+| **MULTI-SITE PREVIEW** | **READY**: 5 site qua `?site=` trên Preview, link đẹp đã giữ đúng site. Project Preview riêng từng site cần phê duyệt |
+| **PRODUCTION** | **ON HOLD** |
+
+---
+
 ## Cập nhật 01/11/2026 13:00 — Level 4.3: cách ly quản trị theo website, quyền riêng tư, chuẩn bị đồng bộ 5 site
 
 Trạng thái pháp lý (email hỗ trợ, pháp nhân, thời hạn lưu trữ) giữ nguyên **PENDING OWNER/LEGAL REVIEW** theo quyết định của chủ dự án.
