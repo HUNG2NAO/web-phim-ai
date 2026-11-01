@@ -38,19 +38,23 @@
   }
   // Một lần hỏi /auth/v1/user cho mọi module: yêu cầu "force" trong 1,5 giây dùng lại kết quả vừa hỏi;
   // mọi thay đổi phiên (đăng nhập, đăng xuất, đổi người dùng) xóa bộ nhớ đệm ngay.
-  var userPromise = null, userAt = 0, authWatched = false;
+  // Level 4.6 (egress/Auth): khôi phục phiên phát cả SIGNED_IN dù người dùng không đổi → chỉ xóa bộ đệm khi
+  // đăng xuất, cập nhật hồ sơ, hoặc mã người dùng thật sự khác; "force" dùng lại kết quả trong 10 giây.
+  var userPromise = null, userAt = 0, authWatched = false, lastUid;
   function getUser(force) {
     var c = client();
     if (!c) return Promise.resolve(null);
     if (!authWatched) {
       authWatched = true;
-      c.auth.onAuthStateChange(function (event) {
-        if (event !== "INITIAL_SESSION" && event !== "TOKEN_REFRESHED") { userPromise = null; userAt = 0; }
+      c.auth.onAuthStateChange(function (event, session) {
+        var id = (session && session.user && session.user.id) || null;
+        if (event === "SIGNED_OUT" || event === "USER_UPDATED" || (lastUid !== undefined && id !== lastUid)) { userPromise = null; userAt = 0; }
+        lastUid = id;
       });
     }
-    if (!userPromise || (force && Date.now() - userAt > 1500)) {
+    if (!userPromise || (force && Date.now() - userAt > 10000)) {
       userAt = Date.now();
-      userPromise = c.auth.getUser().then(function (r) { return (r && r.data && r.data.user) || null; })
+      userPromise = c.auth.getUser().then(function (r) { var u = (r && r.data && r.data.user) || null; lastUid = u ? u.id : null; return u; })
         .catch(function () { return null; });
     }
     return userPromise;

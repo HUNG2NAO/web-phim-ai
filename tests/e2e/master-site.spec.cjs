@@ -1313,6 +1313,7 @@ test.describe("Level 4.6 — egress: catalog edge, không gọi trùng, ngắt R
     const t = await tables(page);
     for (const name of ["site_social_links", "reward_rules", "wallets", "daily_checkins", "site_films", "site_episodes"])
       expect(count(t, name), name).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.getUser).length), "auth/v1/user").toBeLessThanOrEqual(1);
     expect(issues).toEqual([]);
   });
 

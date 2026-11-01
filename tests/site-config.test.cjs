@@ -156,3 +156,14 @@ test("cổng pháp lý: Community Chat chưa mở công khai trên tên miền t
   const chat = fs.readFileSync(path.join(ROOT, "assets/community-chat.js"), "utf8");
   assert.match(chat, /AFN\.chatEnabled === false/, "community-chat.js phải tôn trọng cổng chatEnabled");
 });
+
+test("Level 4.6: repository contains no secret keys (age secret key, Supabase secret/service key, private JWT)", () => {
+  const { execSync } = require("node:child_process");
+  const files = execSync("git ls-files", { cwd: ROOT, encoding: "utf8" }).split("\n").filter(f => f && !/\.(png|jpg|jpeg|webp|ico|woff2?|zip)$/i.test(f));
+  for (const f of files) {
+    const s = fs.readFileSync(path.join(ROOT, f), "utf8");
+    assert.doesNotMatch(s, /AGE-SECRET-KEY-1[0-9A-Z]{20,}/, f + ": age secret key");
+    assert.doesNotMatch(s, /sb_secret_[A-Za-z0-9_-]{10,}/, f + ": Supabase secret key");
+    assert.doesNotMatch(s, /eyJhbGciOi[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]*cm9sZSI6InNlcnZpY2Vfcm9sZS/, f + ": service_role JWT");
+  }
+});

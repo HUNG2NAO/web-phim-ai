@@ -5,3 +5,7 @@ test-results/
 # Bản sao lưu CSDL (chứa dữ liệu người dùng) — không bao giờ commit
 backups/
 tools/pgsql/
+
+# Level 4.6: khóa bí mật sao lưu không bao giờ vào repo
+afn-backup-key*
+*.agekey

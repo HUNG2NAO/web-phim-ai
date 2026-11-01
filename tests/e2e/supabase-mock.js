@@ -438,7 +438,7 @@
       return Promise.resolve(fn ? fn(args || {}) : err("Could not find the function " + name));
     },
     auth: {
-      getUser: async function () { return { data: { user: user }, error: null }; },
+      getUser: async function () { window.__AFN_MOCK.calls.push({ getUser: 1 }); return { data: { user: user }, error: null }; },
       getSession: async function () { return { data: { session: user ? { user: user, access_token: "e2e" } : null }, error: null }; },
       onAuthStateChange: function (cb) { listeners.push(cb); setTimeout(function () { cb(user ? "SIGNED_IN" : "INITIAL_SESSION", user ? { user: user } : null); }, 0); return { data: { subscription: { unsubscribe: function () {} } } }; },
       signOut: async function () { user = null; save(); notify("SIGNED_OUT"); return { error: null }; },
