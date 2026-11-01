@@ -13,6 +13,23 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 16:15 — Backup mã hóa age: ĐẠT
+
+| Hạng mục | Kết quả / bằng chứng |
+|---|---|
+| Khóa riêng | Tạo và giữ **chỉ trên PC** tại `%LOCALAPPDATA%\AFN-Backup-Key\`; không xuất hiện trong chat, log, repo hay báo cáo (đã quét: 0 chuỗi `AGE-SECRET` trong mọi tệp ở `backups\supabase`). Lần chạy thứ hai dùng lại khóa cũ, không tạo mới |
+| ACL | Script `icacls /inheritance:r /grant:r <chủ máy>:(F)` cho thư mục và tệp khóa; lệnh này dừng script nếu lỗi, và script đã chạy qua bước này |
+| Đồng bộ | Không có `.stfolder` (dấu thư mục Syncthing) ở `C:\`, `C:\Users`, `C:\Users\PC`, `AppData`, `AppData\Local`, `AFN-Backup-Key`. Khóa không nằm dưới `OneDrive` hay `C:\H2N_BRIDGE`. Bản script mới (đã đặt trên PC, hash khớp) còn đọc `config.xml` của Syncthing và ghi ACL vào nhật ký ở các lần chạy sau |
+| Khóa công khai | `recipient.txt` = `age1r4qql3ta…csgm8p` (62 ký tự, bech32 hợp lệ) |
+| Bản sao lưu | `afn_data_20261101_1611_pre46.json.age` (29.336 byte) + manifest, xuất **chỉ đọc** từ Staging (14 migration). SHA-256 bản rõ `389596c9…f89ff9`, bản mã `2d38f156…8d8471` |
+| Khôi phục cô lập | CSDL PostgreSQL mới, schema tới 4.5: **31/31** dấu vân tay khớp (28 bảng + tài khoản + tổng ví + đối soát sổ điểm) |
+| Giải mã trên PC | `verify-afn_data_20261101_1611_pre46.txt`: **ĐẠT**. Giải mã bằng khóa riêng trên máy, băm trong bộ nhớ, hai mã SHA-256 khớp manifest |
+| Bản cũ | 4 tệp `.zip` giữ nguyên (anh tự quyết việc xóa vì mật khẩu đã lộ) |
+
+**Kết luận:** AGE PRIVATE KEY: **SECURE**. PUBLIC KEY: **VERIFIED**. BACKUP CREATED: **YES**. RESTORE VERIFIED: **PASS**. LEVEL 4.6 MIGRATION: **WAITING FOR APPROVAL** (chưa áp: 14 migration, 0 policy `mfa_gate_*`).
+
+---
+
 ## Cập nhật 01/11/2026 15:40 — Level 4.6 (tiếp): giảm egress Supabase, kiểm MFA trên Auth thật, quy trình backup khóa công khai
 
 Chỉ sửa DEV/Preview (`feature/master-site-xuongphim-2026-10-31`). Không nâng gói, không đổi DNS, không merge `main`, không triển khai Production.
