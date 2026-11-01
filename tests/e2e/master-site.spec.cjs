@@ -1248,6 +1248,42 @@ test.describe("Level 4.6 — xác thực 2 lớp nhân sự, chính sách mật 
     expect(issues).toEqual([]);
   });
 
+  test("đăng nhập trang công khai với tài khoản đã bật 2FA: hỏi mã ngay (bước 2), sai mã bị từ chối, đúng mã → AAL2; 'Để sau' không chặn", async ({ page }) => {
+    const factor = { id: "f-owner", user_id: OWNER.id, status: "verified", friendly_name: "AFN Studio" };
+    const issues = await setup(page, { loginAs: { ...OWNER }, extra: { mfa_factors: [factor] } });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog").first();
+    await dlg.locator("#afn-email").fill("owner@example.test");
+    await dlg.locator("#afn-password").fill("matkhau12345");
+    await dlg.locator("button[type=submit]").first().click();
+    const m = page.locator("dialog.afn-mfa-dialog");
+    await expect(m).toBeVisible();
+    await expect(page.locator("dialog.afn-mfa-dialog")).toHaveCount(1);                 // chỉ 1 hộp thoại
+    await m.locator("#afn-mfa-code").fill("000000");
+    await m.locator("#afn-mfa-submit").click();
+    await expect(m.locator("#afn-mfa-msg")).toContainText("Mã chưa đúng");
+    await m.locator("#afn-mfa-code").fill("123 456");
+    await m.locator("#afn-mfa-submit").click();
+    await expect(m).toHaveCount(0);
+    expect(await page.evaluate(async () => (await window.supabase.createClient().auth.mfa.getAuthenticatorAssuranceLevel()).data.currentLevel)).toBe("aal2");
+    expect(issues).toEqual([]);
+  });
+
+  test("mở trang với phiên 1 lớp của tài khoản đã bật 2FA: nhắc nhập mã một lần; 'Để sau' đóng hộp thoại, trang vẫn dùng được", async ({ page }) => {
+    const factor = { id: "f-owner", user_id: OWNER.id, status: "verified", friendly_name: "AFN Studio" };
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal1" }, extra: { mfa_factors: [factor] } });
+    await page.goto("/?site=xuongphim");
+    const m = page.locator("dialog.afn-mfa-dialog");
+    await expect(m).toBeVisible();
+    await m.locator("#afn-mfa-later").click();
+    await expect(m).toHaveCount(0);
+    await expect(page.locator(".afn-account-btn")).toBeVisible();
+    await page.waitForTimeout(300);
+    await expect(m).toHaveCount(0);                                                        // không hỏi lại liên tục
+    expect(issues).toEqual([]);
+  });
+
   test("mật khẩu mới: ít nhất 10 ký tự gồm chữ và số (đăng ký); mật khẩu cũ yếu vẫn đăng nhập được, chỉ được nhắc đổi", async ({ page }) => {
     const issues = await setup(page, { loginAs: VIEWER, weakPassword: true });
     await page.goto("/?site=xuongphim");

@@ -39,7 +39,7 @@
       d.setAttribute("aria-label", title);
       var f = el("form"); f.method = "dialog";
       var input = el("input"); input.id = "mfa-code"; input.inputMode = "numeric"; input.autocomplete = "one-time-code";
-      input.maxLength = 6; input.pattern = "\\d{6}"; input.placeholder = "6 chữ số"; input.required = true;
+      input.maxLength = 7; input.pattern = "[0-9 ]{6,7}"; input.placeholder = "6 chữ số"; input.required = true;
       var label = el("label", "Mã xác thực"); label.htmlFor = "mfa-code";
       var err = el("p", errorText || "", "mfa-error"); err.setAttribute("role", "alert"); err.hidden = !errorText;
       var ok = el("button", "Xác nhận", "btn"); ok.type = "submit"; ok.id = "mfa-submit";

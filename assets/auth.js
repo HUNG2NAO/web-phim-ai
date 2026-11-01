@@ -194,6 +194,55 @@
     msg.dataset.kind = isError ? "error" : "info";
     msg.classList.toggle("afn-auth-hidden", !text);
   }
+  // Level 4.6 — bước 2 của đăng nhập (TOTP) cho tài khoản ĐÃ bật 2FA. Supabase đang bật "Limit duration of AAL1 sessions":
+  // phiên chưa nhập mã sẽ bị kết thúc sau 15 phút → nhắc nhập mã ngay sau khi đăng nhập / khi mở trang với phiên 1 lớp.
+  // Mã 6 số chỉ đi thẳng tới Supabase Auth; không lưu, không ghi log.
+  var mfaAsked = false, mfaPending = null;
+  function mfaStepUp(force) {
+    if (mfaPending) return mfaPending;                       // không mở 2 hộp thoại cùng lúc
+    mfaPending = mfaStepUpRun(force).finally(function () { mfaPending = null; });
+    return mfaPending;
+  }
+  async function mfaStepUpRun(force) {
+    if (!client || !client.auth || !client.auth.mfa) return true;
+    var lvl = null;
+    try { lvl = (await client.auth.mfa.getAuthenticatorAssuranceLevel()).data; } catch (e) { return true; }
+    if (!lvl || lvl.nextLevel !== "aal2" || lvl.currentLevel === "aal2") return true;
+    if (mfaAsked && !force) return false;
+    mfaAsked = true;
+    var factor = null;
+    try { factor = ((await client.auth.mfa.listFactors()).data.totp || []).find(function (f) { return f.status === "verified"; }); } catch (e) {}
+    if (!factor) return false;
+    return new Promise(function (resolve) {
+      var d = document.createElement("dialog"); d.className = "afn-auth-dialog afn-mfa-dialog"; d.setAttribute("aria-label", "Xác thực 2 lớp");
+      d.innerHTML = '<div class="afn-auth-panel"><div class="afn-auth-header"><h2>Xác thực 2 lớp</h2></div>' +
+        '<p class="afn-auth-hint">Tài khoản này đã bật xác thực 2 lớp. Mở ứng dụng xác thực trên điện thoại và nhập mã 6 số của AI Film Network.</p>' +
+        '<form class="afn-auth-form" novalidate><div class="afn-field"><label for="afn-mfa-code">Mã xác thực</label>' +
+        '<input id="afn-mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]{6,7}" required></div>' +
+        '<button class="afn-auth-primary" id="afn-mfa-submit" type="submit">Xác nhận</button></form>' +
+        '<button type="button" class="afn-auth-link" id="afn-mfa-later">Để sau</button>' +
+        '<p class="afn-auth-message afn-auth-hidden" id="afn-mfa-msg" role="status" aria-live="polite"></p>' +
+        '<p class="afn-auth-hint">Chưa nhập mã: phiên đăng nhập sẽ tự kết thúc sau khoảng 15 phút (cài đặt bảo mật của hệ thống).</p></div>';
+      document.body.appendChild(d);
+      var input = d.querySelector("#afn-mfa-code"), out = d.querySelector("#afn-mfa-msg"), btn = d.querySelector("#afn-mfa-submit");
+      function say(t) { out.textContent = t; out.dataset.kind = "error"; out.classList.remove("afn-auth-hidden"); }
+      function done(ok) { d.close(); d.remove(); resolve(ok); }
+      d.querySelector("form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var code = input.value.replace(/\s+/g, "");
+        if (!/^\d{6}$/.test(code)) { say("Mã gồm đúng 6 chữ số."); return; }
+        btn.disabled = true;
+        var r = await client.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code });
+        btn.disabled = false; input.value = "";
+        if (r.error) { say("Mã chưa đúng hoặc đã hết hạn. Hãy nhập mã mới đang hiển thị trong ứng dụng."); return; }
+        done(true);
+      });
+      d.querySelector("#afn-mfa-later").addEventListener("click", function () { done(false); });
+      d.addEventListener("cancel", function (e) { e.preventDefault(); done(false); });
+      if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "");
+      input.focus();
+    });
+  }
   function setBusy(v) {
     busy = v;
     Array.prototype.forEach.call(dialog.querySelectorAll("button, input"), function (el) { el.disabled = v; });
@@ -241,6 +290,7 @@
       currentUser = (window.AFN && window.AFN.getUser && window.AFN.client() === client)
         ? await window.AFN.getUser(true) : (await client.auth.getUser()).data.user;
       if (currentUser) {
+        if (!mfaAsked) setTimeout(function () { mfaStepUp(false); }, 0);   // mở trang với phiên 1 lớp của tài khoản đã bật 2FA
         trigger.textContent = "Tài khoản";
         trigger.setAttribute("aria-haspopup", "menu");
         trigger.setAttribute("aria-controls", "afn-account-menu");
@@ -419,6 +469,8 @@
       }
       else if (mode === "login") {
         await refreshUser();
+        if (dialog.open && !(result.data && result.data.weak_password)) dialog.close();
+        await mfaStepUp(true);
         // Mật khẩu cũ chưa đạt chuẩn mới: vẫn cho đăng nhập (không khóa tài khoản), chỉ nhắc đổi.
         if (result.data && result.data.weak_password) message("Đăng nhập thành công. Mật khẩu hiện tại chưa đạt chuẩn mới (" + POLICY_TEXT.replace(/^Mật khẩu cần /, "").replace(/\.$/, "") + "). Hãy đổi trong Tài khoản của tôi.", false);
         else if (dialog.open) dialog.close();
