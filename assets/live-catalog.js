@@ -21,12 +21,17 @@ function valid(row){
 }
 (async()=>{
  try{
-  const {data,error}=await client.from("site_films").select("*").eq("site_id",brand.id).eq("published",true);
-  if(error)throw error;
+  // Level 4.6 (egress): catalog cache ở edge (/api/catalog) trước; lỗi/không có → Supabase trực tiếp, chỉ các cột cần dùng.
+  const pub=(window.AFN&&window.AFN.publicData)?await window.AFN.publicData(brand.id):null;
+  let data=pub&&pub.films;
+  if(!data){
+   const r=await client.from("site_films").select("film_id,title,synopsis,genres,year,film_type,source_kind,youtube_id,video_url,published,rights_attested,created_at").eq("site_id",brand.id).eq("published",true);
+   if(r.error)throw r.error;data=r.data;
+  }
   // Level 4: public episode metadata (tier, price). Sources are never part of this response.
   const episodesByFilm=new Map();
   try{
-   const ep=await client.from("site_episodes")
+   const ep=pub?{data:pub.episodes,error:null}:await client.from("site_episodes")
     .select("id,film_id,episode_no,title,access_tier,price_points,free_from,access_days")
     .eq("site_id",brand.id).eq("published",true).order("episode_no",{ascending:true});
    if(!ep.error)(ep.data||[]).forEach(e=>{

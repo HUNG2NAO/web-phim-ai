@@ -76,6 +76,17 @@
     }
     return function () { modHooks = modHooks.filter(function (h) { return h !== fn; }); };
   }
+  // Level 4.6 (Realtime): khi trang bị ẩn lâu, gỡ cả kênh kiểm duyệt dùng chung; mở lại khi quay lại.
+  function modConnect(on) {
+    var c0 = AFN.client();
+    if (!c0 || typeof c0.channel !== "function") return;
+    if (!on && modChannel) { try { c0.removeChannel(modChannel); } catch (e) {} modChannel = null; }
+    if (on && !modChannel && modHooks.length) {
+      modChannel = c0.channel("chat:moderation")
+        .on("broadcast", { event: "moderated" }, function () { modHooks.slice().forEach(function (h) { h(); }); })
+        .subscribe();
+    }
+  }
   function announceModeration() {
     if (modChannel) modChannel.send({ type: "broadcast", event: "moderated", payload: {} });
   }
@@ -260,15 +271,43 @@
       }
       uid = u.id;
       loadRoles(c, uid).then(function () { return checkOpen(); }).then(function () { return checkMute(); }).then(function () { return load(); }).then(subscribe);
-      resync = setInterval(function () { if (navigator.onLine) { checkOpen().then(checkMute).then(load); } }, 45000);
+      startResync();
+      document.addEventListener("visibilitychange", onVisibility);
       offMod = onModeration(function () {
         if (!alive) return;
         clearTimeout(modReload); modReload = setTimeout(function () { checkOpen().then(checkMute).then(load); }, 300 + Math.random() * 700);
       });   // gỡ tin bị ẩn mà Realtime không gửi (RLS); cập nhật khóa/mở khóa chat và đóng/mở phòng
     });
 
+    // Level 4.6: trang bị ẩn quá IDLE (mặc định 5 phút) → ngắt Realtime + dừng đồng bộ định kỳ (không tốn kết nối/egress);
+    // quay lại → tải lại tin, kiểm tra đóng/khóa, đăng ký lại kênh.
+    var IDLE = Math.max(1000, Number(window.AFN_CHAT_IDLE_MS) || 300000), idleTimer = 0, paused = false;
+    function startResync() {
+      clearInterval(resync);
+      resync = setInterval(function () { if (navigator.onLine && !document.hidden) { checkOpen().then(checkMute).then(load); } }, 45000);
+    }
+    function pauseLive() {
+      if (!alive || paused || !uid) return;
+      paused = true; clearInterval(resync); resync = 0;
+      if (channel) { try { c.removeChannel(channel); } catch (e) {} channel = null; }
+      modConnect(false);
+      live.textContent = "Tạm ngắt khi bạn không xem — tự kết nối lại khi quay lại"; live.classList.add("off");
+    }
+    function resumeLive() {
+      if (!alive || !paused) return;
+      paused = false; live.textContent = "Đang kết nối lại…";
+      modConnect(true);
+      checkOpen().then(checkMute).then(load).then(subscribe);
+      startResync();
+    }
+    function onVisibility() {
+      clearTimeout(idleTimer);
+      if (document.hidden) idleTimer = setTimeout(pauseLive, IDLE);
+      else resumeLive();
+    }
     return { destroy: function () {
-      alive = false; clearInterval(resync); clearTimeout(modReload); if (offMod) offMod();
+      alive = false; clearInterval(resync); clearTimeout(modReload); clearTimeout(idleTimer); if (offMod) offMod();
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", onNet); window.removeEventListener("offline", onNet);
       if (channel) { try { c.removeChannel(channel); } catch (e) {} channel = null; }
     } };

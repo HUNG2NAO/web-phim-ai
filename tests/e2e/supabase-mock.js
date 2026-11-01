@@ -25,6 +25,7 @@
   var UNIQUE = { site_episodes: ["site_id", "film_id", "episode_no"], film_library: ["viewer_profile_id", "film_id", "collection"],
     episode_sources: ["episode_id"], daily_checkins: ["user_id", "checkin_date"], site_social_links: ["id"] };
   function query(t) {
+    window.__AFN_MOCK.calls.push({ from: t });   // Level 4.6: đếm lời gọi bảng (đo lời gọi trùng / egress)
     var filters = [], op = "select", body = null, orders = [], lim = null, single = null, conflict = null;
     var q = {
       select: function () { return q; },

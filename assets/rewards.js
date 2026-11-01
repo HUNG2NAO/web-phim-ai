@@ -24,16 +24,25 @@
     return r.checkin_base + Math.min(streak - 1, r.streak_step_cap) * r.streak_step + (streak % 7 === 0 ? r.day7_bonus : 0);
   }
 
-  async function load() {
+  var inflight = null;
+  function load() {   // gộp các lần gọi trùng trong khi đang tải
+    if (!inflight) inflight = doLoad().then(function (x) { inflight = null; return x; }, function (e) { inflight = null; throw e; });
+    return inflight;
+  }
+  async function doLoad() {
     var c = AFN.client();
     if (!c) return;
     state.user = await AFN.getUser(true);
-    try {
-      var rules = await c.from("reward_rules").select("*").eq("id", 1).maybeSingle();
-      // Level 4 not migrated on this Supabase project yet → keep the feature out of sight.
-      state.unavailable = !!(rules && rules.error) || !(rules && rules.data);
-      state.rules = rules && rules.data || null;
-    } catch (e) { state.rules = null; state.unavailable = true; }
+    if (!state.rules) {   // Level 4.6: quy tắc điểm danh ít đổi → lấy 1 lần mỗi trang, ưu tiên catalog edge
+      var pub = AFN.publicData ? await AFN.publicData() : null;
+      if (pub && pub.reward_rules) { state.rules = pub.reward_rules; state.unavailable = false; }
+      else try {
+        var rules = await c.from("reward_rules").select("checkin_enabled,checkin_base,streak_step,streak_step_cap,day7_bonus").eq("id", 1).maybeSingle();
+        // Level 4 not migrated on this Supabase project yet → keep the feature out of sight.
+        state.unavailable = !!(rules && rules.error) || !(rules && rules.data);
+        state.rules = rules && rules.data || null;
+      } catch (e) { state.rules = null; state.unavailable = true; }
+    }
     if (state.user) {
       try {
         var w = await c.from("wallets").select("balance,earned_total,spent_total").eq("user_id", state.user.id).maybeSingle();
@@ -43,8 +52,17 @@
         state.last = (d && d.data && d.data[0]) || null;
       } catch (e) { state.wallet = state.wallet || { balance: 0 }; }
     } else { state.wallet = null; state.last = null; }
+    state.loaded = true;
     render();
     window.dispatchEvent(new CustomEvent("afn-wallet-updated", { detail: { wallet: state.wallet, last: state.last, rules: state.rules } }));
+  }
+  // Nút tài khoản đổi chữ cả khi chỉ khôi phục phiên → chỉ tải lại khi NGƯỜI DÙNG thật sự đổi (đọc phiên cục bộ, không gọi mạng).
+  async function reloadIfUserChanged() {
+    if (inflight) { try { await inflight; } catch (e) {} }
+    var c = AFN.client(), id = null;
+    try { var s = c && await c.auth.getSession(); id = (s && s.data && s.data.session && s.data.session.user && s.data.session.user.id) || null; } catch (e) {}
+    if (state.loaded && id === ((state.user && state.user.id) || null)) return;
+    load();
   }
 
   async function claim() {
@@ -320,7 +338,7 @@
     if (label === lastLabel) return;
     lastLabel = label;
     clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(load, 250);
+    reloadTimer = setTimeout(reloadIfUserChanged, 250);
   });
   (function attach() {
     accountBtn = document.querySelector(".afn-account-btn");

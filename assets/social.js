@@ -27,11 +27,17 @@
     } catch (e) { return null; }
   }
   var cache = {};
-  async function links(site) {
-    if (cache[site]) return cache[site];
-    var list = [];
+  // Level 4.6: một promise cho mỗi site (đầu trang + chân trang + phim gọi cùng lúc → 1 lần tải), dữ liệu edge trước.
+  function links(site) {
+    if (!cache[site]) cache[site] = fetchLinks(site);
+    return cache[site];
+  }
+  async function fetchLinks(site) {
+    var list = [], have = false;
+    var pub = AFN.publicData ? await AFN.publicData(site) : null;
+    if (pub && Array.isArray(pub.social)) { list = pub.social; have = true; }
     var c = AFN.client();
-    if (c) {
+    if (c && !have) {
       try {
         var r = await c.from("site_social_links").select("platform,label,url,placements,sort_order,enabled")
           .eq("site_id", site).eq("enabled", true).order("sort_order", { ascending: true });
@@ -44,8 +50,7 @@
         return { platform: x.platform, label: x.label, url: x.url, placements: x.placements || ["footer", "member"], sort_order: i };
       });
     }
-    cache[site] = list.filter(function (x) { return safeUrl(x); });
-    return cache[site];
+    return list.filter(function (x) { return safeUrl(x); });
   }
   function linkNode(x, compact) {
     var p = PLATFORM[x.platform] || PLATFORM.other;

@@ -1298,3 +1298,64 @@ test.describe("Level 4.6 — xác thực 2 lớp nhân sự, chính sách mật 
     expect(issues).toEqual([]);
   });
 });
+
+
+// ------------------------------------------------------------------ Level 4.6 — giảm egress Supabase
+test.describe("Level 4.6 — egress: catalog edge, không gọi trùng, ngắt Realtime khi không xem", () => {
+  const tables = page => page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.from).map(c => c.from));
+  const count = (list, t) => list.filter(x => x === t).length;
+
+  test("trang chủ đã đăng nhập: mỗi bảng chỉ gọi 1 lần (Social, quy tắc điểm, ví, điểm danh không còn gọi trùng)", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 40 });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-reward-chip")).toContainText("40");
+    await page.waitForTimeout(1500);                                     // chờ qua mốc tải lại khi nút tài khoản đổi chữ
+    const t = await tables(page);
+    for (const name of ["site_social_links", "reward_rules", "wallets", "daily_checkins", "site_films", "site_episodes"])
+      expect(count(t, name), name).toBeLessThanOrEqual(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("có /api/catalog (edge): phim, tập, Social, quy tắc điểm KHÔNG gọi Supabase; nội dung lấy từ catalog", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 40 });
+    let hits = 0;
+    await page.route("**/api/catalog?site=*", r => { hits++; r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      v: 1, site: "xuongphim", ttl: 60, films: [{ film_id: "tu-catalog-edge", title: "Phim Từ Catalog Edge", synopsis: "", genres: [], year: 2026, film_type: "le",
+        source_kind: "youtube", youtube_id: "ZZZZZZZZZZZ", video_url: null, published: true, rights_attested: true }],
+      episodes: [], social: [{ platform: "facebook_page", label: "Fanpage edge", url: "https://www.facebook.com/edge-test", placements: ["footer"], sort_order: 0 }],
+      reward_rules: { checkin_enabled: true, checkin_base: 10, streak_step: 2, streak_step_cap: 5, day7_bonus: 30 } }) }); });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-reward-chip")).toContainText("40");
+    await expect(page.locator(".afn-social").first()).toContainText("Fanpage edge");
+    await expect.poll(() => page.evaluate(() => (window.FILMS || []).some(f => f.id === "tu-catalog-edge"))).toBe(true);
+    await page.waitForTimeout(1200);
+    const t = await tables(page);
+    for (const name of ["site_films", "site_episodes", "site_social_links", "reward_rules"]) expect(count(t, name), name).toBe(0);
+    expect(hits).toBe(1);                                               // một lần cho cả trang (Social + catalog + điểm danh dùng chung)
+    await page.reload();
+    await expect(page.locator(".afn-reward-chip")).toContainText("40");
+    expect(hits).toBe(1);                                               // tải lại trong 60 giây: dùng bản lưu phiên, không gọi lại
+    expect(issues).toEqual([]);
+  });
+
+  test("chat: tab bị ẩn quá thời gian chờ → ngắt Realtime; quay lại → tự kết nối lại và tải tin", async ({ page }) => {
+    await page.addInitScript(() => { window.AFN_CHAT_IDLE_MS = 1000; });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    const live = page.locator("#chat-drawer .afn-chat-live");
+    await expect(live).toContainText("Trực tiếp");
+    const setHidden = h => page.evaluate(h => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => h });
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => h ? "hidden" : "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, h);
+    await setHidden(true);
+    await expect(live).toContainText("Tạm ngắt khi bạn không xem", { timeout: 4000 });
+    const before = (await tables(page)).filter(x => x === "chat_messages").length;
+    await setHidden(false);
+    await expect(live).toContainText("Trực tiếp");
+    expect((await tables(page)).filter(x => x === "chat_messages").length).toBeGreaterThan(before);   // tải lại tin khi quay lại
+    expect(issues).toEqual([]);
+  });
+});

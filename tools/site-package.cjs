@@ -36,7 +36,7 @@ function rowFilms(films, filter) {
 
 // Tệp Shared Core: giống hệt nhau cho cả 5 website (khác biệt duy nhất nằm trong sites.js + dữ liệu Supabase theo site_id).
 const SHARED = ["index.html", "account.html", "member.html", "admin.html", "chinh-sach.html", "404.html", "_headers", "_redirects",
-  "functions/_site.js", "functions/robots.txt.js", "functions/sitemap.xml.js", "functions/phim/[[path]].js",
+  "functions/_site.js", "functions/_public-config.js", "functions/api/catalog.js", "functions/robots.txt.js", "functions/sitemap.xml.js", "functions/phim/[[path]].js",
   ...fs.readdirSync(path.join(root, "assets")).filter(f => /\.(js|css)$/.test(f)).sort().map(f => "assets/" + f)]
   .filter(f => fs.existsSync(path.join(root, f)));
 const sha = f => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, f))).digest("hex");

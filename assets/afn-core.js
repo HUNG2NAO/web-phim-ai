@@ -55,6 +55,32 @@
     }
     return userPromise;
   }
+  // Level 4.6 (egress): dữ liệu CÔNG KHAI của website (phim, tập, Social, quy tắc điểm) lấy một lần từ /api/catalog
+  // (Pages Function, cache 60 giây ở edge Cloudflare) + sessionStorage 60 giây. Trả null nếu không có → module tự gọi Supabase.
+  var pubCache = {}, PUB_TTL = 60000;
+  function publicData(site) {
+    site = site || (currentBrand() || {}).id;
+    if (!site || !/^[a-z]+$/.test(site)) return Promise.resolve(null);
+    if (pubCache[site]) return pubCache[site];
+    var key = "afn-pub-v1-" + site;
+    try {
+      var s = JSON.parse(sessionStorage.getItem(key) || "null");
+      if (s && s.data && Date.now() - s.at < PUB_TTL) return (pubCache[site] = Promise.resolve(s.data));
+    } catch (e) {}
+    if (typeof fetch !== "function") return Promise.resolve(null);
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 4000);
+    pubCache[site] = fetch("/api/catalog?site=" + encodeURIComponent(site), { credentials: "omit", signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || d.v !== 1 || d.site !== site || !Array.isArray(d.films) || !Array.isArray(d.episodes)) return null;
+        try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data: d })); } catch (e) {}
+        return d;
+      })
+      .catch(function () { return null; })
+      .then(function (d) { clearTimeout(timer); if (!d) delete pubCache[site]; return d; });
+    return pubCache[site];
+  }
   function idemKey(prefix) {
     var rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
       Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
@@ -137,6 +163,7 @@
     configured: configured,
     client: client,
     getUser: getUser,
+    publicData: publicData,
     idemKey: idemKey,
     filmUrl: filmUrl,
     memberUrl: memberUrl,
