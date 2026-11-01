@@ -174,7 +174,7 @@ test("privacy policy RC3: only discloses third-party hosts the site actually loa
     for (const m of fs.readFileSync(path.join(ROOT, f), "utf8").matchAll(/https:\/\/([a-z0-9.-]+)\//g)) used.add(m[1]);
   const disclose = { "fonts.googleapis.com": /Google Fonts/, "fonts.gstatic.com": /Google Fonts/, "cdn.jsdelivr.net": /jsDelivr/,
     "www.youtube-nocookie.com": /youtube-nocookie/, "www.youtube.com": /YouTube/, "jurvphonehknrxjpowoe.supabase.co": /Supabase/,
-    "challenges.cloudflare.com": /Cloudflare Turnstile/ };
+    "challenges.cloudflare.com": /Cloudflare Turnstile/, "www.facebook.com": /Facebook \(Meta\)/, "drive.google.com": /Google Drive/ };
   for (const host of used) {
     if (/xuongphim\.ai|khophim\.ai|phephim\.ai|phimhay\.ai|ghienphim\.ai|pages\.dev|download\.blender\.org|img\.youtube\.com|i\.ytimg\.com/.test(host)) continue;
     assert.ok(disclose[host], "chưa khai báo nhà cung cấp: " + host);

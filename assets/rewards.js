@@ -184,13 +184,42 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !pop.hidden) { closePop(); chip.focus(); } });
 
   // ---------------------------------------------------------------- playback + unlock API (used by app.js)
-  async function resolve(episodeId) {
+  // Level 4.7: nguồn đa ngôn ngữ (get_playback_media) → Language Router chọn bản phát + phụ đề.
+  // Máy chủ chưa có 4.7 (hàm không tồn tại) → tự dùng get_playback_source v1 như trước. Quyền xem luôn do máy chủ quyết định.
+  var mediaRpc = true;
+  function viewerPrefs(opt) {
+    var b = AFN.brand || {};
+    var url = null; try { url = new URLSearchParams(location.search).get("lang"); } catch (e) {}
+    return { urlLang: (opt && opt.lang) || url, saved: window.AFN_LANG ? window.AFN_LANG.savedChoice() : null,
+             browser: (navigator.languages || [navigator.language]).slice(0, 4), siteDefault: b.defaultLanguage || "vi" };
+  }
+  function toV1Shape(res, route) {
+    if (!route || route.status !== "ok" || !route.source) return res;
+    var out = { status: "ok", afn_route: route };
+    function put(target, s) {
+      target.source_kind = s.kind;
+      if (s.kind === "youtube") target.youtube_id = s.value;
+      else if (s.kind === "native") target.video_url = s.value;
+      else if (s.kind === "embed") target.embed_url = s.value;
+    }
+    put(out, route.source);
+    if (route.fallbacks && route.fallbacks[0]) { out.fallback = {}; put(out.fallback, route.fallbacks[0]); }
+    return out;
+  }
+  async function resolve(episodeId, opt) {
     var c = AFN.client();
     if (!c) return { status: "unavailable" };
+    var prefs = viewerPrefs(opt);
     try {
+      if (mediaRpc) {
+        var m = await c.rpc("get_playback_media", { p_episode_id: episodeId, p_language: prefs.urlLang || prefs.saved || null });
+        if (!m.error) return window.AFN_LANG ? toV1Shape(m.data || { status: "error" }, window.AFN_LANG.route(m.data, prefs)) : (m.data || { status: "error" });
+        if (/PGRST202|could not find the function|does not exist|404/i.test((m.error.code || "") + " " + (m.error.message || ""))) mediaRpc = false;
+        else throw m.error;
+      }
       var r = await c.rpc("get_playback_source", { p_episode_id: episodeId });
       if (r.error) throw r.error;
-      return r.data || { status: "error" };
+      return window.AFN_LANG ? toV1Shape(r.data || { status: "error" }, window.AFN_LANG.route(Object.assign({ legacy: true }, r.data || {}), prefs)) : (r.data || { status: "error" });
     } catch (e) { return { status: "error" }; }
   }
   async function unlock(episodeId) {

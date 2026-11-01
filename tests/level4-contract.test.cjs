@@ -6,7 +6,7 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const read = f => fs.readFileSync(path.join(ROOT, f), "utf8");
 const SQL = ["db/level4_rewards_unlock_social_v1.sql", "db/level4_1_playback_fallback.sql", "db/level4_2_community_chat.sql",
-  "db/level4_3_isolation_privacy.sql", "db/level4_4_chat_switch.sql", "db/level4_5_grant_hardening.sql", "db/level4_6_staff_mfa.sql"].map(read).join("\n");
+  "db/level4_3_isolation_privacy.sql", "db/level4_4_chat_switch.sql", "db/level4_5_grant_hardening.sql", "db/level4_6_staff_mfa.sql", "db/level4_7_media_languages.sql"].map(read).join("\n");
 const JS = ["assets/rewards.js", "assets/member-rewards.js", "assets/social.js", "assets/studio-ops.js", "assets/afn-core.js", "assets/community-chat.js",
   "assets/studio.js", "assets/level3.js", "assets/studio-mfa.js"]
   .map(f => [f, read(f)]);

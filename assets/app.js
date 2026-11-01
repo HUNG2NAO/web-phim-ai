@@ -389,7 +389,21 @@
     var first = box.querySelector("button"); if (first && dlg.open) first.focus();
   }
   // onFail(reason): gọi khi nguồn không phát được (YouTube báo lỗi nhúng/đã gỡ, video HTTPS lỗi tải).
-  function playSource(p, f, kind, value, epNo, onFail) {
+  // Level 4.7: route = kết quả Language Router (phụ đề YouTube / WebVTT). Facebook, Google Drive phát bằng iframe nhúng chính thức.
+  var EMBED_OK = /^https:\/\/(www\.facebook\.com\/plugins\/video\.php\?href=https%3A%2F%2Fwww\.facebook\.com%2F|drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{20,100}\/preview$)/;
+  function playSource(p, f, kind, value, epNo, onFail, route) {
+    var sub = route && route.subtitle;
+    if (kind === "embed" && typeof value === "string" && EMBED_OK.test(value)) {
+      var fr = document.createElement("iframe");
+      fr.src = value; fr.title = f.title;
+      fr.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; fullscreen");
+      fr.setAttribute("allowfullscreen", ""); fr.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      fr.style.cssText = "width:100%;aspect-ratio:16/9;border:0;background:#000";
+      fr.dataset.provider = /drive\.google/.test(value) ? "gdrive" : "facebook";
+      p.replaceChildren(fr);
+      rememberWatch(f, epNo || 1);
+      return true;
+    }
     if (kind === "youtube" && typeof value === "string" && /^[A-Za-z0-9_-]{11}$/.test(value)) {
       p.replaceChildren();
       var holder = document.createElement("div");
@@ -398,11 +412,13 @@
       p.appendChild(holder);
       if (typeof window.AFN_PLAY_YOUTUBE === "function") {
         window.AFN_PLAY_YOUTUBE({ holder: holder, filmId: f.id, videoId: value, episode: epNo || 1,
+          captionLang: sub && sub.source === "youtube" ? sub.language : null,
           onError: function (code) { if (onFail) onFail("youtube:" + code); } });
         rememberWatch(f, epNo || 1);
       } else {
         var iframe = document.createElement("iframe");
-        iframe.src = "https://www.youtube-nocookie.com/embed/" + value + "?rel=0";
+        iframe.src = "https://www.youtube-nocookie.com/embed/" + value + "?rel=0" +
+          (sub && sub.source === "youtube" ? "&cc_load_policy=1&cc_lang_pref=" + encodeURIComponent(sub.language) + "&hl=" + encodeURIComponent(sub.language) : "");
         iframe.title = f.title;
         iframe.setAttribute("allow", "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture");
         iframe.setAttribute("allowfullscreen", "");
@@ -414,6 +430,11 @@
     if (kind === "native" && typeof value === "string" && /^https:\/\/\S+$/.test(value)) {
       var v = document.createElement("video");
       v.controls = true; v.autoplay = true; v.playsInline = true; v.src = value;
+      if (sub && sub.source === "vtt" && /^https:\/\/\S+$/.test(sub.url || "")) {
+        var tr = document.createElement("track");
+        tr.kind = "subtitles"; tr.srclang = sub.language; tr.label = window.AFN_LANG ? window.AFN_LANG.name(sub.language) : sub.language;
+        tr.src = sub.url; tr.default = true; v.crossOrigin = "anonymous"; v.appendChild(tr);
+      }
       v.addEventListener("error", function () {
         if (onFail) { onFail("native"); return; }
         playerNote(p, "Không phát được video tập này. Bạn có thể báo lỗi để quản trị viên kiểm tra.", [
@@ -428,6 +449,27 @@
     }
     return false;
   }
+  // Thanh chọn ngôn ngữ (Level 4.7): chỉ hiện khi tập có ≥ 2 lựa chọn. Đổi ngôn ngữ = phát lại CÙNG tập với lựa chọn mới.
+  var viewerLang = null;
+  function renderLangBar(p, f, route) {
+    var bar = p.parentNode && p.parentNode.querySelector(".lang-bar");
+    if (!route || !route.options || route.options.length < 2) { if (bar) bar.remove(); return; }
+    if (!bar) { bar = document.createElement("div"); bar.className = "lang-bar"; bar.setAttribute("role", "group"); bar.setAttribute("aria-label", "Ngôn ngữ"); p.insertAdjacentElement("afterend", bar); }
+    bar.replaceChildren();
+    var lab = document.createElement("span"); lab.className = "lang-label"; lab.textContent = "Ngôn ngữ:"; bar.appendChild(lab);
+    route.options.forEach(function (o) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "lang-opt"; b.dataset.lang = o.language;
+      b.setAttribute("aria-pressed", String(o.language === route.language));
+      b.textContent = o.name + (o.audio ? "" : " (phụ đề)");
+      b.addEventListener("click", function () {
+        viewerLang = o.language;
+        if (window.AFN_LANG) window.AFN_LANG.saveChoice(o.language);
+        playEpisode(p, f);
+      });
+      bar.appendChild(b);
+    });
+  }
   // Live episodes: the source is fetched from the server only after the access check passes.
   function playEpisode(p, f) {
     var btn = $(".episodes [aria-pressed='true']");
@@ -436,7 +478,7 @@
     if (!window.AFN_PLAYBACK) { playerNote(p, "Trình phát chưa sẵn sàng trên bản này."); return; }
     var token = ++playToken;
     playerNote(p, "Đang kiểm tra quyền xem tập " + info.episode_no + "…");
-    window.AFN_PLAYBACK.resolve(info.id).then(function (res) {
+    window.AFN_PLAYBACK.resolve(info.id, { lang: viewerLang }).then(function (res) {
       if (token !== playToken || !p.isConnected) return;
       showResult(p, f, info, res);
     });
@@ -447,7 +489,9 @@
     var status = res && res.status;
     if (status === "ok") {
       // Nguồn dự phòng (Level 4.1): chỉ có khi máy chủ đã cho phép xem tập này; tự chuyển khi nguồn chính lỗi.
-      var fb = res.fallback && (res.fallback.source_kind === "youtube" || res.fallback.source_kind === "native") ? res.fallback : null;
+      var fb = res.fallback && (res.fallback.source_kind === "youtube" || res.fallback.source_kind === "native" || res.fallback.source_kind === "embed") ? res.fallback : null;
+      var route = res.afn_route || null;
+      renderLangBar(p, f, route);
       var token = playToken, usedFallback = false;
       var giveUp = function () {
         if (token !== playToken || !p.isConnected) return;
@@ -463,13 +507,13 @@
           usedFallback = true;
           p.dataset.playback = "fallback";
           if (window.AFN && window.AFN.toast) window.AFN.toast("Nguồn chính đang gặp sự cố — đã chuyển sang nguồn dự phòng.");
-          if (!playSource(p, f, fb.source_kind, fb.youtube_id || fb.video_url, info.episode_no, giveUp)) giveUp();
+          if (!playSource(p, f, fb.source_kind, fb.youtube_id || fb.video_url || fb.embed_url, info.episode_no, giveUp, null)) giveUp();
           return;
         }
         giveUp();
       };
       p.dataset.playback = "primary";
-      if (!playSource(p, f, res.source_kind, res.youtube_id || res.video_url, info.episode_no, failed)) failed();
+      if (!playSource(p, f, res.source_kind, res.youtube_id || res.video_url || res.embed_url, info.episode_no, failed, route)) failed();
       return;
     }
     if (status === "login_required") {

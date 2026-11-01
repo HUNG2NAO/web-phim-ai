@@ -1591,3 +1591,112 @@ test.describe("Độc lập từng website — Preview khóa theo site, lớp gi
     expect(issues).toEqual([]);
   });
 });
+
+
+// ------------------------------------------------------------------ Level 4.7: Language Router + nhiều nguồn video bên ngoài
+test.describe("Level 4.7 — một phim, nhiều ngôn ngữ, nhiều nguồn video bên ngoài", () => {
+  const MEDIA = (rows) => ({ episode_media: rows.map((r, i) => Object.assign({ id: "m" + i, episode_id: EP.e1, track_kind: "original", priority: 0, published: true, rights_attested: true, external_id: null, url: null }, r)) });
+  async function openEp1(page, q = "") {
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=1" + q);
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await page.locator('.episodes [data-ep="1"]').click();
+  }
+  test("1 link YouTube + phụ đề: chọn ngôn ngữ đổi phụ đề/bản lồng tiếng trên CÙNG tập, lưu lựa chọn", async ({ page }) => {
+    const issues = await setup(page, { extra: Object.assign(MEDIA([
+      { language: "vi", provider: "youtube", external_id: "VIDEOxxxx01" },
+      { language: "th", provider: "youtube_unlisted", external_id: "THDUBxxxx01", track_kind: "dub" }]),
+      { episode_subtitles: [{ id: "s1", episode_id: EP.e1, language: "id", source: "youtube", url: null, published: true },
+                            { id: "s2", episode_id: EP.e1, language: "en", source: "youtube", url: null, published: false }] }) });
+    await openEp1(page);
+    await expect(page.locator('#player iframe[src*="embed/VIDEOxxxx01"]')).toHaveCount(1);
+    await expect(page.locator(".lang-bar .lang-opt")).toHaveText(["Bahasa Indonesia (phụ đề)", "ภาษาไทย", "Tiếng Việt"]);   // bản nháp en không hiện
+    await expect(page.locator('.lang-bar [data-lang="vi"]')).toHaveAttribute("aria-pressed", "true");
+    await page.locator('.lang-bar [data-lang="th"]').click();
+    await expect(page.locator('#player iframe[src*="embed/THDUBxxxx01"]')).toHaveCount(1);
+    expect(await page.evaluate(() => localStorage.getItem("afn-lang"))).toBe("th");
+    await page.locator('.lang-bar [data-lang="id"]').click();
+    await expect(page.locator('#player iframe[src*="embed/VIDEOxxxx01"][src*="cc_lang_pref=id"][src*="cc_load_policy=1"]')).toHaveCount(1);
+    await expect(page.locator('.lang-bar [data-lang="id"]')).toHaveAttribute("aria-pressed", "true");
+    expect(issues).toEqual([]);
+  });
+
+  test("?lang= trong link chia sẻ chọn đúng phụ đề ngay; Facebook/Drive: mỗi ngôn ngữ một link, nhúng iframe chính thức, không vi phạm CSP", async ({ page }) => {
+    const issues = await setup(page, { extra: Object.assign(MEDIA([
+      { language: "vi", provider: "facebook", url: "https://www.facebook.com/afn.page/videos/1234567890/" },
+      { language: "id", provider: "gdrive", external_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz012345", track_kind: "subtitled" }]), { episode_subtitles: [] }) });
+    await page.route(/facebook\.com|drive\.google\.com/, r => r.fulfill({ status: 200, contentType: "text/html", body: "<p>embed</p>" }));
+    await openEp1(page, "&lang=id");
+    await expect(page.locator('#player iframe[data-provider="gdrive"][src="https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/preview"]')).toHaveCount(1);
+    await page.locator('.lang-bar [data-lang="vi"]').click();
+    await expect(page.locator('#player iframe[data-provider="facebook"]')).toHaveAttribute("src", /^https:\/\/www\.facebook\.com\/plugins\/video\.php\?href=https%3A%2F%2Fwww\.facebook\.com%2Fafn\.page%2Fvideos%2F1234567890%2F/);
+    expect(await cspViolations(page)).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
+  test("máy chủ chưa có Level 4.7: tự dùng nguồn v1 như cũ (không lỗi, không thanh ngôn ngữ); tập bị khóa không lộ nguồn", async ({ page }) => {
+    const issues = await setup(page, { missing: ["get_playback_media"] });
+    await openEp1(page);
+    await expect(page.locator('#player iframe[src*="embed/EP1xxxxxxxx"]')).toHaveCount(1);
+    await expect(page.locator(".lang-bar")).toHaveCount(0);
+    await page.locator('.episodes [data-ep="2"]').click();
+    await expect(page.locator(".player-gate")).toContainText("50 điểm");
+    const rpcs = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc).map(c => c.rpc));
+    expect(rpcs.filter(r => r === "get_playback_media").length).toBe(1);                   // thử 1 lần rồi nhớ là chưa có
+    expect(rpcs).toContain("get_playback_source");
+    expect(issues).toEqual([]);
+  });
+});
+
+
+test.describe("Level 4.7 — Video Source Manager (Studio)", () => {
+  test("admin khai báo link YouTube + phụ đề: lưu nháp (không tự phát hành), phát hành cần xác nhận quyền, xem thử router; người xem thấy ngay", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER, extra: { episode_media: [], episode_subtitles: [] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="media"]').click();
+    await expect(page.locator("#vsm-episode option")).toHaveCount(3);
+    await expect(page.locator('#studio-media input[type="file"]')).toHaveCount(0);                 // không có ô tải video lên
+    await page.locator("#vsm-link").fill("http://example.test/a.mp4");
+    await page.locator("#vsm-media-save").click();
+    await expect(page.locator("#vsm-msg")).toContainText("https");
+    await page.locator("#vsm-link").fill("https://youtu.be/VIDEOxxxx01?si=share");
+    await expect(page.locator("#vsm-detected")).toContainText("YouTube · mã VIDEOxxxx01");
+    await page.locator("#vsm-media-save").click();
+    await expect(page.locator("#vsm-msg")).toContainText("Chưa phát hành");
+    let db = await mock(page);
+    expect(db.episode_media).toHaveLength(1);
+    expect(db.episode_media[0]).toMatchObject({ provider: "youtube", external_id: "VIDEOxxxx01", language: "vi", published: false, rights_attested: false });
+    await page.locator("#vsm-sub-lang").selectOption("th");
+    await page.locator("#vsm-sub-save").click();
+    await expect(page.locator("#vsm-msg")).toContainText("phụ đề nháp");
+    const confirms = [];
+    page.removeAllListeners("dialog");
+    page.on("dialog", d => { confirms.push(d.message()); d.accept(); });
+    await page.locator('tr[data-kind="media"] .vsm-publish').click();
+    await expect(page.locator("#vsm-msg")).toHaveText("Đã phát hành.");
+    expect(confirms[0]).toContain("chưa được xác nhận quyền phát");
+    await page.locator('tr[data-kind="sub"] .vsm-publish').click();
+    await expect(page.locator('tr[data-kind="sub"] td').nth(3)).toHaveText("Đang hiển thị");
+    db = await mock(page);
+    expect(db.episode_media[0]).toMatchObject({ published: true, rights_attested: true });
+    await page.locator("#vsm-preview-lang").selectOption("th");
+    await page.locator("#vsm-preview-btn").click();
+    await expect(page.locator("#vsm-preview-out")).toContainText("bản gốc + phụ đề");
+    await expect(page.locator("#vsm-preview-out")).toContainText("Phụ đề: ภาษาไทย (trong video YouTube)");
+    // Người xem: tập 1 phát link mới, chọn tiếng Thái → phụ đề YouTube tiếng Thái
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=1&lang=th");
+    await page.locator('.episodes [data-ep="1"]').click();
+    await expect(page.locator('#player iframe[src*="embed/VIDEOxxxx01"][src*="cc_lang_pref=th"]')).toHaveCount(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("link không hỗ trợ bị từ chối; máy chủ chưa có Level 4.7 → báo rõ, không ghi gì", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER, missing: ["episode_media", "episode_subtitles"] });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="media"]').click();
+    await expect(page.locator("#vsm-lists")).toContainText("Máy chủ chưa có Level 4.7");
+    await expect(page.locator("#vsm-media-save")).toBeDisabled();
+    await page.locator("#vsm-link").fill("https://fb.watch/abc123");
+    await expect(page.locator("#vsm-detected")).toContainText("facebook.com");
+    expect(issues).toEqual([]);
+  });
+});

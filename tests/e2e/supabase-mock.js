@@ -204,6 +204,21 @@
       return { data: { status: "ok", source_kind: s.source_kind, youtube_id: s.youtube_id, video_url: s.video_url,
         fallback: s.fallback_kind ? { source_kind: s.fallback_kind, youtube_id: s.fallback_youtube_id || null, video_url: s.fallback_video_url || null } : null } };
     },
+    // Level 4.7 (giống public.get_playback_media): quyền xem như v1, trả toàn bộ media + phụ đề đã xuất bản.
+    get_playback_media: function (a) {
+      if (MISSING.indexOf("get_playback_media") !== -1) return { data: null, error: { code: "PGRST202", message: "Could not find the function public.get_playback_media" } };
+      var base = RPC.get_playback_source(a).data;
+      if (base.status !== "ok" && base.status !== "no_source") return { data: base };
+      var subs = list("episode_subtitles").filter(function (x) { return x.episode_id === a.p_episode_id && x.published; })
+        .map(function (x) { return { language: x.language, label: x.label || null, source: x.source || "youtube", url: x.url || null, default: !!x.is_default }; });
+      var media = list("episode_media").filter(function (x) { return x.episode_id === a.p_episode_id && x.published; })
+        .map(function (x) { return { language: x.language, provider: x.provider, external_id: x.external_id || null, url: x.url || null, track_kind: x.track_kind || "original", priority: x.priority || 0, label: x.label || null }; });
+      if (!media.length) return { data: Object.assign({}, base, { legacy: true, languages: [], media: [], subtitles: subs }) };
+      var langs = media.map(function (m) { return m.language; }).filter(function (v, i, arr) { return arr.indexOf(v) === i; }).sort();
+      var pick = langs.indexOf(a.p_language) !== -1 ? a.p_language : (langs.indexOf("vi") !== -1 ? "vi" : langs[0]);
+      return { data: { status: "ok", legacy: false, language: pick, languages: langs, media: media,
+        sources: media.filter(function (m) { return m.language === pick; }), subtitles: subs } };
+    },
     log_landing: function (a) {
       if (!a.p_source && !a.p_medium && !a.p_campaign && !a.p_ref) return { data: null };
       list("traffic_events").push({ site_id: a.p_site, utm_source: a.p_source, utm_medium: a.p_medium, utm_campaign: a.p_campaign, ref_code: a.p_ref, film_id: a.p_film, landed_at: new Date().toISOString() });

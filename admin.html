@@ -13,6 +13,7 @@
     <button class="chip selected" type="button" data-studio-tab="overview">Tổng quan</button>
     <button class="chip" type="button" data-studio-tab="films">Phim & bản quyền</button>
     <button class="chip" type="button" data-studio-tab="episodes">Tập & quyền xem</button>
+    <button class="chip" type="button" data-studio-tab="media">Nguồn phát & ngôn ngữ</button>
     <button class="chip" type="button" data-studio-tab="wallet">Điểm danh & ví điểm</button>
     <button class="chip" type="button" data-studio-tab="reviews">Kiểm duyệt đánh giá</button>
     <button class="chip" type="button" data-studio-tab="reports">Báo lỗi phim</button>
@@ -55,6 +56,7 @@
     </form><div class="panel-card"><h2>Phạm vi gửi</h2><p id="studio-recipients" class="muted">Đang tải số thành viên…</p><p class="muted small">Không gửi tự động khi chưa có dữ liệu phát hành tập mới thật.</p></div></div>
   </section>
 
+  <section data-studio-panel="media" hidden><div id="studio-media"></div></section>
   <section data-studio-panel="overview">
     <div class="section-top"><h2>Tổng quan website</h2><span class="ops-note" id="ops-overview-time"></span></div>
     <div id="ops-overview" class="ops-cards"><p class="ops-note">Đang tải số liệu thật…</p></div>
@@ -166,4 +168,4 @@
   <section data-studio-panel="privacy" hidden><h2>Yêu cầu quyền riêng tư</h2><p class="muted">Quản trị viên website nhận xử lý hoặc từ chối (kèm lý do); thành viên nhận thông báo ở mỗi bước. Xóa tài khoản do chủ mạng thực hiện: xem trước dữ liệu sẽ xóa, rồi gõ đúng email để xác nhận. Mọi thao tác được ghi nhật ký.</p><div id="studio-privacy" class="studio-list"></div></section>
   <section data-studio-panel="security" hidden><h2>Bảo mật tài khoản quản trị</h2><p class="muted">Xác thực 2 lớp (TOTP) bằng ứng dụng trên điện thoại. Máy chủ kiểm tra ở mọi thao tác quản trị; thiếu 2FA khi đã bắt buộc chỉ làm mất quyền quản trị, không khóa tài khoản.</p><div id="studio-security" class="two-columns"></div></section>
 </div>
-</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio-mfa.js"></script><script src="assets/studio.js"></script><script src="assets/afn-core.js"></script><script src="assets/studio-ops.js"></script></body></html>
+</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio-mfa.js"></script><script src="assets/studio.js"></script><script src="assets/afn-core.js"></script><script src="assets/studio-ops.js"></script><script src="assets/language-router.js"></script><script src="assets/studio-media.js"></script></body></html>

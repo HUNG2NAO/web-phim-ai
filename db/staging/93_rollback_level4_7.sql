@@ -4,4 +4,5 @@ begin;
 drop function if exists public.get_playback_media(uuid, text);
 drop table if exists public.episode_subtitles;
 drop table if exists public.episode_media;
+drop function if exists private.audit_media();
 commit;
