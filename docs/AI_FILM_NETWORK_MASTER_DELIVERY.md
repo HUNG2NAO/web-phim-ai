@@ -13,6 +13,187 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 12:10 — RC3: Chính sách riêng tư & sẵn sàng pháp lý
+
+### 1. Nhánh và commit
+- **RC3:** nhánh riêng **`release/xuongphim-l4-rc3`** @ **`4efe717`**, tạo từ RC2 `ffb68f8` và chỉ thêm thay đổi RC3.
+- **Không bị ghi đè:**
+  - Kênh RC2 `release/xuongphim-l4-rc1` vẫn ở `ffb68f8`.
+  - `main` vẫn ở `c6dd520`.
+  - 4 website còn lại không thay đổi.
+- **Nhánh phát triển:** `feature/master-site-xuongphim-2026-10-31` @ `84ae0f0`. Các tệp website của nhánh này trùng RC3.
+- Trước khi làm, đã kiểm tra: working tree sạch, HEAD `c5194ad`; nhánh phát triển khác RC2 chỉ ở tools/docs.
+- **Bản dự thảo "Chính sách riêng tư Hungcreator":** tệp đính kèm chỉ chứa yêu cầu, không có bản dự thảo riêng. RC3 vì vậy dựng trên `chinh-sach.html` hiện có, giữ phần đúng và sửa theo kiểm toán bên dưới.
+
+### 2. Tệp thay đổi so với RC2 (5 tệp)
+
+| Tệp | Thay đổi |
+|---|---|
+| `chinh-sach.html` | Viết lại thành **DRAFT RC3** (mục 3) |
+| `assets/auth.js` | Thêm 1 dòng thông báo có liên kết Chính sách riêng tư và Quy tắc cộng đồng, **chỉ hiện ở tab Đăng ký**. Không đổi logic đăng ký/đăng nhập (+3 dòng) |
+| `assets/auth.css` | Kiểu chữ cho liên kết trong dòng thông báo (+1 dòng) |
+| `tests/site-config.test.cjs` | Cổng kiểm tra chính sách RC3; kiểm tra mọi máy chủ bên thứ ba website tải đều đã được khai báo |
+| `tests/e2e/master-site.spec.cjs` | +2 E2E: dòng thông báo ở form Đăng ký; trang chính sách trên điện thoại và accessibility |
+
+- Ví, điểm danh, mở khóa, chat, trình phát, Dashboard, SQL và migration **không thay đổi** (`app.js`, `community-chat.js`, `rewards.js`, `afn-core.js`, `db/*`).
+
+### 3. Nội dung chính sách DRAFT RC3
+- **Khung trạng thái đầu trang:**
+  - "Bản dự thảo — chưa phải chính sách chính thức"
+  - Phiên bản **DRAFT RC3**
+  - Đơn vị vận hành: **Hungcreator (tên thương hiệu; thông tin pháp nhân chưa được xác minh và công bố)**
+  - Email hỗ trợ: **Chưa xác định**
+  - Thời hạn lưu trữ: **Chưa được phê duyệt**
+- **Không còn ghi chú nội bộ** (`[CẦN CHỦ WEBSITE…]`) trên trang. Có test chặn trường hợp này. Trang giữ `noindex`.
+- **Đã bổ sung theo hành vi thật:**
+  - IP và loại trình duyệt của phiên đăng nhập (lưu trong `auth.sessions`).
+  - Website không đặt cookie.
+  - Danh sách khóa localStorage.
+  - jsDelivr, Google Fonts, YouTube (tải từ máy chủ Google khi phát).
+  - Chuyển dữ liệu ra nước ngoài: Supabase Singapore, Resend Tokyo, Cloudflare toàn cầu.
+  - Tiến độ xem **mặc định tắt**.
+  - Phạm vi thật của tính năng tải dữ liệu.
+  - Hậu quả khi xóa tài khoản (xóa dây chuyền).
+  - Tin bị ẩn vẫn được lưu.
+  - Đánh giá phim hiển thị công khai, không kèm tên.
+  - Giới hạn 500 ký tự mỗi tin.
+  - Chưa có xác minh độ tuổi.
+  - Thời hạn lưu chưa được phê duyệt; dữ liệu đã xóa còn trong bản sao lưu.
+- **Đã sửa câu sai:** xem bảng đối chiếu (mục 4).
+
+### 4. Đối chiếu chính sách với code, database và Dashboard
+Nguồn kiểm tra: mã nguồn, SQL chỉ đọc trên Supabase, Dashboard Auth (đọc), trình duyệt trên Preview RC.
+
+| # | Hạng mục | Hành vi thực tế (bằng chứng) | Chính sách RC3 |
+|---|---|---|---|
+| 1 | Dữ liệu thu thập | Email, tên hiển thị, hồ sơ người xem, sở thích, điểm danh, ví, sổ cái, quyền mở tập, chat, báo cáo, đánh giá | Đúng |
+| 2 | Tài khoản | Supabase Auth (Singapore); mật khẩu băm. Bản cũ ghi "mã hóa" | **Đã sửa** thành "băm một chiều" |
+| 2b | IP / User-Agent | `auth.sessions`: 12/12 phiên có `ip` và `user_agent`. Bản cũ **không nêu** | **Đã bổ sung** |
+| 3 | Điểm danh / ví | RPC `claim_daily_checkin`; ví = tổng sổ cái; không có thanh toán bằng tiền | Đúng |
+| 4 | Giao dịch / mở khóa | `wallet_ledger` và `content_entitlements` **ON DELETE CASCADE** theo tài khoản. Bản cũ nói "giao dịch điểm có thể được giữ lại" | **Đã sửa**: bị xóa kèm tài khoản; có test chặn câu cũ |
+| 5 | Chat | Chỉ thành viên đăng nhập đọc được (anon không có quyền); tối đa 500 ký tự; 5 tin/30 giây; chặn tin trùng; tin ẩn vẫn lưu | Đúng, đã bổ sung chi tiết |
+| 5b | Báo cáo | Người bị báo cáo không đọc được `chat_reports`. **Phát hiện:** mọi `site_staff` **của mọi site** đọc được báo cáo của mọi site | Câu trên trang đúng. Phạm vi quyền: **cần phát triển** (xem 7.b) |
+| 6 | Nhật ký kiểm duyệt | `admin_audit_log` gồm actor, mã tài khoản đích, lý do, thời điểm. Không có FK nên **còn lại sau khi xóa tài khoản** (chỉ mã, không có email) | Đã nêu đúng |
+| 6b | Khóa chat | DB hỗ trợ cả vĩnh viễn (`-1`); giao diện chỉ có 24 giờ. Bản cũ ghi "khóa vĩnh viễn" | **Đã sửa**: "thường 24 giờ, lâu hơn với vi phạm nghiêm trọng" |
+| 7 | Nhật ký bảo mật | `auth.sessions`, `refresh_tokens`; `auth.audit_log_entries` = 0; nhật ký nền tảng do Supabase giữ | Đã nêu |
+| 8 | Xóa tài khoản | Nút trong Tài khoản → `member_privacy_requests` (pending) → quản trị viên đánh dấu trong Studio. **Chưa có chức năng thực thi xóa**; phải xóa tay user trong Supabase | Đã nêu "xử lý thủ công". Thực thi xóa: **cần phát triển** |
+| 8b | Rào cản xóa | `site_films.created_by` / `site_episodes.created_by` = NO ACTION, nên **không xóa được tài khoản đã đăng phim** (chỉ ảnh hưởng tài khoản quản trị) | Cần phát triển (SET NULL) |
+| 9 | Xuất dữ liệu | Trang thành viên tự tải JSON 8 bảng (hồ sơ…thông báo); **không gồm** ví, sổ cái, chat, báo cáo. Loại yêu cầu `data_export` có trong DB nhưng giao diện chưa dùng. Bản cũ chỉ nói "gửi qua email" | **Đã sửa** theo phạm vi thật. Xuất đủ: **cần phát triển** |
+| 9b | Ẩn danh hóa | Không có cơ chế; chỉ xóa dây chuyền | Không hứa ẩn danh hóa |
+| 10 | Backup | Bản logic mã hóa trên PC Nhân, hủy thủ công; gói Free không có backup tự động | Đã nêu |
+| 11 | Cookie / storage / analytics | Trình duyệt thật: **0 cookie**, localStorage `afn-film-auth-v1`, `afn-cw:*`, `afn-side`, `afn-active-viewer:*`, `afn-ref`, sessionStorage `afn-landing:*`. Không có Cloudflare Analytics hay quảng cáo. `traffic_events` không có IP/UA/user id, chỉ ghi khi có utm/ref | Đúng, đã liệt kê |
+| 12 | Nhà cung cấp / xuyên biên giới | Supabase SG, Cloudflare, Resend (Tokyo), Google Fonts, YouTube, **jsDelivr (bản cũ thiếu)** | **Đã bổ sung**; có test tự động |
+| 13 | Nguồn phim | Phim QA đang đăng là **phim Blender (CC BY), không phải phim AI**, trái với câu "toàn bộ phim… tạo bằng AI" | **Đã sửa câu**; phim QA phải gỡ trước Production (R1) |
+| 14 | Đăng ký | Bản cũ: form đăng ký **không liên kết** tới chính sách | **Đã bổ sung** dòng thông báo (chỉ thông báo, chưa có ô tích đồng ý; xem mục 5) |
+
+### 5. Những điểm cần chuyên gia pháp lý xem xét
+Claude **không khẳng định** Hungcreator đã được cấp phép hay đáp ứng đủ nghĩa vụ. Các văn bản dưới đây được đối chiếu qua văn bản và bản tóm tắt công khai. Cần luật sư xác nhận.
+
+1. **Community Chat có thể bị coi là "mạng xã hội" theo Nghị định 147/2024/NĐ-CP.** Mức rủi ro: **cao, có thể chặn phát hành chat.** Nếu đúng vậy, theo bản tóm tắt:
+   - Chỉ cơ quan, tổ chức, doanh nghiệp thành lập theo pháp luật Việt Nam mới được cung cấp dịch vụ.
+   - Dùng tên miền `.vn`, có máy chủ tại Việt Nam.
+   - Xác thực tài khoản bằng số điện thoại Việt Nam; chỉ tài khoản đã xác thực mới được bình luận.
+   - Lưu thông tin tài khoản, giờ đăng nhập, IP và nhật ký xử lý ít nhất **2 năm**.
+   - Tài khoản dưới 16 tuổi do cha mẹ đăng ký.
+   - Có nhân sự xử lý yêu cầu 24/7.
+
+   Hiện hệ thống **không đáp ứng** các điều kiện này: tên miền `.ai`, máy chủ Singapore, xác thực bằng email. Phương án an toàn nếu chưa rõ: **tắt Community Chat khi phát hành Production.**
+2. **Luật Điện ảnh 2022, Điều 21 (phổ biến phim trên không gian mạng).** Mức rủi ro: **cao.**
+   - Chủ thể là doanh nghiệp, đơn vị sự nghiệp hoặc tổ chức.
+   - Phải tự phân loại phim, **thông báo danh sách phim và kết quả phân loại cho Bộ VHTTDL trước khi phổ biến**.
+   - Có biện pháp để cha mẹ kiểm soát độ tuổi.
+   - Có đầu mối liên hệ nhận khiếu nại.
+   - Cần xác định Hungcreator (thương hiệu, chưa có pháp nhân) có đủ tư cách hay không, và phim tạo bằng AI có thuộc diện này không.
+3. **Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15 (hiệu lực 01/01/2026) và Nghị định 356/2025/NĐ-CP:**
+   - **Căn cứ xử lý và cách lấy đồng ý:** hiện chỉ có dòng thông báo, chưa có ô tích. Cần quyết định có cần đồng ý tách bạch không.
+   - **Lưu trữ phía trình duyệt:** dữ liệu localStorage chỉ phục vụ chức năng, không có cookie theo dõi. Cần xác nhận không cần hộp thoại đồng ý cookie.
+   - **Thời hạn trả lời yêu cầu** (theo bản tóm tắt NĐ 356): phản hồi trong 2 ngày làm việc; xóa dữ liệu trong 20 ngày. Muốn đáp ứng phải có **kênh liên hệ**, hiện **chưa có**.
+   - **Hồ sơ đánh giá tác động xử lý (DPIA) và chuyển dữ liệu ra nước ngoài (CTIA), người phụ trách bảo vệ dữ liệu (DPO):**
+     - Hộ kinh doanh và doanh nghiệp siêu nhỏ được miễn.
+     - Doanh nghiệp nhỏ và khởi nghiệp được miễn 5 năm.
+     - Có thể được miễn hay không **phụ thuộc tư cách pháp lý chưa xác minh**.
+     - Dữ liệu đang lưu ở Singapore, Nhật Bản và hạ tầng toàn cầu.
+   - **Thông báo khi lộ lọt dữ liệu:** chưa có quy trình.
+4. **Người chưa thành niên:**
+   - Chưa có cổng xác minh tuổi.
+   - Luật 91/2025 có ngưỡng 7 tuổi về sự đồng ý của trẻ và người đại diện.
+   - NĐ 147 có quy định riêng với người dưới 16 tuổi.
+   - Luật Điện ảnh yêu cầu kiểm soát độ tuổi.
+5. **Điểm thưởng:** không mua bằng tiền và không quy đổi ra tiền. Cần xác nhận không thuộc diện ví điện tử hay "trò chơi có thưởng".
+6. **Chưa có Điều khoản sử dụng** để người dùng chấp nhận (NĐ 147 yêu cầu thỏa thuận này đối với mạng xã hội).
+
+### 6. Thông tin chủ dự án chưa cung cấp
+- Email hỗ trợ / kênh nhận yêu cầu về dữ liệu.
+- Tư cách pháp lý (cá nhân / hộ kinh doanh / doanh nghiệp), tên pháp nhân, địa chỉ liên hệ.
+- Phê duyệt thời hạn lưu trữ (mục 7).
+- Người phụ trách bảo vệ dữ liệu (nếu không được miễn).
+- Quyết định có bật Community Chat ở Production hay không (theo kết luận pháp lý).
+- Kết quả phân loại và thông báo phim (nếu luật sư xác định thuộc diện).
+
+### 7. Chính sách lưu dữ liệu đề xuất (CHƯA PHÊ DUYỆT, chưa áp dụng xóa tự động)
+Ghi chú: nếu Community Chat thuộc diện mạng xã hội theo NĐ 147, các thời hạn nhật ký phải **≥ 2 năm**, thay cho mức đề xuất bên dưới.
+
+| Loại dữ liệu | Mục đích | Căn cứ | Đề xuất | Bắt đầu tính | Cơ chế xóa | Được/phải giữ lâu hơn khi | Sẵn sàng trong code |
+|---|---|---|---|---|---|---|---|
+| Hồ sơ người dùng (`auth.users`, profiles, viewer_*) | Cung cấp tài khoản | Thực hiện dịch vụ / đồng ý | Suốt thời gian còn tài khoản; xóa **≤ 20 ngày** sau yêu cầu | Ngày nhận yêu cầu xóa | Xóa user → CASCADE | Có tranh chấp hoặc yêu cầu của cơ quan có thẩm quyền | **Một phần:** CASCADE có sẵn; thiếu RPC thực thi xóa, quy trình xử lý và sửa `created_by` |
+| Lịch sử xem (`watch_progress`) | Xem tiếp | Đồng ý (opt-in) | 12 tháng từ lần cập nhật cuối, hoặc khi người dùng tắt/xóa | `updated_at` | Người dùng tự xóa; tự động dọn khi quá hạn | — | **Một phần:** có nút xóa và opt-in; chưa có job dọn |
+| Ví và giao dịch (`wallets`, `wallet_ledger`, `content_entitlements`, `daily_checkins`) | Điểm thưởng, quyền xem, chống gian lận | Thực hiện dịch vụ | Suốt thời gian còn tài khoản; xóa cùng tài khoản | Ngày xóa tài khoản | CASCADE (hiện trạng) | Nếu muốn giữ để chống gian lận: cần ẩn danh hóa (đổi schema) | **Có** (xóa dây chuyền); giữ có ẩn danh: chưa có |
+| Nhật ký kiểm duyệt (`admin_audit_log`) | Truy vết quyết định kiểm duyệt và quản trị | Lợi ích hợp pháp / nghĩa vụ quản lý nội dung | 24 tháng | Thời điểm thao tác | Job xóa theo `created_at` | Đang khiếu nại, tranh chấp, theo yêu cầu cơ quan | **Chưa có** job; đã có chỉ mã tài khoản (bút danh) |
+| Nội dung chat (`chat_messages`, `chat_reports`) | Trò chuyện cộng đồng, xử lý vi phạm | Thực hiện dịch vụ / lợi ích hợp pháp | Tin thường 12 tháng; tin bị ẩn/báo cáo 24 tháng | `created_at` | Job xóa; xóa cùng tài khoản | Đang điều tra, theo yêu cầu cơ quan (NĐ 147: ≥ 2 năm nếu áp dụng) | **Chưa có** job |
+| Nhật ký đăng nhập/bảo mật (`auth.sessions`, `refresh_tokens`, log nền tảng) | Bảo vệ tài khoản | Lợi ích hợp pháp | Theo vòng đời phiên; log nền tảng theo gói Supabase | Khi đăng xuất / hết hạn | Supabase tự quản | NĐ 147 (nếu áp dụng): lưu IP và giờ đăng nhập ≥ 2 năm | **Phụ thuộc nhà cung cấp**; muốn lưu 2 năm phải phát triển thêm |
+| Lượt truy cập chiến dịch (`traffic_events`) | Đo hiệu quả chiến dịch | Lợi ích hợp pháp (không định danh) | 13 tháng, sau đó chỉ giữ số tổng | `landed_at` | Job gộp và xóa | — | **Chưa có** job |
+| Yêu cầu quyền riêng tư (`member_privacy_requests`) | Chứng minh đã xử lý yêu cầu | Nghĩa vụ pháp lý | 3 năm sau khi hoàn tất | `handled_at` | Job xóa | Đang tranh chấp | **Chưa có** (hiện bị xóa dây chuyền cùng tài khoản; cần chuyển sang lưu bút danh) |
+| Backup | Khôi phục sự cố | Lợi ích hợp pháp / an toàn | Giữ luân phiên **30 ngày** (bản mới nhất + bản tuần) | Ngày tạo bản | Hủy tệp mã hóa quá hạn | Có sự cố đang điều tra | **Thủ công** (script có sẵn, chưa có lịch luân phiên) |
+| Dữ liệu tranh chấp | Giải quyết khiếu nại | Nghĩa vụ pháp lý / bảo vệ quyền | Đến khi giải quyết xong, cộng thời hiệu theo tư vấn luật sư | Ngày phát sinh | Gắn cờ "legal hold", gỡ khi kết thúc | Theo yêu cầu cơ quan | **Chưa có** cơ chế legal hold |
+
+### 8. Kiểm thử RC3 (chạy trên chính nhánh `release/xuongphim-l4-rc3`)
+- E2E **78/78** (76 cũ + 2 mới)
+- contract **11/11**
+- site-config **9/9**
+- SQL functional **133**, concurrency/staging **13/13**
+- **Preview thật** (`feature-master-site-xuongphi…pages.dev`, SHA-256 của 5 tệp trùng RC3):
+  - Footer có 2 liên kết.
+  - Dòng thông báo chính sách hiện ở tab Đăng ký và ẩn ở tab Đăng nhập.
+  - Trang chính sách là DRAFT RC3, `noindex`, không lộ ghi chú nội bộ.
+  - Canonical `https://www.xuongphim.ai/`, robots.txt không đổi, danh mục 42 thẻ phim, phiên đăng nhập hiện có vẫn hoạt động.
+- **Accessibility và hiển thị:** heading không nhảy cấp, vùng chạm ≥ 44px, không cuộn ngang ở 360px. Đã xem ảnh chụp desktop 1280px và mobile 360px.
+
+### 9. Bảo toàn RC2
+- `git diff ffb68f8 4efe717` chỉ gồm 5 tệp ở mục 2.
+- Không có thay đổi nào ở ví, chat, trình phát, SQL hay migration.
+- Mọi test RC2 vẫn đạt.
+- Supabase không bị thay đổi: chỉ chạy SELECT trong giao dịch read only và đọc Dashboard.
+
+### 10. Điều kiện còn thiếu trước Production
+1. Chủ dự án cung cấp email hỗ trợ và tư cách pháp lý; phê duyệt thời hạn lưu trữ.
+2. Luật sư kết luận mục 5.1 (chat / NĐ 147) và 5.2 (Luật Điện ảnh). Nếu chưa có kết luận: phát hành **không kèm Community Chat**.
+3. Phát triển trước khi chính thức hóa chính sách:
+   - quy trình và RPC thực thi xóa tài khoản trong 20 ngày;
+   - sửa `created_by` sang SET NULL;
+   - thu hẹp quyền đọc báo cáo theo site;
+   - (tùy kết luận pháp lý) ô tích đồng ý, cổng độ tuổi, Điều khoản sử dụng.
+4. Bỏ `noindex` và nhãn dự thảo **chỉ sau khi** có bản chính sách được phê duyệt.
+5. R1: dọn dữ liệu QA, gồm phim QA Blender (không phải phim AI).
+6. R2–R7: project `xuongphim-ai`, URL Supabase cho www, chuyển tên miền, phê duyệt cuối.
+
+### Kết luận RC3
+| Hạng mục | Trạng thái |
+|---|---|
+| **RC3 TECHNICAL** | **PASS** |
+| **PRIVACY DRAFT** | **INCOMPLETE**: nội dung đã khớp hệ thống thật, nhưng thiếu email hỗ trợ, pháp nhân, thời hạn lưu trữ |
+| **LEGAL REVIEW** | **REQUIRED** |
+| **SUPPORT CONTACT** | **MISSING** |
+| **DATA RETENTION POLICY** | **PROPOSED** |
+| **PRODUCTION RELEASE** | **NOT READY** |
+
+Nguồn pháp lý đã tham khảo (bản tóm tắt / văn bản công khai):
+- Luật 91/2025/QH15: GV Lawyers legal alert; pbgdpl.cantho.gov.vn
+- NĐ 356/2025/NĐ-CP: EY Vietnam
+- NĐ 147/2024/NĐ-CP: luatvietnam.vn, lsvn.vn
+- Luật Điện ảnh 2022, Điều 21: hethongphapluat.com
+
+---
+
 ## Cập nhật 01/11/2026 11:15 — RC2: xác minh bản backup cuối, khôi phục từ chính tệp đó, kiểm kê Auth đầy đủ
 
 Mã ứng dụng RC2 (`ffb68f8`) **giữ nguyên**: vòng này không phát hiện lỗi ứng dụng. Không xóa dữ liệu QA, không đổi Production, không merge main, không thay đổi cấu hình Supabase (chỉ đọc Dashboard và chạy SQL `read only`).
