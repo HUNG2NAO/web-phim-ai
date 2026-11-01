@@ -1094,3 +1094,91 @@ test.describe("Cổng phát hành Community Chat", () => {
     await expect(page.locator("#side-me [data-chat-open]")).toBeVisible();
   });
 });
+
+test.describe("Công tắc Community Chat phía máy chủ (Level 4.4)", () => {
+  function closed(page, scopes) {
+    return page.addInitScript(sc => { const s = window.__AFN_MOCK_SEED; s.tables.chat_settings = ["network", "xuongphim", "khophim", "phephim", "phimhay", "ghienphim"].map(x => ({ scope: x, enabled: sc.indexOf(x) === -1, reason: sc.indexOf(x) === -1 ? "" : "Tạm đóng chờ đánh giá pháp lý" })); }, scopes);
+  }
+  test("phạm vi đóng: khung chat phim Kho Phim báo đóng, không có ô gửi; API gửi bị từ chối; site khác và phòng chung vẫn chạy", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await withNetwork(page); await closed(page, ["khophim"]);
+    await page.goto("/phim/phim-khophim?site=khophim");
+    const fc = page.locator("#film-chat");
+    await expect(fc.locator(".afn-chat-closed")).toHaveText("Trò chuyện ở phòng này đang tạm đóng.");
+    await expect(fc.locator("textarea")).toBeHidden();
+    await expect(fc).toContainText("Tin nhắn cũ vẫn được lưu giữ");
+    const r = await page.evaluate(() => window.AFN.client().rpc("send_chat_message", { p_room: "film:khophim:phim-khophim", p_body: "lách qua API" }));
+    expect(r.error.message).toContain("chat_disabled");
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await page.locator("#film-chat textarea").fill("Xưởng Phim vẫn mở");
+    await page.locator("#film-chat").getByRole("button", { name: "Gửi" }).click();
+    await expect(page.locator("#film-chat .afn-chat-msg.mine")).toContainText("Xưởng Phim vẫn mở");
+    expect((await mock(page)).chat_messages.filter(m => m.room.startsWith("film:khophim"))).toHaveLength(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("chủ mạng đóng chat Xưởng Phim trong Dashboard → khung chat đang mở của thành viên chuyển sang đóng ngay; mở lại → gửi được, tin cũ còn", async ({ page, context }) => {
+    const issues = await setup(page, { user: OWNER });
+    await closed(page, []);
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    const sw = page.locator("#ops-chat-switch");
+    await expect(sw).toContainText("Phòng phim Xưởng Phim");
+    // thành viên mở khung chat phim ở tab khác (cùng "máy chủ" giả lập)
+    const member = await context.newPage();
+    await member.addInitScript(() => sessionStorage.setItem("__AFN_MOCK_USER", JSON.stringify({ id: "00000000-0000-4000-8000-000000000001", email: "viewer@example.test", user_metadata: { display_name: "Khán giả thử" } })));
+    await member.route("**/supabase.min.js", r => r.fulfill({ status: 200, contentType: "application/javascript", body: MOCK }));
+    await member.route("**/assets/auth-config.js", r => r.fulfill({ status: 200, contentType: "application/javascript",
+      body: 'window.AFN_AUTH_CONFIG={enabled:true,googleEnabled:false,url:"https://jurvphonehknrxjpowoe.supabase.co",publishableKey:"sb_publishable_e2e_key_123456789",storageKey:"afn-e2e"};' }));
+    await member.route(/fonts\.(googleapis|gstatic)\.com|(youtube|youtube-nocookie|ytimg)\.com/, r => r.abort());
+    await member.goto("/phim/tin-hieu-47?site=xuongphim");
+    await member.locator("#film-chat textarea").fill("Trước khi đóng");
+    await member.locator("#film-chat").getByRole("button", { name: "Gửi" }).click();
+    await expect(member.locator("#film-chat .afn-chat-msg.mine")).toContainText("Trước khi đóng");
+    // đóng: thiếu lý do → không đổi
+    await sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button", { name: "Đóng chat" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Cần nhập lý do");
+    await page.evaluate(() => { window.prompt = () => "Tạm đóng chờ đánh giá pháp lý"; });
+    await sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button", { name: "Đóng chat" }).click();
+    await expect(sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ })).toContainText("ĐANG ĐÓNG");
+    await expect(member.locator("#film-chat .afn-chat-closed")).toHaveText("Trò chuyện ở phòng này đang tạm đóng.", { timeout: 6000 });
+    await expect(member.locator("#film-chat textarea")).toBeHidden();
+    // mở lại
+    await sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button", { name: "Mở lại" }).click();
+    await expect(sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ })).toContainText("Đang mở");
+    await expect(member.locator("#film-chat textarea")).toBeVisible({ timeout: 6000 });
+    await expect(member.locator("#film-chat")).toContainText("Trước khi đóng");
+    await member.locator("#film-chat textarea").fill("Sau khi mở lại");
+    await member.locator("#film-chat").getByRole("button", { name: "Gửi" }).click();
+    await expect(member.locator("#film-chat .afn-chat-msg.mine").last()).toContainText("Sau khi mở lại");
+    const db = await mock(page);
+    expect(db.admin_audit_log.filter(a => /^chat\.(enable|disable)$/.test(a.action)).map(a => a.action)).toEqual(["chat.disable", "chat.enable"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("admin Kho Phim: đóng được phòng của site mình, không có nút Mở lại (chỉ chủ mạng)", async ({ page }) => {
+    await setup(page, { user: KADMIN });
+    await closed(page, ["khophim"]);
+    await page.addInitScript(() => { const s = window.__AFN_MOCK_SEED; s.tables.site_staff = [{ user_id: "00000000-0000-4000-8000-0000000000bb", site_id: "khophim", role: "admin" }]; s.tables.network_staff = []; });
+    await page.goto("/admin.html?site=khophim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    const sw = page.locator("#ops-chat-switch");
+    await expect(sw.getByRole("row", { name: /Phòng phim Kho Phim/ })).toContainText("Chỉ chủ mạng mở lại");
+    await expect(sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button")).toHaveCount(0);
+    await expect(sw.getByRole("row", { name: /Phòng chung/ }).getByRole("button", { name: "Đóng chat" })).toHaveCount(1);
+  });
+});
+
+test.describe("Preview đa site — đường dẫn đẹp giữ đúng website", () => {
+  test("/phim/<slug>?site=khophim chuyển tới đúng phim của Kho Phim (trước đây mất ?site= và rơi về Xưởng Phim)", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await withNetwork(page);
+    const res = await page.goto("/phim/phim-khophim/tap/2?site=khophim&utm_source=facebook");
+    expect(new URL(page.url()).searchParams.get("site")).toBe("khophim");
+    await expect(page.locator("#logo .name")).toContainText("KhoPhim");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator("#film-dialog")).toContainText("Phim thử khophim");
+    expect(res.status()).toBe(200);
+    expect(issues).toEqual([]);
+  });
+});

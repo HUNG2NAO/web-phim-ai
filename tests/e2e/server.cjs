@@ -62,6 +62,13 @@ function start(port = 0, secure = process.env.AFN_E2E_TLS !== "0") {
   const headerRules = parseHeaders(), redirectRules = parseRedirects();
   const handler = (req, res) => {
     const url = new URL(req.url, "http://localhost");
+    // Giả lập functions/phim/[[path]].js (cùng quy tắc): giữ nguyên query gốc khi chuyển hướng.
+    const pm = url.pathname.match(/^\/phim\/([^/]+)(?:\/tap\/([^/]+))?\/?$/);
+    if (pm) {
+      const to = new URL("/", url); to.searchParams.set("film", decodeURIComponent(pm[1])); if (pm[2]) to.searchParams.set("tap", decodeURIComponent(pm[2]));
+      for (const [k, v] of url.searchParams) if (k !== "film" && k !== "tap") to.searchParams.append(k, v);
+      res.writeHead(302, { Location: to.pathname + to.search }); res.end(); return;
+    }
     const red = matchRedirect(redirectRules, url.pathname);
     if (red) { res.writeHead(red.code, { Location: red.to }); res.end(); return; }
     let rel = decodeURIComponent(url.pathname);

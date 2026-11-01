@@ -349,6 +349,32 @@
           ctx.siteAdmin ? btn("Mở khóa", function (ev) { chatMute(m.user_id, 0, ev.currentTarget); }) : "–"];
       })));
     } catch (e) { empty(box, explain(e)); empty(mbox, ""); }
+    loadChatSwitch();
+  }
+  var SCOPE_NAME = { network: "Phòng chung toàn mạng" };
+  async function loadChatSwitch() {
+    var sbox = $("#ops-chat-switch"); if (!sbox) return;
+    try {
+      var list = await rows(db.from("chat_settings").select("*"));
+      if (!list.length) { empty(sbox, "Máy chủ chưa có công tắc chat (cần migration Level 4.4)."); return; }
+      var order = ["network"].concat(AFN.sites.map(function (s) { return s.id; }));
+      list.sort(function (a, b) { return order.indexOf(a.scope) - order.indexOf(b.scope); });
+      sbox.replaceChildren(table(["Phạm vi", "Trạng thái", "Lý do", "Cập nhật", ""], list.map(function (x) {
+        var name = SCOPE_NAME[x.scope] || ("Phòng phim " + ((AFN.sites.find(function (s) { return s.id === x.scope; }) || {}).name || x.scope));
+        var canClose = x.enabled && (ctx.owner || (ctx.siteAdmin && (x.scope === ctx.site || x.scope === "network")));
+        var act = x.enabled ? (canClose ? btn("Đóng chat", function (ev) { chatSwitch(x.scope, false, ev.currentTarget); }) : "–")
+                            : (ctx.owner ? btn("Mở lại", function (ev) { chatSwitch(x.scope, true, ev.currentTarget); }, "primary") : "Chỉ chủ mạng mở lại");
+        return [name, x.enabled ? "Đang mở" : "ĐANG ĐÓNG", x.reason || "–", x.updated_at ? AFN.vnDateTime(x.updated_at) : "–", act];
+      })));
+    } catch (e) { empty(sbox, explain(e)); }
+  }
+  async function chatSwitch(scope, enabled, b) {
+    var reason = (prompt((enabled ? "Lý do MỞ LẠI chat" : "Lý do ĐÓNG chat") + " (bắt buộc, ghi vào nhật ký):") || "").trim();
+    if (reason.length < 5) { status("Cần nhập lý do (ít nhất 5 ký tự). Chưa thay đổi gì.", true); return; }
+    b.disabled = true;
+    try { await rpc("admin_set_chat_enabled", { p_scope: scope, p_enabled: enabled, p_reason: reason });
+      status(enabled ? "Đã mở lại chat." : "Đã đóng chat."); pingRoom("moderation"); loadChatSwitch(); loadAudit(); }
+    catch (e) { status(explain(e), true); } finally { b.disabled = false; }
   }
   // Báo phòng chat tải lại ngay (người xem khác không nhận được tin bị ẩn qua Realtime vì RLS).
   function pingRoom(room) {

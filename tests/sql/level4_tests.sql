@@ -363,6 +363,67 @@ select t.ok(jsonb_typeof((public.my_data_export())->'wallet_ledger') = 'array' a
 select t.ok(not ((public.my_data_export())::text like '%privacy-u1%' or (public.my_data_export())::text like '%viewer-a@%'), 'export contains no other member data');
 commit;
 
+-- 8. Level 4.4: công tắc Community Chat phía máy chủ ------------------------------------------
+begin; set local role anon;
+select t.ok((select count(*) from public.chat_settings where enabled) = 6, 'all 6 chat scopes open by default (Preview behaviour preserved)');
+commit;
+begin; set local role authenticated; select t.as_user(:U2);
+select t.ok((public.send_chat_message('film:khophim:kiem-khach', 'U2 trước khi đóng Kho Phim')).room = 'film:khophim:kiem-khach', 'member sends while open');
+select t.err($$update public.chat_settings set enabled = false$$, 'permission denied', 'member cannot flip the switch directly');
+select t.err($$select public.admin_set_chat_enabled('khophim', false, 'tự đóng chơi')$$, 'forbidden', 'member cannot close chat');
+commit;
+select set_config('t.kho_before', (select count(*)::text from public.chat_messages where room = 'film:khophim:kiem-khach'), false);
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.err($$select public.admin_set_chat_enabled('khophim', false, 'x')$$, 'reason_required', 'closing needs a reason');
+select t.err($$select public.admin_set_chat_enabled('nowhere', false, 'đóng thử nghiệm')$$, 'invalid_scope', 'unknown scope rejected');
+select t.ok((public.admin_set_chat_enabled('khophim', false, 'Tạm đóng chờ đánh giá pháp lý'))->>'enabled' = 'false', 'khophim admin closes khophim film rooms');
+select t.err($$select public.admin_set_chat_enabled('xuongphim', false, 'đóng site người khác')$$, 'forbidden', 'khophim admin cannot close another site');
+select t.err($$select public.admin_set_chat_enabled('khophim', true, 'tự mở lại')$$, 'forbidden', 'only the network owner may re-open chat');
+commit;
+begin; set local role authenticated; select t.as_user(:U2);
+select t.err($$select public.send_chat_message('film:khophim:kiem-khach', 'gửi khi đóng')$$, 'chat_disabled', 'API send blocked while khophim chat is closed');
+select t.ok((select count(*) from public.chat_messages where room = 'film:khophim:kiem-khach') = 0, 'members cannot read closed rooms (RLS → Realtime also silent)');
+select t.ok((public.send_chat_message('film:xuongphim:tin-hieu-47', 'Xưởng Phim vẫn mở')).room = 'film:xuongphim:tin-hieu-47', 'other sites stay open (per-site switch)');
+select t.ok((public.send_chat_message('network', 'Phòng chung vẫn mở')).room = 'network', 'network room stays open');
+commit;
+select set_config('t.kho_msg', (select id::text from public.chat_messages where room = 'film:khophim:kiem-khach' order by created_at limit 1), false);
+begin; set local role authenticated; select t.as_user('aaaaaaaa-0000-4000-8000-000000000006');
+select t.err($$select public.report_chat_message(current_setting('t.kho_msg')::uuid, 'spam', 'đóng rồi')$$, 'chat_disabled', 'reporting into a closed room blocked');
+commit;
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.ok((select count(*) from public.chat_messages where room = 'film:khophim:kiem-khach') = current_setting('t.kho_before')::int, 'khophim staff still read the closed room (moderation)');
+select public.chat_moderate_message(current_setting('t.kho_msg')::uuid, true, 'Dọn nội dung khi đóng');
+select t.ok((select hidden from public.chat_messages where id = current_setting('t.kho_msg')::uuid), 'moderation (hide) still works while closed');
+select t.err($$select public.send_chat_message('film:khophim:kiem-khach', 'admin gửi khi đóng')$$, 'chat_disabled', 'closed means closed for staff too');
+commit;
+begin; set local role authenticated; select t.as_user(:XMOD);
+select t.ok((select count(*) from public.chat_messages where room = 'film:khophim:kiem-khach') = 0, 'staff of another site cannot read the closed khophim room');
+select t.err($$select public.admin_set_chat_enabled('network', false, 'moderator đóng phòng chung')$$, 'forbidden', 'moderator (non-admin) cannot close the network room');
+commit;
+-- trigger cũng chặn mọi đường ghi khác (kể cả vai trò quản trị CSDL)
+select t.err($$insert into public.chat_messages(room, user_id, display_name, body) values ('film:khophim:kiem-khach', 'aaaaaaaa-0000-4000-8000-0000000000a2', 'x', 'ghi thẳng')$$, 'chat_disabled', 'direct insert into a closed room blocked by trigger');
+begin; set local role authenticated; select t.as_user(:KADMIN);
+select t.ok((public.admin_set_chat_enabled('network', false, 'Khẩn cấp: spam phòng chung'))->>'enabled' = 'false', 'site admin can emergency-close the network room');
+commit;
+begin; set local role authenticated; select t.as_user(:U2);
+select t.err($$select public.send_chat_message('network', 'gửi khi phòng chung đóng')$$, 'chat_disabled', 'network send blocked while closed');
+commit;
+begin; set local role authenticated; select t.as_user(:OWNER);
+select t.ok((public.admin_set_chat_enabled('network', true, 'Mở lại sau xử lý spam'))->>'enabled' = 'true', 'owner re-opens network room');
+select t.ok((public.admin_set_chat_enabled('khophim', true, 'Mở lại sau đánh giá'))->>'enabled' = 'true', 'owner re-opens khophim');
+commit;
+begin; set local role authenticated; select t.as_user(:U2);
+select t.ok((select count(*) from public.chat_messages where room = 'film:khophim:kiem-khach' and not hidden) = current_setting('t.kho_before')::int - 1, 're-opened: earlier messages visible again (data kept; the one hidden while closed stays hidden)');
+select t.ok((public.send_chat_message('film:khophim:kiem-khach', 'Đã mở lại')).body = 'Đã mở lại', 'sending works again after re-open');
+commit;
+select t.ok((select count(*) from public.admin_audit_log where action in ('chat.disable', 'chat.enable')) = 4, 'every switch change is audited (2 close + 2 open)');
+-- phạm vi thiếu cấu hình → đóng (an toàn mặc định)
+delete from public.chat_settings where scope = 'phimhay';
+begin; set local role authenticated; select t.as_user(:U2);
+select t.err($$select public.send_chat_message('film:phimhay:bat-ky', 'không có cấu hình')$$, 'chat_disabled|invalid_room', 'scope without a settings row is treated as closed');
+commit;
+insert into public.chat_settings(scope) values ('phimhay');
+
 -- 6. Invariants -------------------------------------------------------------------
 select t.ok(not exists (select 1 from public.wallets w where w.balance <> (select coalesce(sum(delta),0) from public.wallet_ledger l where l.user_id = w.user_id)), 'every wallet balance equals the sum of its ledger');
 select t.ok(not exists (select 1 from public.wallets where balance < 0), 'no negative balances');

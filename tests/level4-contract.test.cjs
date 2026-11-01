@@ -5,8 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const read = f => fs.readFileSync(path.join(ROOT, f), "utf8");
-const SQL = ["db/level4_rewards_unlock_social_v1.sql", "db/level4_1_playback_fallback.sql", "db/level4_2_community_chat.sql"].map(read).join("\n");
-const JS = ["assets/rewards.js", "assets/member-rewards.js", "assets/social.js", "assets/studio-ops.js", "assets/afn-core.js", "assets/community-chat.js"]
+const SQL = ["db/level4_rewards_unlock_social_v1.sql", "db/level4_1_playback_fallback.sql", "db/level4_2_community_chat.sql",
+  "db/level4_3_isolation_privacy.sql", "db/level4_4_chat_switch.sql"].map(read).join("\n");
+const JS = ["assets/rewards.js", "assets/member-rewards.js", "assets/social.js", "assets/studio-ops.js", "assets/afn-core.js", "assets/community-chat.js",
+  "assets/studio.js", "assets/level3.js"]
   .map(f => [f, read(f)]);
 
 function sqlFunctions() {
@@ -84,7 +86,11 @@ test("Cloudflare config: security headers, pretty film links and real 404", () =
   assert.match(h, /Content-Security-Policy: default-src 'self'/);
   assert.match(h, /frame-ancestors 'self'/);
   assert.match(h, /connect-src 'self' https:\/\/jurvphonehknrxjpowoe\.supabase\.co/);
-  assert.match(read("_redirects"), /^\/phim\/:slug\s+\/\?film=:slug\s+302$/m);
+  // Đường dẫn đẹp do Pages Function xử lý (giữ ?site=); _redirects không được bắt /phim (nếu bắt sẽ mất query).
+  assert.doesNotMatch(read("_redirects"), /^\/phim\//m);
+  const fn = read("functions/phim/[[path]].js");
+  assert.match(fn, /export function onRequestGet/);
+  assert.match(fn, /searchParams\.append\(k, v\)/, "giữ nguyên tham số gốc");
   assert.match(read("404.html"), /Không tìm thấy trang này/);
 });
 

@@ -117,7 +117,21 @@
     var s = list("site_staff").find(function (x) { return x.user_id === user.id && x.site_id === site; });
     return s ? s.role : null;
   }
+  // Level 4.4: công tắc chat (phạm vi thiếu dòng cấu hình → coi như mở trong mock; máy chủ thật coi là đóng).
+  function chatScope(room) { return room === "network" ? "network" : String(room).split(":")[1]; }
+  function chatOpen(room) { var r = list("chat_settings").find(function (x) { return x.scope === chatScope(room); }); return !r || r.enabled !== false; }
   var RPC = {
+    admin_set_chat_enabled: function (a) {
+      var owner = list("network_staff").some(function (n) { return user && n.user_id === user.id; });
+      if (String(a.p_reason || "").trim().length < 5) return err("reason_required");
+      if (a.p_enabled && !owner) return err("forbidden");
+      if (!a.p_enabled && !owner) { var r = staffOf(a.p_scope === "network" ? "xuongphim" : a.p_scope); if (r !== "admin") return err("forbidden"); }
+      var row = list("chat_settings").find(function (x) { return x.scope === a.p_scope; });
+      if (!row) { row = { scope: a.p_scope }; list("chat_settings").push(row); }
+      row.enabled = !!a.p_enabled; row.reason = a.p_reason; row.updated_at = new Date().toISOString();
+      list("admin_audit_log").push({ id: Date.now(), actor: user.id, site_id: a.p_scope === "network" ? null : a.p_scope, action: a.p_enabled ? "chat.enable" : "chat.disable", target: a.p_scope, details: {}, created_at: new Date().toISOString() });
+      save(); return { data: { scope: row.scope, enabled: row.enabled, reason: row.reason } };
+    },
     claim_daily_checkin: function (a) {
       if (!user) return err("login_required");
       var rules = list("reward_rules")[0];
@@ -237,6 +251,7 @@
       if (!/^(network|film:(xuongphim|khophim|phephim|phimhay|ghienphim):[a-z0-9][a-z0-9-]{0,119})$/.test(a.p_room || "")) return err("invalid_room");
       if (!body) return err("empty_message");
       if (body.length > 500) return err("message_too_long");
+      if (!chatOpen(a.p_room)) return err("chat_disabled");
       var m = list("chat_mutes").find(function (x) { return x.user_id === user.id; });
       if (m && (!m.muted_until || new Date(m.muted_until) > new Date())) return err("chat_muted");
       var mine = list("chat_messages").filter(function (x) { return x.user_id === user.id; });
@@ -252,6 +267,7 @@
       var m = list("chat_messages").find(function (x) { return x.id === a.p_message_id && !x.hidden; });
       if (!m) return err("message_not_found");
       if (m.user_id === user.id) return err("cannot_report_own");
+      if (!chatOpen(m.room)) return err("chat_disabled");
       if (!list("chat_reports").some(function (x) { return x.message_id === m.id && x.reporter === user.id; }))
         list("chat_reports").push({ id: uuid(), message_id: m.id, reporter: user.id, reason: a.p_reason, note: a.p_note || "", status: "open", created_at: new Date().toISOString() });
       save(); return { data: { status: "reported" } };

@@ -9,7 +9,7 @@ P="psql -X -q -v ON_ERROR_STOP=1"
 $P -d postgres -c "drop database if exists $DB" -c "create database $DB" >/dev/null
 for f in tests/sql/supabase_shim.sql db/auth_v1.sql db/level3_pilot.sql db/level3_completion_v1.sql \
          db/level3_engagement_v1.sql db/level3_policy_performance_cleanup.sql db/level3_fk_indexes.sql \
-         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql db/level4_2_community_chat.sql db/level4_3_isolation_privacy.sql tests/sql/seed.sql; do
+         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql db/level4_2_community_chat.sql db/level4_3_isolation_privacy.sql db/level4_4_chat_switch.sql tests/sql/seed.sql; do
   $P -d $DB -f "$f" >/dev/null 2>&1 || { echo "APPLY FAILED: $f"; $P -d $DB -f "$f"; exit 1; }
 done
 # Re-applying the Level 4 migration must be safe (idempotent).
@@ -17,6 +17,7 @@ $P -d $DB -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 || { echo "R
 $P -d $DB -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.1 FAILED"; exit 1; }
 $P -d $DB -f db/level4_2_community_chat.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.2 FAILED"; exit 1; }
 $P -d $DB -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.3 FAILED"; exit 1; }
+$P -d $DB -f db/level4_4_chat_switch.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.4 FAILED"; exit 1; }
 
 $P -d $DB -f tests/sql/level4_tests.sql 2>&1 | grep -E "PASS|FAIL|ERROR" | sed 's/^.*NOTICE:  //' | tee /tmp/afn_sql_results.txt
 grep -q "FAIL\|ERROR" /tmp/afn_sql_results.txt && { echo "SQL FUNCTIONAL TESTS FAILED"; exit 1; }
@@ -96,8 +97,16 @@ $P -d $R3 -f db/staging/98_rollback_level4_3.sql >/dev/null 2>&1 || { echo "ROLL
 a43=$(sig43 $R3)
 [ "$b43" != "$mid43" ] && check ok ok "4.3 actually changes the schema" || check same differ "4.3 actually changes the schema"
 [ "$b43" = "$a43" ] && check same same "98 rollback returns the schema exactly to Level 4.2" || { check differ same "98 rollback returns the schema exactly to Level 4.2"; diff <(echo "$b43") <(echo "$a43") | head -20; }
-$P -d $R3 -f db/staging/99_rollback_level4.sql >/dev/null 2>&1 && check ok ok "98 then 99 removes all of Level 4" || check fail ok "98 then 99 removes all of Level 4"
-$P -d $R3 -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_2_community_chat.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1 && check ok ok "Level 4 → 4.3 re-applies cleanly after full rollback" || check fail ok "Level 4 → 4.3 re-applies cleanly after full rollback"
+# 4.4 → gỡ bằng 97 → về đúng 4.3
+$P -d $R3 -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1; b44=$(sig43 $R3)
+$P -d $R3 -f db/level4_4_chat_switch.sql >/dev/null 2>&1; m44=$(sig43 $R3)
+$P -d $R3 -f db/staging/97_rollback_level4_4.sql >/dev/null 2>&1 || { echo "ROLLBACK 4.4 FAILED"; $P -d $R3 -f db/staging/97_rollback_level4_4.sql; }
+a44=$(sig43 $R3)
+[ "$b44" != "$m44" ] && check ok ok "4.4 actually changes the schema" || check same differ "4.4 actually changes the schema"
+[ "$b44" = "$a44" ] && check same same "97 rollback returns the schema exactly to Level 4.3" || { check differ same "97 rollback returns the schema exactly to Level 4.3"; diff <(echo "$b44") <(echo "$a44") | head -20; }
+$P -d $R3 -f db/staging/98_rollback_level4_3.sql >/dev/null 2>&1
+$P -d $R3 -f db/staging/99_rollback_level4.sql >/dev/null 2>&1 && check ok ok "97 → 98 → 99 removes all of Level 4" || check fail ok "97 → 98 → 99 removes all of Level 4"
+$P -d $R3 -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_2_community_chat.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_4_chat_switch.sql >/dev/null 2>&1 && check ok ok "Level 4 → 4.4 re-applies cleanly after full rollback" || check fail ok "Level 4 → 4.4 re-applies cleanly after full rollback"
 
 for i in $(seq 1 20); do call $C "select public.send_chat_message('network','race chat $i')" & done; wait
 check "$(q "select count(*) from chat_messages where user_id='$C'")" 5 "20 simultaneous chat sends from one user → rate limit holds at 5"

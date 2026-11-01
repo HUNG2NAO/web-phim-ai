@@ -1,3 +1,1 @@
-# Đường dẫn đẹp để chia sẻ phim / tập (giữ nguyên trang một tệp index.html).
-/phim/:slug/tap/:ep   /?film=:slug&tap=:ep   302
-/phim/:slug           /?film=:slug           302
+# Đường dẫn đẹp /phim/<slug>[/tap/<n>] do functions/phim/[[path]].js xử lý (giữ nguyên ?site= và tham số chiến dịch).

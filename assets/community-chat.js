@@ -26,6 +26,7 @@
     cannot_report_own: "Bạn không thể báo cáo tin của chính mình.",
     report_rate_limited: "Bạn đã gửi quá nhiều báo cáo hôm nay.",
     forbidden: "Bạn không có quyền thực hiện thao tác này.",
+    chat_disabled: "Trò chuyện ở phòng này đang tạm đóng.",
     reason_required: "Cần nhập lý do."
   };
   var REASONS = [["spam", "Spam"], ["harassment", "Quấy rối"], ["spoiler", "Tiết lộ nội dung"], ["inappropriate", "Không phù hợp"]];
@@ -81,6 +82,7 @@
   function mount(box, room, opts) {
     opts = opts || {};
     var c = AFN.client(), alive = true, channel = null, uid = null, msgs = {}, resync = 0, modReload = 0, offMod = null;
+    var scope = room === "network" ? "network" : room.split(":")[1], closed = false, muted = false;
     box.replaceChildren(); box.classList.add("afn-chat"); box.dataset.room = room;
     var head = el("div", "afn-chat-head");
     var title = el("h3", "afn-chat-title", opts.title || "Trò chuyện");
@@ -88,6 +90,7 @@
     head.append(title, live);
     var list = el("ol", "afn-chat-list"); list.setAttribute("aria-label", "Tin nhắn"); list.setAttribute("aria-live", "polite");
     var banner = el("p", "afn-chat-banner"); banner.hidden = true;
+    var closedNote = el("p", "afn-chat-closed"); closedNote.hidden = true; closedNote.setAttribute("role", "status");
     var form = el("form", "afn-chat-form");
     var input = el("textarea"); input.rows = 1; input.maxLength = 500; input.placeholder = "Nhập tin nhắn… (Enter để gửi)";
     input.setAttribute("aria-label", "Tin nhắn");
@@ -104,7 +107,7 @@
     var rules = el("p", "afn-chat-rules");
     var rl = el("a", "", "Quy tắc cộng đồng"); rl.href = "/chinh-sach.html#cong-dong"; rl.target = "_blank"; rl.rel = "noopener";
     rules.append("Tôn trọng nhau, không spam, không đăng thông tin cá nhân. ", rl);
-    box.append(head, banner, list, emo, form, count, rules, status);
+    box.append(head, closedNote, banner, list, emo, form, count, rules, status);
 
     function setStatus(t, bad) { status.textContent = t || ""; status.classList.toggle("bad", !!bad); }
     function render() {
@@ -135,6 +138,7 @@
     function btn(t, fn) { var b = el("button", "afn-chat-act", t); b.type = "button"; b.addEventListener("click", fn); return b; }
     function upsert(m) { if (!m || !m.id) return; if (m.hidden && m.user_id !== uid && !canModerate(room)) delete msgs[m.id]; else msgs[m.id] = m; }
     function load() {
+      if (closed && !canModerate(room)) return Promise.resolve();
       return c.from("chat_messages").select("id,room,user_id,display_name,body,created_at,hidden").eq("room", room)
         .order("created_at", { ascending: false }).limit(50).then(function (r) {
           if (!alive) return;
@@ -174,13 +178,27 @@
         announceModeration();
       });
     }
+    function lockInput() { input.disabled = send.disabled = muted || closed || !navigator.onLine; }
+    // Level 4.4: công tắc chat phía máy chủ. Máy chủ là nơi quyết định (chặn gửi + ẩn tin); ở đây chỉ hiển thị cho rõ.
+    function checkOpen() {
+      return c.from("chat_settings").select("enabled").eq("scope", scope).then(function (r) {
+        var row = !r.error && r.data && r.data[0];
+        closed = !!row && row.enabled === false;
+        var staff = canModerate(room);
+        closedNote.hidden = !closed;
+        closedNote.textContent = closed ? (staff ? "Phòng đang tạm đóng với thành viên — bạn đang xem với quyền kiểm duyệt." : "Trò chuyện ở phòng này đang tạm đóng.") : "";
+        form.hidden = emo.hidden = count.hidden = closed;
+        if (closed && !staff) { msgs = {}; list.replaceChildren(el("li", "afn-chat-empty", "Trò chuyện đang tạm đóng. Tin nhắn cũ vẫn được lưu giữ.")); }
+        lockInput();
+      }, function () { closed = false; });
+    }
     function checkMute() {
       return c.from("chat_mutes").select("muted_until").eq("user_id", uid).then(function (r) {
         var row = r.data && r.data[0];
-        var muted = !!row && (!row.muted_until || new Date(row.muted_until) > new Date());
+        muted = !!row && (!row.muted_until || new Date(row.muted_until) > new Date());
         banner.hidden = !muted;
         if (muted) banner.textContent = "Bạn đang bị tạm khóa chat" + (row.muted_until ? " đến " + AFN.vnDateTime(row.muted_until) : "") + ".";
-        input.disabled = send.disabled = muted || !navigator.onLine;
+        lockInput();
       });
     }
     function subscribe() {
@@ -210,7 +228,7 @@
     function onNet() {
       if (!alive) return;
       if (!navigator.onLine) { live.textContent = "Mất kết nối mạng"; live.classList.add("off"); input.disabled = send.disabled = true; }
-      else { live.classList.remove("off"); live.textContent = "Đang kết nối lại…"; checkMute(); load(); }
+      else { live.classList.remove("off"); live.textContent = "Đang kết nối lại…"; checkOpen().then(checkMute).then(load); }
     }
     window.addEventListener("online", onNet); window.addEventListener("offline", onNet);
 
@@ -224,7 +242,7 @@
       send.disabled = true; setStatus("");
       c.rpc("send_chat_message", { p_room: room, p_body: text }).then(function (r) {
         send.disabled = false;
-        if (r.error) { setStatus(explain(r.error), true); if (/chat_muted/.test(r.error.message || "")) checkMute(); return; }
+        if (r.error) { setStatus(explain(r.error), true); if (/chat_muted/.test(r.error.message || "")) checkMute(); if (/chat_disabled/.test(r.error.message || "")) checkOpen(); return; }
         input.value = ""; count.textContent = "0/500";
         upsert(r.data); render(); list.scrollTop = list.scrollHeight;
       }, function (err) { send.disabled = false; setStatus(explain(err), true); });
@@ -237,15 +255,16 @@
         var lb = el("button", "afn-btn primary", "Đăng nhập để trò chuyện"); lb.type = "button";
         lb.addEventListener("click", function () { AFN.openLogin(); });
         form.replaceChildren(lb); emo.hidden = true; count.hidden = true;
+        checkOpen();   // phòng đóng → khách thấy thông báo đóng thay vì lời mời đăng nhập
         return;
       }
       uid = u.id;
-      loadRoles(c, uid).then(function () { return checkMute(); }).then(function () { return load(); }).then(subscribe);
-      resync = setInterval(function () { if (navigator.onLine) { checkMute(); load(); } }, 45000);
+      loadRoles(c, uid).then(function () { return checkOpen(); }).then(function () { return checkMute(); }).then(function () { return load(); }).then(subscribe);
+      resync = setInterval(function () { if (navigator.onLine) { checkOpen().then(checkMute).then(load); } }, 45000);
       offMod = onModeration(function () {
         if (!alive) return;
-        clearTimeout(modReload); modReload = setTimeout(function () { checkMute().then(load); }, 300 + Math.random() * 700);
-      });   // gỡ tin bị ẩn mà Realtime không gửi (RLS); cập nhật khóa/mở khóa chat
+        clearTimeout(modReload); modReload = setTimeout(function () { checkOpen().then(checkMute).then(load); }, 300 + Math.random() * 700);
+      });   // gỡ tin bị ẩn mà Realtime không gửi (RLS); cập nhật khóa/mở khóa chat và đóng/mở phòng
     });
 
     return { destroy: function () {
