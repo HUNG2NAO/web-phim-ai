@@ -7,6 +7,7 @@
 <div id="studio-loading" class="state-box" role="status">Đang xác minh quyền quản trị…</div>
 <div id="studio-denied" class="state-box" hidden><h2>Không có quyền truy cập</h2><p id="studio-denied-reason">Tài khoản này chưa được cấp quyền quản trị.</p><a id="studio-return" class="btn ghost" href="./?site=xuongphim">Quay lại website</a></div>
 <div id="studio-app" hidden>
+  <div id="studio-mfa-banner" class="mfa-banner" role="status" hidden></div>
   <div class="studio-toolbar"><label for="studio-site">Website quản lý</label><select id="studio-site"></select><button class="btn ghost" id="studio-reload">Tải lại dữ liệu</button><span id="studio-status" role="status" aria-live="polite"></span></div>
   <div class="studio-tabs" role="tablist" aria-label="Nghiệp vụ quản trị">
     <button class="chip selected" type="button" data-studio-tab="overview">Tổng quan</button>
@@ -22,6 +23,7 @@
     <button class="chip" type="button" data-studio-tab="audit">Nhật ký</button>
     <button class="chip" type="button" data-studio-tab="staff">Phân quyền</button>
     <button class="chip" type="button" data-studio-tab="privacy">Yêu cầu dữ liệu</button>
+    <button class="chip" type="button" data-studio-tab="security">Bảo mật</button>
   </div>
   <section data-studio-panel="films" hidden>
     <div class="two-columns">
@@ -162,5 +164,6 @@
     <code class="ops-code">insert into public.site_staff(user_id, site_id, role) values ('&lt;user-uuid&gt;', 'xuongphim', 'moderator');</code>
   </section>
   <section data-studio-panel="privacy" hidden><h2>Yêu cầu quyền riêng tư</h2><p class="muted">Quản trị viên website nhận xử lý hoặc từ chối (kèm lý do); thành viên nhận thông báo ở mỗi bước. Xóa tài khoản do chủ mạng thực hiện: xem trước dữ liệu sẽ xóa, rồi gõ đúng email để xác nhận. Mọi thao tác được ghi nhật ký.</p><div id="studio-privacy" class="studio-list"></div></section>
+  <section data-studio-panel="security" hidden><h2>Bảo mật tài khoản quản trị</h2><p class="muted">Xác thực 2 lớp (TOTP) bằng ứng dụng trên điện thoại. Máy chủ kiểm tra ở mọi thao tác quản trị; thiếu 2FA khi đã bắt buộc chỉ làm mất quyền quản trị, không khóa tài khoản.</p><div id="studio-security" class="two-columns"></div></section>
 </div>
-</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio.js"></script><script src="assets/afn-core.js"></script><script src="assets/studio-ops.js"></script></body></html>
+</main><script src="assets/sites.js"></script><script src="assets/auth-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js"></script><script src="assets/studio-mfa.js"></script><script src="assets/studio.js"></script><script src="assets/afn-core.js"></script><script src="assets/studio-ops.js"></script></body></html>

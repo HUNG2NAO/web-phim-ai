@@ -20,7 +20,7 @@ const PRIVACY_TYPE={delete_account:"Yêu cầu xóa tài khoản",data_export:"Y
 const PRIVACY_STATUS={pending:"Chờ xử lý",in_review:"Đang xử lý",completed:"Đã hoàn tất",rejected:"Đã từ chối"};
 const PRIVACY_ERR={forbidden:"Bạn không có quyền với yêu cầu của website này.",invalid_transition:"Trạng thái đã thay đổi, hãy tải lại.",note_required:"Cần ghi lý do từ chối (ít nhất 5 ký tự).",
  use_account_deletion:"Yêu cầu xóa tài khoản chỉ hoàn tất khi chủ mạng thực hiện xóa.",email_mismatch:"Email nhập không khớp tài khoản — chưa xóa gì.",target_is_staff:"Tài khoản đang có quyền quản trị: gỡ quyền trước khi xóa.",
- cannot_delete_owner:"Không thể xóa tài khoản chủ mạng.",invalid_state:"Yêu cầu phải ở trạng thái Đang xử lý.",already_deleted:"Tài khoản đã được xóa trước đó."};
+ cannot_delete_owner:"Không thể xóa tài khoản chủ mạng.",mfa_required:"Xóa tài khoản thật cần phiên đã xác thực 2 lớp. Mở thẻ Bảo mật để bật 2FA hoặc nhập mã.",invalid_state:"Yêu cầu phải ở trạng thái Đang xử lý.",already_deleted:"Tài khoản đã được xóa trước đó."};
 const privacyError=e=>{const m=String(e&&e.message||"");const k=Object.keys(PRIVACY_ERR).find(x=>m.includes(x));return k?PRIVACY_ERR[k]:"Không thể cập nhật. Kiểm tra quyền truy cập.";};
 function empty(node,text){node.replaceChildren(element("p",text,"muted"));}
 function cards(){
@@ -90,13 +90,17 @@ function setLinks(){
 try{
  const {data,error}=await db.auth.getUser();if(error)throw error;owner=data?.user;
  if(!owner){screen("denied");$("#studio-denied-reason").textContent="Vui lòng đăng nhập ở trang chủ.";return;}
+ // Level 4.6: tài khoản đã bật 2FA → nhập mã (nâng phiên lên AAL2) TRƯỚC khi tải dữ liệu quản trị.
+ if(window.AFN_MFA){try{await window.AFN_MFA.gate(db);}catch(_){}}
  roles=await get("site_staff",{user_id:owner.id});
  try{isNetworkOwner=(await get("network_staff",{user_id:owner.id})).length>0;}catch(_){isNetworkOwner=false;}
  if(!roles.length){screen("denied");$("#studio-denied-reason").textContent="Bạn chưa được cấp quyền quản trị.";return;}
  roles.forEach(x=>{$("#studio-site").add(new Option(brandData.find(b=>b.id===x.site_id)?.name||x.site_id,x.site_id));});
  const wanted=new URLSearchParams(location.search).get("site");
  site=roles.some(x=>x.site_id===wanted)?wanted:(roles.some(x=>x.site_id==="xuongphim")?"xuongphim":roles[0].site_id);
- $("#studio-site").value=site;setLinks();screen("app");await refresh();
+ $("#studio-site").value=site;setLinks();screen("app");
+ if(window.AFN_MFA)window.AFN_MFA.render(db).catch(()=>{});
+ await refresh();
  if(wanted&&wanted!==site){const n=id=>brandData.find(b=>b.id===id)?.name||id;message("Bạn không có quyền quản trị "+n(wanted)+". Đang hiển thị "+n(site)+".",true);}
 }catch(_){screen("denied");$("#studio-denied-reason").textContent="Không thể kiểm tra quyền hoặc tải dữ liệu.";return;}
 $("#studio-site").addEventListener("change",async e=>{site=e.target.value;setLinks();try{await refresh();}catch(_){message("Không thể tải dữ liệu.",true);}});

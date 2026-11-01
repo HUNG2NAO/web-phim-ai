@@ -9,7 +9,7 @@ P="psql -X -q -v ON_ERROR_STOP=1"
 $P -d postgres -c "drop database if exists $DB" -c "create database $DB" >/dev/null
 for f in tests/sql/supabase_shim.sql db/auth_v1.sql db/level3_pilot.sql db/level3_completion_v1.sql \
          db/level3_engagement_v1.sql db/level3_policy_performance_cleanup.sql db/level3_fk_indexes.sql \
-         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql db/level4_2_community_chat.sql db/level4_3_isolation_privacy.sql db/level4_4_chat_switch.sql db/level4_5_grant_hardening.sql tests/sql/seed.sql; do
+         db/level4_rewards_unlock_social_v1.sql db/level4_1_playback_fallback.sql db/level4_2_community_chat.sql db/level4_3_isolation_privacy.sql db/level4_4_chat_switch.sql db/level4_5_grant_hardening.sql db/level4_6_staff_mfa.sql tests/sql/seed.sql; do
   $P -d $DB -f "$f" >/dev/null 2>&1 || { echo "APPLY FAILED: $f"; $P -d $DB -f "$f"; exit 1; }
 done
 # Re-applying the Level 4 migration must be safe (idempotent).
@@ -19,6 +19,7 @@ $P -d $DB -f db/level4_2_community_chat.sql >/dev/null 2>&1 || { echo "RE-APPLY 
 $P -d $DB -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.3 FAILED"; exit 1; }
 $P -d $DB -f db/level4_4_chat_switch.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.4 FAILED"; exit 1; }
 $P -d $DB -f db/level4_5_grant_hardening.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.5 FAILED"; exit 1; }
+$P -d $DB -f db/level4_6_staff_mfa.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.6 FAILED"; exit 1; }
 
 $P -d $DB -f tests/sql/level4_tests.sql 2>&1 | grep -E "PASS|FAIL|ERROR" | sed 's/^.*NOTICE:  //' | tee /tmp/afn_sql_results.txt
 grep -q "FAIL\|ERROR" /tmp/afn_sql_results.txt && { echo "SQL FUNCTIONAL TESTS FAILED"; exit 1; }
@@ -83,7 +84,9 @@ sig43(){ $P -d $1 -t -A -c "select string_agg(x, E'\n' order by x) from (
   union all select 'col '||table_name||'.'||column_name||' '||is_nullable from information_schema.columns where table_schema='public'
   union all select 'con '||conrelid::regclass||' '||pg_get_constraintdef(oid) from pg_constraint where connamespace='public'::regnamespace
   union all select 'idx '||indexname from pg_indexes where schemaname='public'
-  union all select 'grant '||table_name||' '||grantee||' '||privilege_type from information_schema.role_table_grants where table_schema='public' and grantee in ('anon','authenticated')
+  union all select 'grant '||table_name||' '||grantee||' '||privilege_type from information_schema.role_table_grants where table_schema='public' and grantee in ('anon','authenticated','service_role')
+  union all select 'seqacl '||c.relname||' '||pg_get_userbyid(a.grantee)||' '||a.privilege_type from pg_class c, aclexplode(c.relacl) a where c.relkind='S' and c.relnamespace='public'::regnamespace
+  union all select 'defacl '||d.defaclobjtype::text||' '||pg_get_userbyid(a.grantee)||' '||a.privilege_type from pg_default_acl d, aclexplode(d.defaclacl) a
   union all select 'colgrant '||table_name||'.'||column_name||' '||grantee||' '||privilege_type from information_schema.column_privileges where table_schema='public' and grantee='authenticated' and privilege_type='UPDATE'
   union all select 'trigger '||tgrelid::regclass||'.'||tgname from pg_trigger where not tgisinternal) s"; }
 R3=afn_rollback43
@@ -112,10 +115,17 @@ $P -d $R3 -f db/staging/96_rollback_level4_5.sql >/dev/null 2>&1 || { echo "ROLL
 a45=$(sig43 $R3)
 [ "$b45" != "$m45" ] && check ok ok "4.5 actually changes privileges" || check same differ "4.5 actually changes privileges"
 [ "$b45" = "$a45" ] && check same same "96 rollback restores privileges exactly to Level 4.4" || { check differ same "96 rollback restores privileges exactly to Level 4.4"; diff <(echo "$b45") <(echo "$a45") | head -20; }
+$P -d $R3 -f db/level4_5_grant_hardening.sql >/dev/null 2>&1; b46=$(sig43 $R3)
+$P -d $R3 -f db/level4_6_staff_mfa.sql >/dev/null 2>&1 || { echo "APPLY 4.6 FAILED"; $P -d $R3 -f db/level4_6_staff_mfa.sql; }; m46=$(sig43 $R3)
+$P -d $R3 -f db/staging/95_rollback_level4_6.sql >/dev/null 2>&1 || { echo "ROLLBACK 4.6 FAILED"; $P -d $R3 -f db/staging/95_rollback_level4_6.sql; }
+a46=$(sig43 $R3)
+[ "$b46" != "$m46" ] && check ok ok "4.6 actually changes the schema" || check same differ "4.6 actually changes the schema"
+[ "$b46" = "$a46" ] && check same same "95 rollback returns the schema exactly to Level 4.5" || { check differ same "95 rollback returns the schema exactly to Level 4.5"; diff <(echo "$b46") <(echo "$a46") | head -20; }
+$P -d $R3 -f db/staging/96_rollback_level4_5.sql >/dev/null 2>&1
 $P -d $R3 -f db/staging/97_rollback_level4_4.sql >/dev/null 2>&1
 $P -d $R3 -f db/staging/98_rollback_level4_3.sql >/dev/null 2>&1
-$P -d $R3 -f db/staging/99_rollback_level4.sql >/dev/null 2>&1 && check ok ok "96 → 97 → 98 → 99 removes all of Level 4" || check fail ok "96 → 97 → 98 → 99 removes all of Level 4"
-$P -d $R3 -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_2_community_chat.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_4_chat_switch.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_5_grant_hardening.sql >/dev/null 2>&1 && check ok ok "Level 4 → 4.5 re-applies cleanly after full rollback" || check fail ok "Level 4 → 4.5 re-applies cleanly after full rollback"
+$P -d $R3 -f db/staging/99_rollback_level4.sql >/dev/null 2>&1 && check ok ok "95 → 96 → 97 → 98 → 99 removes all of Level 4" || check fail ok "95 → 96 → 97 → 98 → 99 removes all of Level 4"
+$P -d $R3 -f db/level4_rewards_unlock_social_v1.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_1_playback_fallback.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_2_community_chat.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_3_isolation_privacy.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_4_chat_switch.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_5_grant_hardening.sql >/dev/null 2>&1 && $P -d $R3 -f db/level4_6_staff_mfa.sql >/dev/null 2>&1 && check ok ok "Level 4 → 4.6 re-applies cleanly after full rollback" || check fail ok "Level 4 → 4.6 re-applies cleanly after full rollback"
 
 for i in $(seq 1 20); do call $C "select public.send_chat_message('network','race chat $i')" & done; wait
 check "$(q "select count(*) from chat_messages where user_id='$C'")" 5 "20 simultaneous chat sends from one user → rate limit holds at 5"

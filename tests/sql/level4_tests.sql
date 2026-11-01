@@ -324,7 +324,7 @@ select t.ok((public.admin_execute_account_deletion(current_setting('t.req')::uui
 select t.ok(((public.admin_execute_account_deletion(current_setting('t.req')::uuid, 'privacy-u1@example.test'))->'counts'->>'chat_messages')::int = 3, 'dry run counts the member chat messages');
 commit;
 select t.ok(exists (select 1 from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), 'dry run deletes nothing');
-begin; set local role authenticated; select t.as_user(:OWNER);
+begin; set local role authenticated; select set_config('request.jwt.claims', json_build_object('sub', :OWNER, 'role', 'authenticated', 'aal', 'aal2')::text, true);  -- 4.6: xóa thật cần AAL2
 select t.ok((public.admin_execute_account_deletion(current_setting('t.req')::uuid, ' PRIVACY-U1@example.test ', false))->>'status' = 'deleted', 'owner executes deletion (e-mail compared case-insensitively)');
 commit;
 select t.ok(not exists (select 1 from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000a1'), 'account removed');
@@ -340,7 +340,7 @@ begin; set local role authenticated; select t.as_user(:XMOD);
 insert into public.member_privacy_requests(user_id, site_id, request_type) values (auth.uid(), 'xuongphim', 'delete_account');
 commit;
 select set_config('t.req2', (select id::text from public.member_privacy_requests where subject_id = 'aaaaaaaa-0000-4000-8000-000000000005'), false);
-begin; set local role authenticated; select t.as_user(:OWNER);
+begin; set local role authenticated; select set_config('request.jwt.claims', json_build_object('sub', :OWNER, 'role', 'authenticated', 'aal', 'aal2')::text, true);  -- 4.6: xóa thật cần AAL2
 select public.admin_privacy_request_set_status(current_setting('t.req2')::uuid, 'in_review');
 select t.err($$select public.admin_execute_account_deletion(current_setting('t.req2')::uuid, 'xp-mod@example.test', false)$$, 'target_is_staff', 'staff must lose their role before deletion');
 select t.ok((public.admin_privacy_request_set_status(current_setting('t.req2')::uuid, 'rejected', 'Tài khoản quản trị: gỡ quyền trước'))->>'status' = 'rejected', 'owner rejects with a reason');
@@ -445,6 +445,104 @@ begin; set local role anon;
 select public.log_landing('phimhay', '/', null, 'facebook', 'social', 'binh-thuong', null);
 commit;
 select t.ok((select count(*) from public.traffic_events where site_id = 'phimhay') = 1, 'other sites unaffected by the cap');
+
+-- 10. Level 4.6: 2FA nhân sự (không khóa tài khoản) + quyền đợt 2 -------------------------------
+create or replace function t.as_aal(u text, aal text) returns void language sql as $$
+  select set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated', 'aal', aal)::text, true);
+$$;
+grant execute on function t.as_aal(text, text) to public;
+-- 10a. Mặc định: chưa ai có factor, chưa bắt buộc → nhân sự làm việc như cũ
+begin; set local role authenticated; select t.as_aal(:KADMIN, 'aal1');
+select t.ok((public.my_security_status()->>'mfa_ok')::boolean, 'no factor + not required → staff unaffected (no lockout)');
+select t.ok((select count(*) from public.admin_member_wallets('khophim')) >= 0, 'Kho admin (no factor, aal1) still uses admin RPCs');
+commit;
+-- 10b. Kho admin đã đăng ký 2FA nhưng phiên mới aal1 → mất quyền QUẢN TRỊ, giữ quyền THÀNH VIÊN
+insert into auth.mfa_factors(user_id, status) values (:KADMIN, 'verified');
+insert into public.site_films(site_id, film_id, title, source_kind, youtube_id, rights_attested, published, created_by, film_type)
+values ('khophim', 'nhap-kho', 'Nháp Kho', 'youtube', 'DDDDDDDDDDD', true, false, :KADMIN, 'le');
+insert into public.chat_messages(room, user_id, display_name, body, hidden) values ('film:khophim:kiem-khach', :A, 'Khán giả A', 'tin đã ẩn', true);
+begin; set local role authenticated; select t.as_aal(:KADMIN, 'aal1');
+select t.ok(not (public.my_security_status()->>'mfa_ok')::boolean, 'factor enrolled + aal1 → mfa_ok false');
+select t.err($$select * from public.admin_member_wallets('khophim')$$, 'forbidden', 'aal1 with enrolled factor: admin RPC forbidden');
+select t.err($$select public.admin_set_chat_enabled('khophim', false, 'thử khi chưa nhập mã')$$, 'forbidden', 'aal1: cannot switch chat');
+select t.ok((select count(*) from public.site_films where film_id = 'nhap-kho') = 0, 'aal1: draft film of own site hidden (restrictive policy)');
+select t.ok((select count(*) from public.chat_messages where body = 'tin đã ẩn') = 0, 'aal1: hidden chat messages hidden (REST + Realtime use RLS)');
+select t.err($$insert into public.site_films(site_id, film_id, title, source_kind, youtube_id, rights_attested, published, created_by, film_type) values ('khophim', 'chen-thu', 'Chen', 'youtube', 'EEEEEEEEEEE', true, false, auth.uid(), 'le')$$, 'row-level security', 'aal1: cannot create films');
+select t.ok((select count(*) from public.site_films where film_id = 'kiem-khach') = 1, 'aal1: published films still readable (member view)');
+select t.ok((public.claim_daily_checkin('khophim')->>'status') is not null, 'aal1: member features (check-in) still work');
+commit;
+begin; set local role authenticated; select t.as_aal(:KADMIN, 'aal2');
+select t.ok((public.my_security_status()->>'mfa_ok')::boolean, 'aal2 → mfa_ok true');
+select t.ok((select count(*) from public.admin_member_wallets('khophim')) >= 0, 'aal2: admin RPC works again');
+select t.ok((select count(*) from public.site_films where film_id = 'nhap-kho') = 1, 'aal2: draft visible again');
+select t.ok((select count(*) from public.chat_messages where body = 'tin đã ẩn') = 1, 'aal2: hidden messages visible to moderator');
+select t.err($$select * from public.admin_member_wallets('xuongphim')$$, 'forbidden', 'aal2 does not widen scope: still no access to Xưởng Phim');
+rollback;
+-- 10c. Thành viên không bị ảnh hưởng
+begin; set local role authenticated; select t.as_aal(:B, 'aal1');
+select t.ok((select count(*) from public.site_films where film_id in ('tin-hieu-47', 'kiem-khach')) = 2, 'member: published films unaffected');
+select t.ok((select count(*) from public.chat_messages where body = 'tin đã ẩn') = 0, 'member: still cannot see hidden messages');
+select t.ok(not (public.my_security_status()->>'is_staff')::boolean, 'member: not staff');
+commit;
+-- 10d. Bật/tắt bắt buộc 2FA: chỉ chủ mạng, phiên aal2, có factor
+begin; set local role authenticated; select t.as_aal(:B, 'aal2');
+select t.err($$select public.admin_set_staff_mfa_required(true, 'thành viên thử bật')$$, 'forbidden', 'member cannot require MFA');
+commit;
+begin; set local role authenticated; select t.as_aal(:OWNER, 'aal2');
+select t.err($$select public.admin_set_staff_mfa_required(true, 'chủ chưa có factor')$$, 'mfa_required', 'owner without own factor cannot enable (cannot lock self out)');
+commit;
+insert into auth.mfa_factors(user_id, status) values (:OWNER, 'verified');
+begin; set local role authenticated; select t.as_aal(:OWNER, 'aal1');
+select t.err($$select public.admin_set_staff_mfa_required(true, 'phiên chưa nhập mã')$$, 'forbidden|mfa_required', 'owner at aal1 with factor cannot change the setting');
+commit;
+begin; set local role authenticated; select t.as_aal(:OWNER, 'aal2');
+select t.err($$select public.admin_set_staff_mfa_required(true, 'x')$$, 'reason_required', 'reason required');
+select t.ok((public.admin_set_staff_mfa_required(true, 'bật bắt buộc 2FA (kiểm thử)')->>'staff_without_factor')::int = 1, 'enable: reports 1 staff still without factor (XMOD)');
+select t.ok((select count(*) from public.admin_staff_mfa_status() where has_factor) = 2, 'staff MFA status list: 2 enrolled');
+commit;
+select t.ok((select count(*) from public.admin_audit_log where action = 'security.mfa_required_on') = 1, 'enabling is audited');
+begin; set local role authenticated; select t.as_aal(:XMOD, 'aal1');
+select t.err($$select * from public.admin_chat_reports(null)$$, 'forbidden', 'required + no factor: moderator loses moderation');
+select t.ok((select count(*) from public.site_films where film_id = 'tin-hieu-47') = 1, 'required + no factor: moderator can still log in and watch (no lockout)');
+commit;
+begin; set local role authenticated; select t.as_aal(:OWNER, 'aal2');
+select t.ok(not (public.admin_set_staff_mfa_required(false, 'tắt lại sau kiểm thử')->>'staff_mfa_required')::boolean, 'owner can turn requirement off');
+commit;
+begin; set local role authenticated; select t.as_aal(:XMOD, 'aal1');
+select t.ok((select count(*) from public.admin_chat_reports(null)) >= 0, 'requirement off → moderator works again');
+commit;
+-- 10e. Xóa tài khoản thật luôn cần aal2
+insert into auth.users(id, email, email_confirmed_at) values ('aaaaaaaa-0000-4000-8000-0000000000d9', 'xoa-thu@example.test', now());
+insert into public.member_privacy_requests(user_id, site_id, request_type, status) values ('aaaaaaaa-0000-4000-8000-0000000000d9', 'xuongphim', 'delete_account', 'in_review');
+begin; set local role authenticated; select t.as_aal(:OWNER, 'aal2');
+select t.ok((public.admin_execute_account_deletion((select id from public.member_privacy_requests where user_id = 'aaaaaaaa-0000-4000-8000-0000000000d9'), null, true)->>'status') = 'dry_run', 'dry run works at aal2');
+commit;
+begin; set local role authenticated; select t.as_aal(:OWNER, 'aal1');
+select t.err($$select public.admin_execute_account_deletion((select id from public.member_privacy_requests where user_id = 'aaaaaaaa-0000-4000-8000-0000000000d9'), 'xoa-thu@example.test', false)$$, 'forbidden|mfa_required', 'real deletion refused without aal2');
+commit;
+select t.ok(exists (select 1 from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000d9'), 'account not deleted');
+delete from public.member_privacy_requests where user_id = 'aaaaaaaa-0000-4000-8000-0000000000d9';
+delete from auth.users where id = 'aaaaaaaa-0000-4000-8000-0000000000d9';
+delete from auth.mfa_factors;
+delete from public.site_films where film_id = 'nhap-kho';
+delete from public.chat_messages where body = 'tin đã ẩn';
+-- 10f. Quyền đợt 2
+select t.ok((select count(*) from private.dangerous_grants()) = 0, 'dangerous_grants(): 0 rows (no TRUNCATE/sequence/no-policy grants, RLS on everywhere)');
+begin; set local role authenticated; select t.as_user(:B);
+select t.err($$select setval('public.wallet_ledger_id_seq', 1)$$, 'permission denied', 'authenticated cannot setval ledger sequence');
+select t.err($$select nextval('public.traffic_events_id_seq')$$, 'permission denied', 'authenticated cannot burn sequence values');
+commit;
+begin; set local role service_role;
+select t.err($$truncate public.wallet_ledger$$, 'permission denied', 'service_role cannot TRUNCATE either');
+commit;
+create table public.t_new_table(id int primary key); create function public.t_new_fn() returns int language sql as 'select 1';
+select t.ok(not has_table_privilege('authenticated', 'public.t_new_table', 'truncate') and not has_table_privilege('service_role', 'public.t_new_table', 'truncate'), 'new tables: no TRUNCATE for API roles (default privileges)');
+select t.ok(not has_function_privilege('anon', 'public.t_new_fn()', 'execute') or has_function_privilege('public', 'public.t_new_fn()', 'execute'), 'new functions: anon not granted via schema default (PUBLIC revoked per function in migrations)');
+drop table public.t_new_table; drop function public.t_new_fn();
+begin; set local role anon;
+select public.log_landing('ghienphim', '/', null, 'zalo', 'social', 'sau-4-6', null);
+commit;
+select t.ok((select count(*) from public.traffic_events where site_id = 'ghienphim') = 1, 'writes into identity-keyed tables via RPC still work after sequence revoke');
 
 -- 6. Invariants -------------------------------------------------------------------
 select t.ok(not exists (select 1 from public.wallets w where w.balance <> (select coalesce(sum(delta),0) from public.wallet_ledger l where l.user_id = w.user_id)), 'every wallet balance equals the sum of its ledger');

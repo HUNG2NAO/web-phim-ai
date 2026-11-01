@@ -111,8 +111,14 @@
   }
   function isOpen(e) { return e.access_tier === "free" || (e.access_tier === "early" && e.free_from && new Date(e.free_from) <= new Date()); }
   function err(m) { return { data: null, error: { message: m } }; }
+  // Level 4.6: 2FA nhân sự — giống private.mfa_ok(): aal2, hoặc (chưa có factor và chưa bắt buộc).
+  function factorsOf(uid) { return list("mfa_factors").filter(function (f) { return f.user_id === uid; }); }
+  function hasFactor(uid) { return factorsOf(uid).some(function (f) { return f.status === "verified"; }); }
+  function mfaRequired() { var s = list("security_settings")[0]; return !!(s && s.staff_mfa_required); }
+  function mfaOk() { return !!user && ((user.aal === "aal2") || (!hasFactor(user.id) && !mfaRequired())); }
+  function isOwner() { return !!user && mfaOk() && list("network_staff").some(function (n) { return n.user_id === user.id; }); }
   function staffOf(site) {
-    if (!user) return null;
+    if (!user || !mfaOk()) return null;
     if (list("network_staff").some(function (n) { return n.user_id === user.id; })) return "owner";
     var s = list("site_staff").find(function (x) { return x.user_id === user.id && x.site_id === site; });
     return s ? s.role : null;
@@ -121,8 +127,28 @@
   function chatScope(room) { return room === "network" ? "network" : String(room).split(":")[1]; }
   function chatOpen(room) { var r = list("chat_settings").find(function (x) { return x.scope === chatScope(room); }); return !r || r.enabled !== false; }
   var RPC = {
+    my_security_status: function () {
+      if (!user) return err("not_authenticated");
+      var staff = list("network_staff").some(function (n) { return n.user_id === user.id; }) || list("site_staff").some(function (s) { return s.user_id === user.id; });
+      return { data: { is_staff: staff, is_owner: list("network_staff").some(function (n) { return n.user_id === user.id; }), aal: user.aal || "aal1",
+        has_factor: hasFactor(user.id), staff_mfa_required: mfaRequired(), mfa_ok: mfaOk() }, error: null };
+    },
+    admin_staff_mfa_status: function () {
+      if (!isOwner()) return err("forbidden");
+      var out = list("network_staff").map(function (n) { return { user_id: n.user_id, display_name: "", scope: "network", role: "owner", has_factor: hasFactor(n.user_id) }; })
+        .concat(list("site_staff").map(function (s) { return { user_id: s.user_id, display_name: "", scope: s.site_id, role: s.role, has_factor: hasFactor(s.user_id) }; }));
+      return { data: out, error: null };
+    },
+    admin_set_staff_mfa_required: function (a) {
+      if (!isOwner()) return err("forbidden");
+      if (user.aal !== "aal2" || !hasFactor(user.id)) return err("mfa_required");
+      if (String(a.p_reason || "").trim().length < 5) return err("reason_required");
+      var s = list("security_settings"); if (!s.length) s.push({}); s[0].staff_mfa_required = !!a.p_required; save();
+      var ids = {}; list("network_staff").concat(list("site_staff")).forEach(function (x) { ids[x.user_id] = 1; });
+      return { data: { staff_mfa_required: !!a.p_required, staff_without_factor: Object.keys(ids).filter(function (id) { return !hasFactor(id); }).length }, error: null };
+    },
     admin_set_chat_enabled: function (a) {
-      var owner = list("network_staff").some(function (n) { return user && n.user_id === user.id; });
+      var owner = isOwner();
       if (String(a.p_reason || "").trim().length < 5) return err("reason_required");
       if (a.p_enabled && !owner) return err("forbidden");
       if (!a.p_enabled && !owner) { var r = staffOf(a.p_scope === "network" ? "xuongphim" : a.p_scope); if (r !== "admin") return err("forbidden"); }
@@ -323,7 +349,8 @@
       save(); return { data: { id: r.id, status: r.status } };
     },
     admin_execute_account_deletion: function (a) {
-      if (!user || !list("network_staff").some(function (n) { return n.user_id === user.id; })) return err("forbidden");
+      if (!isOwner()) return err("forbidden");
+      if (a.p_dry_run === false && user.aal !== "aal2") return err("mfa_required");
       var r = list("member_privacy_requests").find(function (x) { return x.id === a.p_request_id; });
       if (!r) return err("not_found");
       if (r.status !== "in_review") return err("invalid_state");
@@ -414,9 +441,40 @@
       getSession: async function () { return { data: { session: user ? { user: user, access_token: "e2e" } : null }, error: null }; },
       onAuthStateChange: function (cb) { listeners.push(cb); setTimeout(function () { cb(user ? "SIGNED_IN" : "INITIAL_SESSION", user ? { user: user } : null); }, 0); return { data: { subscription: { unsubscribe: function () {} } } }; },
       signOut: async function () { user = null; save(); notify("SIGNED_OUT"); return { error: null }; },
-      signInWithPassword: async function () { user = seed.loginAs || null; save(); notify("SIGNED_IN"); return { data: { user: user }, error: user ? null : { message: "Invalid login" } }; },
-      signUp: async function () { return { data: {}, error: null }; },
-      resetPasswordForEmail: async function () { return { data: {}, error: null }; },
+      signInWithPassword: async function (x) { window.__AFN_MOCK.calls.push({ signIn: x }); user = seed.loginAs || null; save(); notify("SIGNED_IN"); return { data: { user: user, weak_password: seed.weakPassword ? { reasons: ["length"] } : undefined }, error: user ? null : { message: "Invalid login" } }; },
+      signUp: async function (x) { window.__AFN_MOCK.calls.push({ signUp: x }); return { data: {}, error: null }; },
+      resetPasswordForEmail: async function (e, o) { window.__AFN_MOCK.calls.push({ recover: o }); return { data: {}, error: null }; },
+      refreshSession: async function () { return { data: { session: user ? { user: user } : null }, error: null }; },
+      // Level 4.6: MFA (TOTP). Mã đúng trong mock luôn là 123456.
+      mfa: {
+        getAuthenticatorAssuranceLevel: async function () {
+          if (!user) return { data: null, error: null };
+          return { data: { currentLevel: user.aal || "aal1", nextLevel: hasFactor(user.id) ? "aal2" : "aal1" }, error: null };
+        },
+        listFactors: async function () {
+          var all = user ? factorsOf(user.id).map(function (f) { return { id: f.id, factor_type: "totp", status: f.status, friendly_name: f.friendly_name }; }) : [];
+          return { data: { all: all, totp: all.filter(function (f) { return f.status === "verified"; }), phone: [] }, error: null };
+        },
+        enroll: async function (x) {
+          if (!user) return err("not_authenticated");
+          var f = { id: uuid(), user_id: user.id, status: "unverified", friendly_name: x.friendlyName }; list("mfa_factors").push(f); save();
+          return { data: { id: f.id, type: "totp", totp: { qr_code: "data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>", secret: "JBSWY3DPEHPK3PXP", uri: "otpauth://totp/x" } }, error: null };
+        },
+        challengeAndVerify: async function (x) {
+          var f = list("mfa_factors").find(function (y) { return y.id === x.factorId && user && y.user_id === user.id; });
+          if (!f) return err("factor_not_found");
+          if (x.code !== "123456") return { data: null, error: { message: "Invalid TOTP code entered", code: "mfa_verification_failed" } };
+          f.status = "verified"; user.aal = "aal2"; save(); notify("MFA_CHALLENGE_VERIFIED");
+          return { data: {}, error: null };
+        },
+        unenroll: async function (x) {
+          var f = list("mfa_factors").find(function (y) { return y.id === x.factorId && user && y.user_id === user.id; });
+          if (!f) return err("factor_not_found");
+          if (f.status === "verified" && user.aal !== "aal2") return err("AAL2 required");
+          db.mfa_factors = list("mfa_factors").filter(function (y) { return y !== f; }); if (!hasFactor(user.id)) user.aal = "aal1"; save();
+          return { data: { id: f.id }, error: null };
+        }
+      },
       signInWithOAuth: async function () { return { data: {}, error: null }; },
       verifyOtp: async function (x) {
         window.__AFN_MOCK.calls.push({ verifyOtp: x });

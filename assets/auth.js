@@ -85,6 +85,7 @@
         '<div class="afn-field afn-password-wrap"><label for="afn-password">Mật khẩu</label>',
         '<input id="afn-password" type="password" name="password" minlength="8" autocomplete="current-password" required></div>',
         '<p class="afn-auth-hint afn-signup-notice afn-auth-hidden" id="afn-signup-notice">Email và tên hiển thị của bạn được xử lý theo <a href="/chinh-sach.html#rieng-tu" target="_blank" rel="noopener">Chính sách riêng tư</a> (bản dự thảo). Khi trò chuyện, hãy tuân thủ <a href="/chinh-sach.html#cong-dong" target="_blank" rel="noopener">Quy tắc cộng đồng</a>.</p>',
+        '<div class="afn-captcha afn-auth-hidden" id="afn-captcha" aria-label="Xác minh chống robot"></div>',
         '<button class="afn-auth-primary" id="afn-submit" type="submit">Đăng nhập</button>',
       '</form>',
       '<button type="button" class="afn-auth-google" id="afn-google">Tiếp tục với Google</button>',
@@ -134,6 +135,42 @@
   var currentUser = null;
   var postResetSuccess = false;
   var passwordUpdatePending = false;
+  // Level 4.6 — chính sách mật khẩu (đồng bộ với Supabase "Password requirements").
+  var policy = cfg.passwordPolicy || { minLength: 10, letterAndDigit: true };
+  var POLICY_TEXT = "Mật khẩu cần ít nhất " + (policy.minLength || 10) + " ký tự" + (policy.letterAndDigit ? ", gồm cả chữ và số." : ".");
+  function passwordProblem(pw) {
+    if (String(pw).length < (policy.minLength || 10)) return POLICY_TEXT;
+    if (policy.letterAndDigit && !(/[A-Za-z\u00C0-\u1EF9]/.test(pw) && /\d/.test(pw))) return POLICY_TEXT;
+    return "";
+  }
+  // Level 4.6 — Cloudflare Turnstile (chỉ khi có site key công khai). Token dùng một lần → reset sau mỗi lần gửi.
+  var captchaBox = dialog.querySelector("#afn-captcha"), captchaKey = String(cfg.turnstileSiteKey || "").trim();
+  var captchaToken = "", captchaWidget = null, captchaLoading = null;
+  function captchaNeeded() { return !!captchaKey && ["login", "signup", "recover"].includes(mode); }
+  function loadCaptcha() {
+    if (!captchaKey) return Promise.resolve(null);
+    if (window.turnstile) return Promise.resolve(window.turnstile);
+    if (captchaLoading) return captchaLoading;
+    captchaLoading = new Promise(function (resolve) {
+      var s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.async = true; s.onload = function () { resolve(window.turnstile || null); }; s.onerror = function () { resolve(null); };
+      document.head.appendChild(s);
+    });
+    return captchaLoading;
+  }
+  async function showCaptcha() {
+    captchaBox.classList.toggle("afn-auth-hidden", !captchaNeeded());
+    if (!captchaNeeded()) return;
+    var ts = await loadCaptcha();
+    if (!ts) { message("Không tải được bước xác minh chống robot. Kiểm tra kết nối rồi mở lại.", true); return; }
+    if (captchaWidget === null) {
+      captchaWidget = ts.render(captchaBox, { sitekey: captchaKey, language: "vi", theme: "auto", action: "auth",
+        callback: function (t) { captchaToken = t; }, "expired-callback": function () { captchaToken = ""; },
+        "error-callback": function () { captchaToken = ""; } });
+    }
+  }
+  function resetCaptcha() { captchaToken = ""; if (captchaWidget !== null && window.turnstile) { try { window.turnstile.reset(captchaWidget); } catch (e) {} } }
   // Recovery links can create a valid session before PASSWORD_RECOVERY is dispatched.
   // Keep the reset-password form above the normal account view until the user finishes.
   var recovering = new URL(window.location.href).searchParams.get("auth") === "recovery";
@@ -185,6 +222,7 @@
       ({login:"Đăng nhập",signup:"Đăng ký",recover:"Quên mật khẩu",update:"Đặt lại mật khẩu"})[mode];
     form.classList.remove("afn-auth-hidden");
     successPanel.classList.add("afn-auth-hidden");
+    showCaptcha();
   }
   function showResetSuccess() {
     if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
@@ -333,7 +371,8 @@
     if (/invalid login credentials/i.test(raw)) return "Không thể đăng nhập bằng email và mật khẩu này. Hãy kiểm tra lại hoặc chọn Quên mật khẩu? để đặt mật khẩu mới.";
     if (/email address not authorized/i.test(raw)) return "Dịch vụ email thử nghiệm chưa được cấp quyền gửi tới địa chỉ này. Quản trị viên cần cấu hình SMTP.";
     if (/user already registered/i.test(raw)) return "Địa chỉ email này đã có tài khoản. Hãy đăng nhập hoặc sử dụng Quên mật khẩu.";
-    if (/password/i.test(raw) && /weak|short/i.test(raw)) return "Mật khẩu chưa đáp ứng yêu cầu bảo mật. Hãy dùng ít nhất 8 ký tự.";
+    if (/password/i.test(raw) && /weak|short|characters|should contain/i.test(raw)) return "Mật khẩu chưa đáp ứng yêu cầu bảo mật. " + POLICY_TEXT;
+    if (/captcha/i.test(raw)) return "Bước xác minh chống robot chưa hợp lệ hoặc đã hết hạn. Hãy xác minh lại rồi thử lại.";
     return "Không thể hoàn thành thao tác. Vui lòng kiểm tra thông tin hoặc thử lại.";
   }
   form.addEventListener("submit", async function (event) {
@@ -345,18 +384,20 @@
     if (mode === "signup" && (displayName.length < 2 || displayName.length > 60)) {
       message("Tên hiển thị cần từ 2 đến 60 ký tự.", true); return;
     }
-    if (["signup","update"].includes(mode) && password.length < 8) {
-      message("Mật khẩu phải có ít nhất 8 ký tự.", true); return;
+    if (["signup","update"].includes(mode) && passwordProblem(password)) {
+      message(passwordProblem(password), true); return;
     }
+    if (captchaNeeded() && !captchaToken) { message("Vui lòng hoàn tất bước xác minh chống robot.", true); showCaptcha(); return; }
+    var captcha = captchaNeeded() ? { captchaToken: captchaToken } : {};
     setBusy(true);
     try {
       var result;
-      if (mode === "login") result = await client.auth.signInWithPassword({email:email,password:password});
+      if (mode === "login") result = await client.auth.signInWithPassword({email:email,password:password,options:captcha});
       else if (mode === "signup") result = await client.auth.signUp({
         email:email,password:password,
-        options:{emailRedirectTo:callbackURL("confirm"),data:{display_name:displayName}}
+        options:Object.assign({emailRedirectTo:callbackURL("confirm"),data:{display_name:displayName}}, captcha)
       });
-      else if (mode === "recover") result = await client.auth.resetPasswordForEmail(email,{redirectTo:callbackURL("recovery")});
+      else if (mode === "recover") result = await client.auth.resetPasswordForEmail(email,Object.assign({redirectTo:callbackURL("recovery")}, captcha));
       else if (mode === "update") {
         passwordUpdatePending = true;
         result = await client.auth.updateUser({password:password});
@@ -378,7 +419,9 @@
       }
       else if (mode === "login") {
         await refreshUser();
-        if (dialog.open) dialog.close();
+        // Mật khẩu cũ chưa đạt chuẩn mới: vẫn cho đăng nhập (không khóa tài khoản), chỉ nhắc đổi.
+        if (result.data && result.data.weak_password) message("Đăng nhập thành công. Mật khẩu hiện tại chưa đạt chuẩn mới (" + POLICY_TEXT.replace(/^Mật khẩu cần /, "").replace(/\.$/, "") + "). Hãy đổi trong Tài khoản của tôi.", false);
+        else if (dialog.open) dialog.close();
       } else {
         await refreshUser();
         message("Đăng nhập thành công.", false);
@@ -386,7 +429,7 @@
     } catch (e) {
       passwordUpdatePending = false;
       message(friendlyAuthError(e, mode), true);
-    } finally { setBusy(false); }
+    } finally { setBusy(false); if (captchaNeeded()) resetCaptcha(); }
   });
 
   // Liên kết trong email (xác minh / đặt lại mật khẩu):

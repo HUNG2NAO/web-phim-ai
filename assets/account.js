@@ -185,9 +185,12 @@
     if(!current)return;
     var password=document.getElementById("afn-new-password").value;
     var confirmPassword=document.getElementById("afn-confirm-password").value;
-    if(password.length<8||password!==confirmPassword){
-      showStatus("Mật khẩu phải đủ 8 ký tự và hai lần nhập phải khớp.",true);return;
+    var policy=(window.AFN_AUTH_CONFIG||{}).passwordPolicy||{minLength:10,letterAndDigit:true},min=policy.minLength||10;
+    var policyText="Mật khẩu cần ít nhất "+min+" ký tự"+(policy.letterAndDigit?", gồm cả chữ và số":"");
+    if(password.length<min||(policy.letterAndDigit&&!(/[A-Za-z\u00C0-\u1EF9]/.test(password)&&/\d/.test(password)))){
+      showStatus(policyText+".",true);return;
     }
+    if(password!==confirmPassword){showStatus("Hai lần nhập mật khẩu chưa khớp.",true);return;}
     var btn=passwordForm.querySelector('button[type="submit"]');btn.disabled=true;
     try{
       var response=await supabase.auth.updateUser({password:password});

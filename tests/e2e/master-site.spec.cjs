@@ -15,7 +15,7 @@ function vnToday(offset = 0) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" })
     .format(new Date(Date.now() + offset * 864e5));
 }
-function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false, missing = [], loginAs = null } = {}) {
+function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false, missing = [], loginAs = null, extra = {}, weakPassword = false } = {}) {
   const t = {
     reward_rules: [{ id: 1, checkin_enabled: true, checkin_base: 10, streak_step: 2, streak_step_cap: 5, day7_bonus: 30 }],
     site_films: [{ id: "f1", site_id: "xuongphim", film_id: "tin-hieu-47", title: "Tín Hiệu 47 (thử nghiệm)", synopsis: "Phim thử nghiệm có tập mở sớm.",
@@ -45,7 +45,8 @@ function seed({ user = null, balance = 0, checkedInToday = false, entitlement = 
   if (checkedInToday) t.daily_checkins.push({ user_id: VIEWER.id, checkin_date: vnToday(), site_id: "xuongphim", streak: 1, points: 10 });
   if (entitlement) t.content_entitlements.push({ id: "22222222-2222-4222-8222-000000000001", user_id: VIEWER.id, episode_id: EP.e2, site_id: "xuongphim",
     film_id: "tin-hieu-47", episode_no: 2, points_paid: 50, status: "active", granted_at: "2026-10-30T02:00:00Z", expires_at: null });
-  return { tables: t, user, missing, loginAs };
+  Object.assign(t, extra);
+  return { tables: t, user, missing, loginAs, weakPassword };
 }
 async function setup(page, opts = {}) {
   const issues = [];
@@ -1179,6 +1180,121 @@ test.describe("Preview đa site — đường dẫn đẹp giữ đúng website"
     await expect(page.locator("#film-dialog")).toBeVisible();
     await expect(page.locator("#film-dialog")).toContainText("Phim thử khophim");
     expect(res.status()).toBe(200);
+    expect(issues).toEqual([]);
+  });
+});
+
+
+// ------------------------------------------------------------------ Level 4.6
+test.describe("Level 4.6 — xác thực 2 lớp nhân sự, chính sách mật khẩu, Turnstile", () => {
+  async function code(page, value) {
+    const d = page.locator("dialog.mfa-dialog");
+    await expect(d).toBeVisible();
+    await d.locator("#mfa-code").fill(value);
+    await d.locator("#mfa-submit").click();
+  }
+  test("chưa bật 2FA: Studio chạy như cũ; tự bật 2FA (sai mã bị từ chối, đúng mã thì bật); chủ mạng bật bắt buộc", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);           // không khóa ai khi chưa có factor
+    await expect(page.locator("#studio-mfa-banner")).toContainText("Khuyến nghị: bật xác thực 2 lớp");
+    await page.locator('[data-studio-tab="security"]').click();
+    await expect(page.locator("#mfa-state")).toHaveText("Chưa bật");
+    await expect(page.locator("#mfa-require-toggle")).toBeDisabled();                  // chưa có 2FA → không thể tự khóa mình
+    await page.locator("#mfa-enroll").click();
+    await expect(page.locator("#mfa-qr")).toBeVisible();
+    await expect(page.locator("#mfa-secret")).toHaveText("JBSWY3DPEHPK3PXP");
+    await code(page, "000000");
+    await expect(page.locator("dialog.mfa-dialog .mfa-error")).toContainText("Mã chưa đúng");
+    await code(page, "123456");
+    await expect(page.locator("#mfa-state")).toHaveText("Đã bật");
+    await expect(page.locator("#mfa-session")).toHaveText("Đã xác thực 2 lớp");
+    await expect(page.locator("#mfa-staff tr")).toHaveCount(4);                         // tiêu đề + 3 dòng nhân sự
+    await page.evaluate(() => { window.prompt = () => "Bật bắt buộc 2FA (kiểm thử)"; });
+    await page.locator("#mfa-require-toggle").click();
+    await expect(page.locator("#mfa-policy")).toHaveText("Bắt buộc 2FA");
+    expect((await mock(page)).security_settings[0].staff_mfa_required).toBe(true);
+    expect(issues).toEqual([]);
+  });
+
+  test("đã bật 2FA, phiên mới một lớp: hỏi mã trước khi tải dữ liệu; bỏ qua → chỉ mất quyền quản trị, nhập đúng → mở lại", async ({ page }) => {
+    const factor = { id: "f-owner", user_id: OWNER.id, status: "verified", friendly_name: "AFN Studio" };
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal1" }, extra: { mfa_factors: [factor] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("dialog.mfa-dialog")).toBeVisible();
+    await page.locator("#mfa-skip").click();
+    await expect(page.locator("#studio-app")).toBeVisible();                               // không bị chặn khỏi Studio/tài khoản
+    await expect(page.locator("#studio-mfa-banner")).toContainText("Quyền quản trị đang tạm khóa");
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(0);                // máy chủ (mock) từ chối RPC quản trị
+    await page.locator("#mfa-banner-action").click();
+    await code(page, "123456");
+    await page.waitForLoadState("load");
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);
+    await expect(page.locator("#studio-mfa-banner")).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+
+  test("bắt buộc 2FA + nhân sự chưa có factor: vẫn vào được, được hướng dẫn bật 2FA; xóa tài khoản thật cần AAL2", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER, extra: { security_settings: [{ staff_mfa_required: true }] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#studio-mfa-banner")).toContainText("Chủ mạng đã bật bắt buộc xác thực 2 lớp");
+    await page.locator("#mfa-banner-action").click();
+    await expect(page.locator('[data-studio-panel="security"]')).toBeVisible();
+    const r = await page.evaluate(async () => {
+      const c = window.supabase.createClient();
+      return (await c.rpc("admin_execute_account_deletion", { p_request_id: "x", p_confirm_email: "a@b.c", p_dry_run: false })).error.message;
+    });
+    expect(r).toBe("forbidden");
+    expect(issues).toEqual([]);
+  });
+
+  test("mật khẩu mới: ít nhất 10 ký tự gồm chữ và số (đăng ký); mật khẩu cũ yếu vẫn đăng nhập được, chỉ được nhắc đổi", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER, weakPassword: true });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog");
+    await dlg.locator('[data-mode="signup"]').click();
+    await dlg.locator("#afn-name").fill("Người thử");
+    await dlg.locator("#afn-email").fill("new@example.test");
+    for (const bad of ["abc12345", "chuachuachua"]) {
+      await dlg.locator("#afn-password").fill(bad);
+      await dlg.locator("#afn-submit").click();
+      await expect(dlg.locator("#afn-auth-message")).toContainText("ít nhất 10 ký tự, gồm cả chữ và số");
+    }
+    await dlg.locator("#afn-password").fill("xuongphim2026");
+    await dlg.locator("#afn-submit").click();
+    await expect(dlg.locator("#afn-auth-message")).toContainText("thư xác minh");
+    await dlg.locator('[data-mode="login"]').click();
+    await dlg.locator("#afn-email").fill("viewer@example.test");
+    await dlg.locator("#afn-password").fill("cu123");
+    await dlg.locator("#afn-submit").click();
+    await expect(dlg.locator("#afn-auth-message")).toContainText("Mật khẩu hiện tại chưa đạt chuẩn mới");
+    const calls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.signUp || c.signIn).map(c => Object.keys(c)[0]));
+    expect(calls).toEqual(["signUp", "signIn"]);
+    const scripts = await page.evaluate(() => [...document.scripts].map(s => s.src).filter(s => /challenges\.cloudflare/.test(s)));
+    expect(scripts).toEqual([]);                                                           // chưa có site key → không tải Turnstile
+    expect(issues).toEqual([]);
+  });
+
+  test("Turnstile bật (site key công khai): đăng nhập/đăng ký/quên mật khẩu gửi captchaToken, CSP cho phép widget", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER });
+    await page.route("**/assets/auth-config.js", r => r.fulfill({ status: 200, contentType: "application/javascript",
+      body: 'window.AFN_AUTH_CONFIG={enabled:true,googleEnabled:false,url:"https://jurvphonehknrxjpowoe.supabase.co",publishableKey:"sb_publishable_e2e_key_123456789",storageKey:"afn-e2e",turnstileSiteKey:"1x00000000000000000000AA"};' }));
+    await page.route("https://challenges.cloudflare.com/**", r => r.fulfill({ status: 200, contentType: "application/javascript",
+      body: 'window.turnstile={n:0,render:function(el,o){var self=this;el.dataset.sitekey=o.sitekey;setTimeout(function(){o.callback("XXXX.DUMMY.TOKEN."+(++self.n))},10);this.cb=o.callback;return "w1"},reset:function(){var self=this;setTimeout(function(){self.cb("XXXX.DUMMY.TOKEN."+(++self.n))},10)}};' }));
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog");
+    await expect(dlg.locator("#afn-captcha")).toBeVisible();
+    await expect(dlg.locator("#afn-captcha")).toHaveAttribute("data-sitekey", "1x00000000000000000000AA");
+    await page.waitForTimeout(50);
+    await dlg.locator("#afn-email").fill("viewer@example.test");
+    await dlg.locator("#afn-password").fill("matkhau2026");
+    await dlg.locator("#afn-submit").click();
+    await expect(page.locator(".afn-account-btn")).toHaveText(/Tài khoản/);
+    const c = await page.evaluate(() => window.__AFN_MOCK.calls.filter(x => x.signIn).map(x => x.signIn.options));
+    expect(c[0].captchaToken).toMatch(/^XXXX\.DUMMY\.TOKEN\.\d+$/);
+    expect(await cspViolations(page)).toEqual([]);
     expect(issues).toEqual([]);
   });
 });
