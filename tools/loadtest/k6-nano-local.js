@@ -45,8 +45,22 @@ export const options = FIXED ? {
 };
 const hdr = i => ({ headers: { Authorization: "Bearer " + TOKENS[i % TOKENS.length], "Content-Type": "application/json" } });
 
+// MODEL=optimized: trang sau tối ưu egress Level 4.6 — catalog/Social/quy tắc điểm lấy từ /api/catalog (edge, không chạm Supabase);
+// mỗi trang còn ví + điểm danh của người dùng (+1 /auth/v1/user ở Supabase Auth, không mô phỏng ở đây). 2% lượt mô phỏng edge hết hạn cache.
+const OPT = __ENV.MODEL === "optimized";
 export function page() {
   const i = Math.floor(Math.random() * TOKENS.length), site = SITES[i % 5], h = hdr(i);
+  if (OPT) {
+    const t1 = Date.now(), reqs = [
+      ["GET", `${API}/wallets?select=balance,earned_total,spent_total`, null, h],
+      ["GET", `${API}/daily_checkins?select=checkin_date,streak,points&order=checkin_date.desc&limit=1`, null, h]];
+    if (Math.random() < 0.02) reqs.push(["GET", `${API}/site_films?select=film_id,title,synopsis,genres,year,film_type,source_kind,youtube_id,video_url,published,rights_attested,created_at&site_id=eq.${site}&published=is.true&limit=200`, null, h],
+      ["GET", `${API}/site_episodes?select=id,film_id,episode_no,title,access_tier,price_points,free_from,access_days&site_id=eq.${site}&published=is.true`, null, h]);
+    const rs = http.batch(reqs);
+    pageTime.add(Date.now() - t1);
+    check(rs, { "page 200": a => a.every(r => r.status === 200) });
+    return;
+  }
   const ep = `${API}/site_episodes?select=id&site_id=eq.${site}&film_id=eq.phim-${1 + (i % 20)}&episode_no=eq.1`;
   const t0 = Date.now();
   const rs = http.batch([

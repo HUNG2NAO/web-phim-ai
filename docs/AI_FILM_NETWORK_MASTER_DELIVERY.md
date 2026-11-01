@@ -13,6 +13,90 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 15:40 — Level 4.6 (tiếp): giảm egress Supabase, kiểm MFA trên Auth thật, quy trình backup khóa công khai
+
+Chỉ sửa DEV/Preview (`feature/master-site-xuongphim-2026-10-31`). Không nâng gói, không đổi DNS, không merge `main`, không triển khai Production.
+
+**Migration 4.6:** vẫn **CHƯA áp** (Staging 14 migration, 0 policy `mfa_gate_*`, 0 factor). Sẽ chỉ áp sau khi có backup mới theo quy trình khóa công khai và được anh xác nhận.
+
+### 1. Kiểm tra trước migration
+- **PostgreSQL cô lập:**
+  - SQL 253 + 23 đạt.
+  - 27 policy RESTRICTIVE trên 13 bảng.
+  - Kịch bản REST 40/40 (mục 14:30 §3).
+  - Chủ chưa bật MFA giữ nguyên toàn quyền.
+- **Supabase Auth thật** (Preview, tài khoản QA thành viên SIGNUP1, không phải nhân sự):
+  - TOTP đã bật sẵn trên project.
+  - Đăng ký factor → mã sai bị từ chối → mã đúng nâng phiên lên **AAL2** (`totp` + `password`) → gỡ factor → về AAL1, còn 0 factor (SQL xác nhận).
+  - JWT thật có claim `aal`, đúng dữ liệu mà 4.6 dựa vào.
+  - Mã TOTP được tính ngay trong trang; khóa bí mật của factor không ra khỏi trình duyệt và không vào log.
+- **Khôi phục quyền quản trị** (`db/staging/94_mfa_break_glass.sql`): đã chạy thử việc tắt bắt buộc 2FA và gỡ factor của một nhân sự, có ghi nhật ký. Đăng nhập bằng mật khẩu không bao giờ bị khóa bởi 4.6.
+
+### 2. Giảm egress Supabase (DEV/Preview, đo trên Preview thật)
+| Thay đổi | Cách làm |
+|---|---|
+| Catalog tĩnh ở edge | Pages Function `GET /api/catalog?site=` trả phim, tập, Social, quy tắc điểm đã phát hành, **chỉ các cột cần dùng**, không có nguồn phát của tập. Cache 60 giây ở Cloudflare (Cache API) + `stale-while-revalidate`. Lỗi thì trả 502 không cache, trình duyệt tự quay về Supabase |
+| Cache trình duyệt | `AFN.publicData()`: một lần tải cho cả trang + sessionStorage 60 giây |
+| Bỏ lời gọi trùng | Social: một promise cho mỗi site. Ví/điểm danh: chỉ tải lại khi người dùng thật sự đổi (đọc phiên cục bộ). `/auth/v1/user`: bộ đệm không bị xóa khi khôi phục phiên phát `SIGNED_IN` cho cùng người dùng |
+| Truy vấn tối thiểu | Bỏ `select *` ở catalog và quy tắc điểm |
+| Ngắt Realtime khi không dùng | Tab ẩn quá 5 phút → gỡ kênh chat + kênh kiểm duyệt, dừng đồng bộ 45 giây. Quay lại → tải lại tin và kết nối lại. Vòng đồng bộ cũng bỏ qua khi tab đang ẩn |
+
+| Đo trên Preview thật (đã đăng nhập) | Trước | Sau |
+|---|---|---|
+| Lời gọi Supabase mỗi lần tải trang | **12** (5 cặp trùng) | **3** (`auth/v1/user`, ví, điểm danh) |
+| Catalog | 2 truy vấn trực tiếp mỗi lượt xem | `/api/catalog`: lần đầu MISS 541 ms, sau đó **HIT ở edge** 90–126 ms, khoảng 1 KB |
+
+- **Kiểm thử:**
+  - E2E **104/104** (+3: không gọi trùng, catalog edge không chạm Supabase, ngắt/nối lại Realtime). Bài "không gọi trùng" chạy trên mã cũ thì **trượt** (2 lời gọi), trên mã mới thì đạt.
+  - Catalog function 3/3 (cột tối thiểu, không có nguồn phát, cache HIT, tên miền thật quyết định site, 502 không cache).
+  - site-config 12/12, gồm quét repo không có khóa bí mật.
+- **Độ tươi dữ liệu:** phim/tập mới phát hành hiện trên trang công khai trong tối đa khoảng 60 giây (edge) + 60 giây (trình duyệt). Studio đọc trực tiếp nên không bị trễ.
+
+### 3. Năng lực sau tối ưu (môi trường giả lập Nano: 0,5 nhân, 512 MB, `MODEL=optimized`)
+| Trang/giây | p95 | Ghi chú |
+|---|---|---|
+| 33 (≈ 1.000 người online) | 3 ms | |
+| 200 | 3 ms | |
+| 260 | 2,8 s | Bão hòa |
+| 400 | 17,9 s, 5,6% lỗi | PostgREST bị hủy vì hết RAM. Vẫn cần giới hạn tần suất ở biên trước khi mở rộng |
+
+- **Tầng CSDL/REST:** đủ khoảng **6.000 người online** (trước tối ưu khoảng 1.600). REST mỗi trang **1,4 KB** (trước 83 KB với danh mục 20 phim/site).
+- **Egress ước tính:** khoảng 3 KB/trang, gồm cả Auth. 1.000 người online trong 1 giờ ≈ 0,36 GB (trước ≈ 9,9 GB). Free 5 GB/tháng ≈ **14 giờ cao điểm 1.000 người/tháng** (trước khoảng 30 phút).
+- **Realtime:** vẫn giới hạn cứng 200 kết nối trên Free. Ngắt khi tab ẩn chỉ giúp không giữ kết nối thừa, không nâng được giới hạn này.
+
+### 4. Mật khẩu mạnh và Turnstile — tương thích với Auth hiện tại (đọc Dashboard, không lưu thay đổi)
+| Thiết lập Supabase (Staging) | Hiện tại | Đề xuất | Tương thích |
+|---|---|---|---|
+| Minimum password length | 8 | **10** | Có. Frontend đã yêu cầu 10; mật khẩu cũ vẫn đăng nhập được |
+| Password requirements | Không yêu cầu | **Letters and digits** | Có |
+| Secure password change / Require current password | Tắt | Để vòng sau | Chưa. Trang tài khoản chưa có bước xác thực lại; có thể chặn luồng quên mật khẩu |
+| Leaked password protection | Tắt | — | Chỉ có ở gói Pro |
+| CAPTCHA (Bot and Abuse Protection) | **Tắt** | Bật sau khi có widget | Có. Frontend gửi `captchaToken` chỉ khi có site key; hiện để trống |
+
+Hai thiết lập đầu do chủ hệ thống bấm trong Dashboard → Authentication → Sign In / Providers → Email.
+
+### 5. Backup mới bằng khóa công khai (chuẩn bị xong, chờ khóa của anh)
+1. Trên PC, trong thư mục dự án: `powershell -ExecutionPolicy Bypass -File tools\setup-age-key.ps1`.
+   - Script tải age chính thức và tạo khóa bí mật tại `%USERPROFILE%\afn-backup-key.txt` (ngoài repo, chỉ tài khoản Windows của anh đọc được).
+   - Script ghi **khóa công khai** vào `backups\supabase\recipient.txt`, không in khóa bí mật.
+2. Claude đọc `recipient.txt`, xuất dữ liệu (chỉ đọc), thử khôi phục vào CSDL cô lập, mã hóa bằng `tools/backup-encrypt-age.sh` (bản rõ bị xóa), rồi ghi `.json.age` + manifest SHA-256 lên PC.
+3. Anh kiểm tra: `tools\verify-backup-age.ps1 -File … -Key %USERPROFILE%\afn-backup-key.txt`. Bản rõ tạm bị xóa ngay sau khi đối chiếu.
+
+- `.gitignore` chặn `afn-backup-key*`. Kiểm thử quét repo không có `AGE-SECRET-KEY`, `sb_secret_` hay JWT `service_role`.
+- Các tệp `.zip` cũ dùng mật khẩu đã lộ: anh có thể tự xóa sau khi bản `.age` mới đã kiểm tra đạt.
+
+### Kết luận vòng này
+| Hạng mục | Trạng thái |
+|---|---|
+| **LEVEL 4.6 STAGING** | **CHƯA VERIFIED**: migration chưa áp; chờ backup `.age` và xác nhận |
+| MFA trên Supabase Auth thật | **PASS** (đăng ký, AAL2, gỡ factor; claim `aal` có trong JWT) |
+| Giảm egress (DEV/Preview) | **PASS**: 12 → 3 lời gọi mỗi trang; catalog HIT ở edge |
+| Năng lực 1.000 người (Free) | **CSDL/REST: đủ, dư khoảng 6 lần.** Egress: đủ khoảng 14 giờ cao điểm/tháng. **Realtime: vẫn giới hạn 200** |
+| Mật khẩu / Turnstile | **READY**: chờ chủ hệ thống chỉnh 2 mục trong Dashboard và tạo widget |
+| PRODUCTION | **ON HOLD** |
+
+---
+
 ## Cập nhật 01/11/2026 14:30 — Level 4.6: MFA quản trị, chính sách mật khẩu, Turnstile, quyền đợt 2, đo năng lực trên gói hiện tại
 
 Quyết định của chủ hệ thống áp dụng cho vòng này:

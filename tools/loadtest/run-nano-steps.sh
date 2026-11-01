@@ -8,7 +8,7 @@ CG=/sys/fs/cgroup/memory/afn_nano
 printf "%-6s %-8s %-8s %-8s %-8s %-8s %-9s %-8s\n" rate pages p50_ms p95_ms p99_ms failed writes mem_mb
 for r in $RATES; do
   [ -f $CG/memory.max_usage_in_bytes ] && echo 0 > $CG/memory.max_usage_in_bytes 2>/dev/null || true
-  "$K6" run --quiet -e RATE=$r -e API=http://127.0.0.1:3001 -e TOKENS=/tmp/afn-nano/tokens.json --summary-export="$OUT/r$r.json" tools/loadtest/k6-nano-local.js > "$OUT/r$r.txt" 2>&1 || true
+  "$K6" run --quiet -e MODEL=${MODEL:-full} -e MAX_RATE=${MAX_RATE:-160} -e RATE=$r -e API=http://127.0.0.1:3001 -e TOKENS=/tmp/afn-nano/tokens.json --summary-export="$OUT/r$r.json" tools/loadtest/k6-nano-local.js > "$OUT/r$r.txt" 2>&1 || true
   mem=$(( $(cat $CG/memory.max_usage_in_bytes 2>/dev/null || echo 0) / 1048576 ))
   python3 - "$OUT/r$r.json" "$r" "$mem" <<'PY'
 import json,sys
