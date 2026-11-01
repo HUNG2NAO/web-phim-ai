@@ -11,14 +11,8 @@
   function store(key, val) {
     try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch (e) { return null; }
   }
-  function detectSite() {
-    var host = location.hostname.toLowerCase().replace(/^www\./, "");
-    var byHost = SITES.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); });
-    if (byHost) return { site: byHost, preview: false };
-    var candidates = [new URLSearchParams(location.search).get("site"), location.hash.slice(1), store("pv-site")];
-    var chosen = candidates.map(function (id) { return SITES.find(function (s) { return s.id === id; }); }).find(Boolean);
-    return { site: chosen || SITES[0], preview: true };
-  }
+  // Bộ nhận diện chung (assets/sites.js): tên miền thật → Preview khóa theo site → ?site= → #hash → lựa chọn trước đó.
+  function detectSite() { return window.AFN_RESOLVE_SITE(); }
 
   var state = detectSite();
   var site = state.site;
@@ -81,6 +75,9 @@
   function applyBrand() {
     var world = site.world || "co-trang";
     document.documentElement.setAttribute("data-world", world);
+    document.documentElement.setAttribute("data-site", site.id);
+    var th = document.querySelector("link[data-site-theme]");      // lớp giao diện riêng: đổi theo site đang xem thử
+    if (th && th.getAttribute("data-site-theme") !== site.id) { th.href = "assets/themes/" + site.id + ".css"; th.setAttribute("data-site-theme", site.id); }
     GENRES = (window.GENRES || {})[world] || [];
     films = ALL_FILMS.filter(function (f) { return (f.world || "co-trang") === world && (!f.sites || f.sites.indexOf(site.id) !== -1); });
     var root = document.documentElement.style;
@@ -107,7 +104,9 @@
     });
     var bar = $("#preview-bar");
     bar.hidden = !state.preview;
-    if (state.preview) {
+    if (state.preview && state.locked) {          // Preview riêng của một website: không cho chuyển sang site khác
+      $("#pv-pills").innerHTML = '<span class="pv-pill" aria-current="true" style="--c:' + site.accent + '"><span class="dot"></span>' + esc(site.domain) + ' · bản xem thử riêng</span>';
+    } else if (state.preview) {
       $("#pv-pills").innerHTML = SITES.map(function (s) {
         return '<button class="pv-pill" type="button" data-site="' + s.id + '" aria-pressed="' + (s.id === site.id) + '" style="--c:' + s.accent + '">' +
           '<span class="dot"></span>' + esc(s.domain) + '</button>';
@@ -510,6 +509,7 @@
         return;
       }
       if (s === "login_required") return;
+      if (s === "disabled") { playerNote(p, "Website này chưa mở chức năng mở khóa tập bằng điểm."); return; }
       playerNote(p, "Chưa mở khóa được. Điểm của bạn chưa bị trừ — vui lòng thử lại.", [
         { label: "Thử lại", primary: true, run: function (e) { doUnlock(p, f, info, e.currentTarget); } }]);
     });
@@ -578,7 +578,7 @@
   document.addEventListener("click", function (e) {
     var t = e.target.closest("button, a"); if (!t) return;
     var d = t.dataset;
-    if (d.site && state.preview) {
+    if (d.site && state.preview && !state.locked) {
       site = SITES.find(function (s) { return s.id === d.site; }) || site;
       store("pv-site", site.id);
       $("#q").value = "";

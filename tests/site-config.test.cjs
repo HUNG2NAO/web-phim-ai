@@ -79,6 +79,45 @@ test("Shared Core resolver maps real domains, www and previews to the right bran
   }
 });
 
+test("site-locked previews: alias site-<id> / project <id>-ai / afn-<id> serve ONLY that site (client and Pages Functions agree)", async () => {
+  const mod = await import("data:text/javascript," + encodeURIComponent(fs.readFileSync(path.join(ROOT, "functions/_site.js"), "utf8")));
+  for (const s of SITES) {
+    for (const host of ["site-" + s.id + ".web-phim-ai-5sites.pages.dev", "abc123.site-" + s.id + ".web-phim-ai-5sites.pages.dev",
+                        s.id + "-ai.pages.dev", "x1y2.afn-" + s.id + ".pages.dev"]) {
+      const other = SITES.find(o => o.id !== s.id).id;
+      const r = AFN_RESOLVE_SITE({ hostname: host, search: "?site=" + other, hash: "#" + other });
+      assert.equal(r.site.id, s.id, host + " must stay on " + s.id + " even with ?site=" + other);
+      assert.equal(r.preview, true, host + " is still a preview (noindex)");
+      assert.equal(r.locked, true);
+      const f = mod.siteFor({ url: "https://" + host + "/?site=" + other });
+      assert.deepEqual([f.id, f.real, f.locked], [s.id, false, true], "functions/_site.js agrees for " + host);
+    }
+  }
+  // Không khóa nhầm: alias của nhánh feature (tên bị Cloudflare cắt ngắn) và Preview chung vẫn chọn bằng ?site=
+  for (const host of ["feature-master-site-xuongphi.web-phim-ai-5sites.pages.dev", "web-phim-ai-5sites.pages.dev", "localhost"]) {
+    const r = AFN_RESOLVE_SITE({ hostname: host, search: "?site=phimhay" });
+    assert.deepEqual([r.site.id, r.locked], ["phimhay", false], host);
+    assert.equal(mod.siteFor({ url: "https://" + host + "/?site=phimhay" }).locked, false);
+  }
+});
+
+test("per-site independence: theme file per site (scoped), feature flags valid, release version set", () => {
+  const known = Object.keys(ctx.window.AFN_FEATURE_DEFAULTS);
+  for (const s of SITES) {
+    const css = fs.readFileSync(path.join(ROOT, "assets/themes", s.id + ".css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const sel of css.split("{").slice(0, -1).map(x => x.split("}").pop().trim()).filter(x => x && !x.startsWith("@") && !/^(from|to|\d+%)$/.test(x)))
+      for (const one of sel.split(",")) assert.match(one.trim(), new RegExp('^(html|:root)?\\[data-site="' + s.id + '"\\]'), "themes/" + s.id + ".css: " + one);
+    for (const k of Object.keys(s.features || {})) assert.ok(known.includes(k), s.id + ": unknown feature flag " + k);
+    assert.match((s.release || {}).version || "", /^\d+\.\d+\.\d+$/, s.id + " release.version");
+    for (const k of known) assert.equal(ctx.window.AFN_SITE_FEATURE(k, s), (s.features || {})[k] !== false);
+  }
+  assert.equal(ctx.window.AFN_SITE_FEATURE("chat", { features: { chat: false } }), false);
+  assert.equal(ctx.window.AFN_SITE_FEATURE("chat", { features: {} }), true);
+  // Không tệp Shared Core nào được tham chiếu trực tiếp lớp giao diện của một site cụ thể
+  for (const f of fs.readdirSync(path.join(ROOT, "assets")).filter(n => /\.(js|css)$/.test(n) && n !== "sites.js"))
+    assert.doesNotMatch(fs.readFileSync(path.join(ROOT, "assets", f), "utf8"), /themes\/(xuongphim|khophim|phephim|phimhay|ghienphim)\.css/, f);
+});
+
 test("no source file hardcodes the list of five site ids outside sites.js and the SQL", () => {
   const ids = SITES.map(s => '"' + s.id + '"');
   for (const f of fs.readdirSync(path.join(ROOT, "assets")).filter(n => n.endsWith(".js") && n !== "sites.js" && n !== "level3-config.js")) {
@@ -105,7 +144,7 @@ test("SEO: functions/_site.js domains match SITES and sitemaps are up to date", 
   assert.match(robotsSrc, /INDEXABLE\.has\(s\.id\)/, "robots.txt must respect the indexing gate");
   assert.match(fs.readFileSync(path.join(ROOT, "index.html"), "utf8"), /<meta name="robots" content="noindex/, "demo site keeps noindex");
   const req = u => ({ url: u });
-  assert.deepEqual(mod.siteFor(req("https://www.khophim.ai/x")), { id: "khophim", domain: "khophim.ai", real: true });
+  assert.deepEqual(mod.siteFor(req("https://www.khophim.ai/x")), { id: "khophim", domain: "khophim.ai", real: true, locked: true });
   assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=phephim")).real, false);
   assert.equal(mod.siteFor(req("https://abc.web-phim-ai-5sites.pages.dev/?site=evil")).id, "xuongphim");
 });

@@ -1,0 +1,8 @@
+/* AI FILM NETWORK — LỚP GIAO DIỆN RIÊNG của website "xuongphim".
+   • Chỉ được tải khi đang xem site xuongphim (assets/sites.js), không ảnh hưởng 4 website còn lại.
+   • MỌI quy tắc phải bắt đầu bằng [data-site="xuongphim"] (tools/site-package.cjs check chặn nếu sai);
+     @keyframes / biến phải có tiền tố "xuongphim-".
+   • Màu nhấn, tên, ấn triện, danh mục, Social, SEO: sửa trong assets/sites.js (mục "xuongphim") hoặc Studio — không ở đây.
+   • Thay đổi Shared Core (assets/*.js, assets/*.css chung) phải chạy hồi quy cho cả 5 website.
+   Ví dụ: [data-site="xuongphim"] .hero h1 { letter-spacing: .01em; } */
+[data-site="xuongphim"] { --site-theme-version: 1; }

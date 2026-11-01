@@ -10,17 +10,11 @@
   function store(key, val) {
     try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch (e) { return null; }
   }
-  function hostBrand() {
-    var host = location.hostname.toLowerCase().replace(/^www\./, "");
-    return SITES.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); }) || null;
-  }
-  // Same precedence as app.js: real domain → ?site= → #hash → last preview choice → first brand.
-  function currentBrand() {
-    var b = hostBrand();
-    if (b) return b;
-    var candidates = [new URLSearchParams(location.search).get("site"), location.hash.slice(1), store("pv-site")];
-    return candidates.map(function (id) { return SITES.find(function (s) { return s.id === id; }); }).find(Boolean) || SITES[0] || null;
-  }
+  function resolved() { return window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE() : { site: SITES[0] || null, preview: true, locked: false }; }
+  // Tên miền thật (không phải Preview) → site; Preview → null. Dùng chung bộ nhận diện của assets/sites.js.
+  function hostBrand() { var r = resolved(); return r.preview ? null : r.site; }
+  // Thứ tự chung (sites.js): tên miền thật → Preview khóa theo site → ?site= → #hash → lựa chọn trước đó → site đầu tiên.
+  function currentBrand() { return resolved().site; }
   var configured = cfg.enabled === true
     && /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(cfg.url || "")
     && /^sb_publishable_[\w-]+$/.test(cfg.publishableKey || "")
@@ -154,13 +148,17 @@
   // Community Chat công khai trên tên miền thật CHỈ khi được ghi vào danh sách dưới đây (sau khi đánh giá pháp lý,
   // xem docs/AI_FILM_NETWORK_MASTER_DELIVERY.md — RC3 mục 5). Preview / localhost luôn bật để kiểm thử.
   var CHAT_PUBLIC_DOMAINS = [];
+  // Cờ tính năng của website đang xem (assets/sites.js → features). Cờ giao diện; quyền thật do máy chủ quyết định.
+  function feature(name) { return window.AFN_SITE_FEATURE ? window.AFN_SITE_FEATURE(name, currentBrand()) : true; }
   function chatEnabled() {
+    if (!feature("chat")) return false;
     var b = hostBrand();
     return !b || CHAT_PUBLIC_DOMAINS.indexOf(b.domain) !== -1;
   }
   window.AFN = Object.freeze({
     sites: SITES,
     get chatEnabled() { return chatEnabled(); },
+    feature: feature,
     get brand() { return currentBrand(); },
     get siteId() { var b = currentBrand(); return b ? b.id : null; },
     get preview() { return !hostBrand(); },

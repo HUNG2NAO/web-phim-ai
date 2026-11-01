@@ -15,7 +15,7 @@
     : BRANDS.find(b=>b.domain===hostname));
   const SITE=brand?.id||"unknown";
   const flags=window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"];
-  const isPilot=flags.includes(SITE);
+  const isPilot=flags.includes(SITE)&&(!window.AFN_SITE_FEATURE||window.AFN_SITE_FEATURE("memberHub",brand));
   const FILMS=ALL.filter(f=>(f.world||"co-trang")===(brand?.world||"co-trang"));
   const byId=new Map(ALL.map(f=>[f.id,f]));
   const cfg=window.AFN_AUTH_CONFIG||{};

@@ -1500,3 +1500,80 @@ test.describe("Level 4.6 — egress: catalog edge, không gọi trùng, ngắt R
     expect(issues).toEqual([]);
   });
 });
+
+
+// ------------------------------------------------------------------ Phase 4: phát triển & triển khai độc lập từng website
+test.describe("Độc lập từng website — Preview khóa theo site, lớp giao diện riêng, cờ tính năng", () => {
+  const PORT = 4173;
+  test("alias site-khophim: luôn là Kho Phim (bỏ qua ?site=), không có nút chuyển site, noindex vẫn giữ", async ({ page }) => {
+    const issues = await setup(page);
+    const res = await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/?site=xuongphim`);
+    await expect(page.locator("#logo .name")).toContainText("KhoPhim");
+    await expect(page.locator("html")).toHaveAttribute("data-site", "khophim");
+    await expect(page.locator("html")).toHaveAttribute("data-preview", "locked");
+    await expect(page.locator("#pv-pills button")).toHaveCount(0);
+    await expect(page.locator("#pv-pills")).toContainText("khophim.ai · bản xem thử riêng");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    await expect(page.locator("link[data-site-theme]")).toHaveAttribute("href", /themes\/khophim\.css/);
+    expect(res.status()).toBe(200);
+    // Member Hub và tài khoản trên alias riêng cũng ở Kho Phim
+    await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/member.html?site=phephim`);
+    await expect(page.locator("html")).toHaveAttribute("data-site", "khophim");
+    expect(issues).toEqual([]);
+  });
+
+  test("4 alias site-<id> mỗi alias đúng một website", async ({ page }) => {
+    const issues = await setup(page);
+    for (const [id, name] of [["phephim", "PhêPhim"], ["phimhay", "PhimHay"], ["ghienphim", "GhiềnPhim"], ["xuongphim", "XưởngPhim"]]) {
+      await page.goto(`https://site-${id}.web-phim-ai-5sites.pages.dev:${PORT}/?site=khophim`);
+      await expect(page.locator("#logo .name")).toContainText(name);
+      await expect(page.locator("html")).toHaveAttribute("data-site", id);
+    }
+    expect(issues).toEqual([]);
+  });
+
+  test("sửa giao diện Kho Phim (themes/khophim.css) KHÔNG làm đổi Xưởng Phim", async ({ page }) => {
+    const issues = await setup(page);
+    const requested = [];
+    page.on("request", r => { const m = r.url().match(/themes\/([a-z]+)\.css/); if (m) requested.push(m[1]); });
+    await page.route("**/assets/themes/khophim.css*", r => r.fulfill({ status: 200, contentType: "text/css",
+      body: '[data-site="khophim"] body, [data-site="khophim"] .site-header { outline: 7px solid rgb(255, 0, 0); }' }));
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator("#logo .name")).toContainText("XưởngPhim");
+    const before = await page.evaluate(() => getComputedStyle(document.querySelector(".site-header")).outlineWidth);
+    expect(before).not.toBe("7px");
+    expect(requested).toEqual(["xuongphim"]);                                            // chỉ tải lớp giao diện của chính nó
+    await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/`);
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".site-header")).outlineWidth)).toBe("7px");
+    await page.goto("/?site=xuongphim");                                                  // quay lại Xưởng Phim: vẫn như cũ
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector(".site-header")).outlineWidth)).toBe(before);
+    expect(issues).toEqual([]);
+  });
+
+  test("Preview chung: đổi site bằng thanh chọn → đổi luôn lớp giao diện riêng", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await page.locator('#pv-pills [data-site="phimhay"]').click();
+    await expect(page.locator("html")).toHaveAttribute("data-site", "phimhay");
+    await expect(page.locator("link[data-site-theme]")).toHaveAttribute("href", /themes\/phimhay\.css/);
+    expect(issues).toEqual([]);
+  });
+
+  test("cờ tính năng: tắt chat/điểm danh/Social/mở khóa cho riêng Phê Phim; Xưởng Phim không bị ảnh hưởng", async ({ page }) => {
+    await page.addInitScript(() => {
+      let v; Object.defineProperty(window, "SITES", { configurable: true, get: () => v,
+        set: x => { const p = x.find(s => s.id === "phephim"); if (p) p.features = { chat: false, rewards: false, social: false, unlock: false }; v = x; } });
+    });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto(`https://site-phephim.web-phim-ai-5sites.pages.dev:${PORT}/`);
+    await expect(page.locator("#logo .name")).toContainText("PhêPhim");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".afn-reward-chip")).toHaveCount(0);
+    expect(await page.evaluate(() => !!(window.AFN_CHAT && window.AFN_CHAT.disabled))).toBe(true);
+    expect(await page.evaluate(async () => (await window.AFN_PLAYBACK.unlock("x")).status)).toBe("disabled");
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-reward-chip")).toBeVisible();
+    expect(await page.evaluate(() => !!(window.AFN_CHAT && window.AFN_CHAT.disabled))).toBe(false);
+    expect(issues).toEqual([]);
+  });
+});

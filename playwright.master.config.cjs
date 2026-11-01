@@ -19,7 +19,7 @@ module.exports = defineConfig({
     locale: "vi-VN",
     timezoneId: "Asia/Ho_Chi_Minh",
     // Talk to the local server directly even when the machine has an outbound HTTP(S) proxy.
-    launchOptions: { args: ["--host-resolver-rules=MAP afn-local.pages.dev 127.0.0.1"],
+    launchOptions: { args: ["--host-resolver-rules=MAP *.pages.dev 127.0.0.1"],
       env: Object.assign({}, process.env, { HTTPS_PROXY: "", https_proxy: "", HTTP_PROXY: "", http_proxy: "", ALL_PROXY: "", all_proxy: "" }) },
     trace: "retain-on-failure",
     screenshot: "only-on-failure"

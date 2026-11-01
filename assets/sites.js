@@ -26,6 +26,8 @@ window.SITES = [
     accent: "#3FD0F5", onAccent: "#03161D",
     featured: "thanh-pho-khong-ngu",
     social: [],
+    features: {},                       // cờ riêng site (trống = mặc định: tất cả bật)
+    release: { channel: "preview", version: "4.6.0" },
     rows: [
       { title: "Mới ra lò", filter: { newest: true } },
       { title: "Cyberpunk", filter: { genre: "Cyberpunk" } },
@@ -40,6 +42,8 @@ window.SITES = [
     accent: "#4FB08F", onAccent: "#04201A",
     featured: "phuong-te-cung",
     social: [],
+    features: {},                       // cờ riêng site (trống = mặc định: tất cả bật)
+    release: { channel: "preview", version: "4.6.0" },
     rows: [
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
       { title: "Cung đấu", filter: { genre: "Cung đấu" } },
@@ -54,6 +58,8 @@ window.SITES = [
     accent: "#FF4F7B", onAccent: "#2B0410",
     featured: "duong-dua-neon",
     social: [],
+    features: {},                       // cờ riêng site (trống = mặc định: tất cả bật)
+    release: { channel: "preview", version: "4.6.0" },
     rows: [
       { title: "Hành động", filter: { genre: "Hành động" } },
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
@@ -68,6 +74,8 @@ window.SITES = [
     accent: "#E8673A", onAccent: "#2A0C02",
     featured: "kiem-khach-vo-danh",
     social: [],
+    features: {},                       // cờ riêng site (trống = mặc định: tất cả bật)
+    release: { channel: "preview", version: "4.6.0" },
     rows: [
       { title: "Xem nhiều nhất", filter: { trending: true } },
       { title: "Tâm lý", filter: { genre: "Tâm lý" } },
@@ -82,6 +90,8 @@ window.SITES = [
     accent: "#A68BE0", onAccent: "#140A33",
     featured: "ho-ly-nui-tuyet",
     social: [],
+    features: {},                       // cờ riêng site (trống = mặc định: tất cả bật)
+    release: { channel: "preview", version: "4.6.0" },
     rows: [
       { title: "Phim bộ đang chiếu", filter: { airing: true } },
       { title: "Phim bộ trọn bộ", filter: { type: "bo", completed: true } },
@@ -92,17 +102,64 @@ window.SITES = [
 ];
 
 /*
- * SHARED CORE — nhận diện website (dùng chung cho mọi trang và module).
- * - Tên miền thật (kể cả www./tên miền con) → website tương ứng, preview=false.
- * - Mọi host khác (*.pages.dev, Vercel, localhost…) → bản xem thử, chọn site bằng ?site=<id>,
- *   mặc định site đầu tiên. Thêm website mới: chỉ cần thêm một mục vào window.SITES.
+ * SHARED CORE — nhận diện website (dùng chung cho MỌI trang, module và Pages Functions — xem functions/_site.js).
+ * Thứ tự:
+ *   1. Tên miền thật (kể cả www./tên miền con)                    → site đó, preview=false.
+ *   2. Preview KHÓA THEO SITE: host có nhãn "site-<id>", "<id>-ai"  → site đó, preview=true, locked=true
+ *      hoặc "afn-<id>" (alias nhánh site/<id> hoặc project Pages riêng) — bỏ qua ?site= và thanh chọn site,
+ *      để mỗi website có bản Preview độc lập, phát hành theo lịch riêng.
+ *   3. Preview chung (*.pages.dev khác, localhost…): ?site=<id> → #<id> → lựa chọn trước đó → site đầu tiên.
+ * Thêm website mới: thêm một mục vào window.SITES (+ functions/_site.js, sitemaps/, assets/themes/<id>.css).
  */
+window.AFN_SITE_LOCK_LABEL = function (id) { return ["site-" + id, id + "-ai", "afn-" + id]; };
 window.AFN_RESOLVE_SITE = function (loc) {
   loc = loc || window.location;
   var sites = window.SITES || [];
   var host = String(loc.hostname || "").toLowerCase().replace(/^www\./, "");
   var real = sites.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); });
-  if (real) return { site: real, preview: false };
-  var wanted = new URLSearchParams(loc.search || "").get("site");
-  return { site: sites.find(function (s) { return s.id === wanted; }) || sites[0] || null, preview: true };
+  if (real) return { site: real, preview: false, locked: true };
+  var labels = host.split(".");
+  var lockedSite = sites.find(function (s) {
+    var want = window.AFN_SITE_LOCK_LABEL(s.id);
+    return labels.some(function (l) { return want.indexOf(l) !== -1; });
+  });
+  if (lockedSite) return { site: lockedSite, preview: true, locked: true };
+  var stored = null;
+  try { stored = window.localStorage ? localStorage.getItem("pv-site") : null; } catch (e) {}
+  var candidates = [new URLSearchParams(loc.search || "").get("site"), String(loc.hash || "").slice(1), stored];
+  var chosen = candidates.map(function (id) { return sites.find(function (s) { return s.id === id; }); }).find(Boolean);
+  return { site: chosen || sites[0] || null, preview: true, locked: false };
 };
+
+/*
+ * CỜ TÍNH NĂNG THEO WEBSITE (mặc định bật). Tắt một tính năng cho riêng một site: thêm features: { chat: false } vào mục site đó.
+ * Đây là cờ GIAO DIỆN — quyền thật vẫn do máy chủ quyết định (vd. công tắc chat phía máy chủ chat_settings).
+ *   memberHub · rewards (điểm danh/ví) · unlock (mở khóa tập) · chat · social
+ */
+window.AFN_FEATURE_DEFAULTS = Object.freeze({ memberHub: true, rewards: true, unlock: true, chat: true, social: true });
+window.AFN_SITE_FEATURE = function (name, site) {
+  site = site || (window.AFN_RESOLVE_SITE() || {}).site;
+  var f = (site && site.features) || {};
+  return Object.prototype.hasOwnProperty.call(f, name) ? f[name] !== false : window.AFN_FEATURE_DEFAULTS[name] !== false;
+};
+
+/*
+ * LỚP GIAO DIỆN RIÊNG TỪNG WEBSITE: assets/themes/<id>.css chỉ được tải cho đúng site đó và mọi quy tắc trong tệp
+ * phải bắt đầu bằng [data-site="<id>"] (tools/site-package.cjs kiểm tra). Sửa giao diện Kho Phim → chỉ sửa
+ * assets/themes/khophim.css; Xưởng Phim không tải tệp này nên không thể bị ảnh hưởng.
+ */
+(function () {
+  try {
+    var r = window.AFN_RESOLVE_SITE();
+    if (!r || !r.site || typeof document === "undefined" || !document.documentElement) return;
+    var html = document.documentElement;
+    html.dataset.site = r.site.id;
+    if (!html.dataset.world) html.dataset.world = r.site.world || "co-trang";
+    if (r.preview) html.dataset.preview = r.locked ? "locked" : "shared";
+    if (document.querySelector('link[data-site-theme]')) return;
+    var l = document.createElement("link");
+    l.rel = "stylesheet"; l.href = "assets/themes/" + r.site.id + ".css" + (r.site.release && r.site.release.version ? "?v=" + encodeURIComponent(r.site.release.version) : "");
+    l.setAttribute("data-site-theme", r.site.id);
+    (document.head || html).appendChild(l);
+  } catch (e) {}
+})();

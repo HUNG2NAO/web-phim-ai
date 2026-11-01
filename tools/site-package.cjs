@@ -40,6 +40,36 @@ const SHARED = ["index.html", "account.html", "member.html", "admin.html", "chin
   ...fs.readdirSync(path.join(root, "assets")).filter(f => /\.(js|css)$/.test(f)).sort().map(f => "assets/" + f)]
   .filter(f => fs.existsSync(path.join(root, f)));
 const sha = f => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, f))).digest("hex");
+// Tệp RIÊNG từng website (không thuộc Shared Core): lớp giao diện assets/themes/<id>.css + sitemaps/<id>.xml.
+const SITE_FILES = id => ["assets/themes/" + id + ".css", "sitemaps/" + id + ".xml"].filter(f => fs.existsSync(path.join(root, f)));
+// Mọi quy tắc trong assets/themes/<id>.css phải nằm dưới [data-site="<id>"] → sửa giao diện một site không thể lan sang site khác.
+function themeIssues(id) {
+  const f = "assets/themes/" + id + ".css";
+  if (!fs.existsSync(path.join(root, f))) return ["thiếu " + f];
+  const css = read(f).replace(/\/\*[\s\S]*?\*\//g, "");
+  const out = [], scope = new RegExp('^(html|:root)?\\[data-site=["\']?' + id + '["\']?\\]');
+  let depth = 0, buf = "", stack = [];
+  for (const ch of css) {
+    if (ch === "{") {
+      const sel = buf.trim(); buf = "";
+      if (sel.startsWith("@")) {
+        const at = sel.split(/\s/)[0];
+        if (at === "@keyframes" && !new RegExp("^@keyframes\\s+" + id + "-").test(sel)) out.push("@keyframes phải có tiền tố " + id + "-: " + sel);
+        if (!["@media", "@supports", "@keyframes", "@font-face", "@container", "@layer"].includes(at)) out.push("at-rule không cho phép: " + at);
+        stack.push(at);
+      } else {
+        const inKf = stack.includes("@keyframes") || stack.includes("@font-face");
+        if (!inKf && stack.every(a => a !== "rule")) sel.split(",").map(x => x.trim()).forEach(x => { if (!scope.test(x)) out.push("quy tắc không giới hạn trong [data-site=\"" + id + "\"]: " + x); });
+        stack.push("rule");
+      }
+      depth++;
+    } else if (ch === "}") { depth--; stack.pop(); buf = ""; }
+    else if (ch === ";" && stack[stack.length - 1] !== "rule" && buf.trim().startsWith("@")) { const at = buf.trim().split(/\s/)[0]; if (at === "@import") out.push("@import không cho phép trong lớp giao diện riêng"); buf = ""; }
+    else buf += ch;
+  }
+  if (depth !== 0) out.push("ngoặc {} không cân");
+  return out;
+}
 
 function check(only) {
   const { SITES, FILMS, GENRES } = load();
@@ -65,6 +95,12 @@ function check(only) {
       const n = rowFilms(films, row.filter).length; if (!n) r.warn.push("hàng '" + row.title + "' không có phim");
     });
     r.info.rows = (s.rows || []).length;
+    themeIssues(s.id).forEach(x => r.block.push("assets/themes: " + x));
+    const featureKeys = ["memberHub", "rewards", "unlock", "chat", "social"];
+    Object.keys(s.features || {}).forEach(k => { if (!featureKeys.includes(k)) r.block.push("cờ tính năng không tồn tại: " + k); });
+    r.info.features = featureKeys.filter(k => (s.features || {})[k] === false).map(k => k + ":off").join(",") || "mặc định";
+    if (!s.release || !/^\d+\.\d+\.\d+$/.test(s.release.version || "")) r.block.push("thiếu release.version (x.y.z)");
+    else r.info.release = s.release.channel + "@" + s.release.version;
     (s.social || []).forEach(x => { if (!/^https:\/\//.test(x.url)) r.block.push("social không phải https: " + x.url); });
     r.info.socialFallback = (s.social || []).length;
     const sm = path.join(root, "sitemaps", s.id + ".xml");
@@ -98,6 +134,11 @@ async function verify(base, siteId) {
     if (r.status !== 200) { out.missing.push(f + " → " + r.status); continue; }
     if (crypto.createHash("sha256").update(r.body).digest("hex") !== sha(f)) out.mismatched.push(f);
   }
+  for (const f of SITE_FILES(siteId).filter(f => f.startsWith("assets/"))) {
+    const r = await get(base.replace(/\/$/, "") + "/" + f); out.checked++;
+    if (r.status !== 200) out.missing.push(f + " → " + r.status);
+    else if (crypto.createHash("sha256").update(r.body).digest("hex") !== sha(f)) out.mismatched.push(f);
+  }
   const robots = await get(base.replace(/\/$/, "") + "/robots.txt?site=" + siteId);
   out.robots = robots.body.toString().split("\n").filter(Boolean).slice(0, 3);
   const smap = await get(base.replace(/\/$/, "") + "/sitemap.xml?site=" + siteId);
@@ -122,7 +163,11 @@ async function verify(base, siteId) {
     }
     process.exit(blocked ? 1 : 0);
   } else if (cmd === "manifest") {
-    const m = { generated_at: new Date().toISOString(), files: Object.fromEntries(SHARED.map(f => [f, sha(f)])) };
+    const { SITES } = load();
+    const coreHash = crypto.createHash("sha256").update(SHARED.map(f => f + ":" + sha(f)).join("\n")).digest("hex");
+    const m = { generated_at: new Date().toISOString(), core_sha256: coreHash, files: Object.fromEntries(SHARED.map(f => [f, sha(f)])),
+      sites: Object.fromEntries(SITES.map(s => [s.id, { release: s.release || null, config_sha256: crypto.createHash("sha256").update(JSON.stringify(s)).digest("hex"),
+        files: Object.fromEntries(SITE_FILES(s.id).map(f => [f, sha(f)])) }])) };
     const s = JSON.stringify(m, null, 2);
     if (a === "--out" && b) fs.writeFileSync(b, s + "\n"); else console.log(s);
   } else if (cmd === "verify" && a && b) {

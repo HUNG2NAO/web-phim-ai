@@ -5,6 +5,7 @@
   var AFN = window.AFN;
   var root = document.getElementById("rewards-root");
   if (!AFN || !root) return;
+  if (AFN.feature && !AFN.feature("rewards")) { root.hidden = true; return; }   // website tắt điểm danh/ví
   var el = AFN.el;
   var KIND = { checkin: "Điểm danh", unlock: "Mở khóa tập", refund: "Hoàn điểm", admin_credit: "Quản trị cộng điểm", admin_debit: "Quản trị trừ điểm" };
   var S = { user: null, rules: null, wallet: null, ledger: [], checkins: [], ents: [], busy: false };

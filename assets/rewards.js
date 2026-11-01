@@ -104,6 +104,7 @@
   slot.append(chip, pop);
 
   function mountChip() {
+    if (AFN.feature && !AFN.feature("rewards")) return;          // website tắt điểm danh/ví (assets/sites.js → features)
     var header = document.querySelector(".site-header .wrap");
     if (!header || slot.isConnected) return;
     var account = header.querySelector(".afn-account-slot");
@@ -193,6 +194,7 @@
     } catch (e) { return { status: "error" }; }
   }
   async function unlock(episodeId) {
+    if (AFN.feature && !AFN.feature("unlock")) return { status: "disabled" };
     var c = AFN.client();
     if (!c) return { status: "unavailable" };
     if (!state.user) { state.user = await AFN.getUser(true); }

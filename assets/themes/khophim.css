@@ -1,0 +1,8 @@
+/* AI FILM NETWORK — LỚP GIAO DIỆN RIÊNG của website "khophim".
+   • Chỉ được tải khi đang xem site khophim (assets/sites.js), không ảnh hưởng 4 website còn lại.
+   • MỌI quy tắc phải bắt đầu bằng [data-site="khophim"] (tools/site-package.cjs check chặn nếu sai);
+     @keyframes / biến phải có tiền tố "khophim-".
+   • Màu nhấn, tên, ấn triện, danh mục, Social, SEO: sửa trong assets/sites.js (mục "khophim") hoặc Studio — không ở đây.
+   • Thay đổi Shared Core (assets/*.js, assets/*.css chung) phải chạy hồi quy cho cả 5 website.
+   Ví dụ: [data-site="khophim"] .hero h1 { letter-spacing: .01em; } */
+[data-site="khophim"] { --site-theme-version: 1; }

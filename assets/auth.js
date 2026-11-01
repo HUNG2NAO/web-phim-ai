@@ -56,7 +56,8 @@
     memberURL.searchParams.set("site",activeBrand?activeBrand.id:(previewBrand||"xuongphim"));
   }
   const siteId = activeBrand?.id;
-  const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId);
+  const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId)
+    && (!window.AFN_SITE_FEATURE || window.AFN_SITE_FEATURE("memberHub", activeBrand));
   const memberLink = accountMenu.querySelector("#afn-menu-member");
   memberLink.href = memberURL.href;
   memberLink.classList.toggle("afn-auth-hidden",!isXuongPilot);

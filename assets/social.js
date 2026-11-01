@@ -5,6 +5,7 @@
   "use strict";
   var AFN = window.AFN;
   if (!AFN) return;
+  if (AFN.feature && !AFN.feature("social")) return;           // website tắt khối Social (assets/sites.js → features)
   var el = AFN.el;
   var PLATFORM = {
     facebook_page: { name: "Fanpage Facebook", icon: "f", hosts: ["facebook.com", "fb.com", "fb.me"] },

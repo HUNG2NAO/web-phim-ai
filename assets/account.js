@@ -7,7 +7,8 @@
   var domainBrand = brands.find(function(b) { return b.domain === hostname; });
   var previewBrand = brands.find(function(b) { return b.id === params.get("site"); });
   var brand = window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE().site : (domainBrand || previewBrand || brands[0]);
-  var isMemberPilot = !!(brand && (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(brand.id));
+  var isMemberPilot = !!(brand && (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(brand.id)
+    && (!window.AFN_SITE_FEATURE || window.AFN_SITE_FEATURE("memberHub", brand)));
   var memberShortcut = document.getElementById("afn-member-hub-shortcut");
   if(memberShortcut){
     memberShortcut.hidden = !isMemberPilot;
