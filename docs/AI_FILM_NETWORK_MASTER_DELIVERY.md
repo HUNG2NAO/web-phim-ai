@@ -13,6 +13,161 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 13:00 — Level 4.3: cách ly quản trị theo website, quyền riêng tư, chuẩn bị đồng bộ 5 site
+
+Trạng thái pháp lý (email hỗ trợ, pháp nhân, thời hạn lưu trữ) giữ nguyên **PENDING OWNER/LEGAL REVIEW** theo quyết định của chủ dự án.
+Không thay đổi Production, DNS, `main`. Không đồng bộ 4 website Production. Không xóa dữ liệu người dùng.
+
+### 1. Lỗi đã sửa
+| # | Lỗi (phát hiện khi kiểm toán) | Sửa |
+|---|---|---|
+| 1 | **Cách ly quản trị:** `chat_reports_read` cho **mọi** `site_staff` của **mọi** site đọc toàn bộ báo cáo chat | Phòng phim → chỉ nhân sự đúng site; phòng chung → quản trị viên; chủ mạng → tất cả; người báo cáo → báo cáo của mình |
+| 2 | `chat_mutes_read` mở cho mọi nhân sự (kể cả moderator) | Chỉ người bị khóa, chủ mạng, quản trị viên (role admin) |
+| 3 | Yêu cầu xóa tài khoản chỉ được ghi nhận; admin site UPDATE thẳng trạng thái; bản ghi yêu cầu bị xóa dây chuyền khi xóa tài khoản | Quy trình qua RPC (mục 2); bản ghi giữ lại dạng bút danh (`subject_id`) |
+| 4 | Tài khoản từng đăng phim/tập **không xóa được** (`created_by` NO ACTION) | `created_by` → SET NULL |
+| 5 | Xuất dữ liệu thiếu ví, sổ điểm, chat | `my_data_export()` đầy đủ 18 mục; giao diện tự lùi về cách cũ nếu CSDL chưa nâng cấp |
+| 6 | **Dashboard bỏ qua `?site=`**: mở từ Kho Phim vẫn vào Xưởng Phim | Mở đúng site; không có quyền → báo rõ và hiển thị site được cấp |
+
+### 2. Quy trình yêu cầu quyền riêng tư (Level 4.3)
+- **Thành viên:**
+  - gửi yêu cầu ở trang Tài khoản;
+  - mỗi loại chỉ có 1 yêu cầu đang mở (chặn ở máy chủ);
+  - thấy trạng thái tiếng Việt và ghi chú của quản trị viên;
+  - nhận thông báo ở mỗi bước.
+- **Quản trị viên website** (chỉ site được cấp):
+  - Chờ xử lý → Đang xử lý / Từ chối (bắt buộc ghi lý do ≥ 5 ký tự);
+  - Đang xử lý → Hoàn tất (với yêu cầu khác yêu cầu xóa) / Từ chối.
+  - Mọi bước ghi `admin_audit_log`.
+- **Xóa tài khoản: CHỈ chủ mạng** (vì ví điểm dùng chung toàn mạng):
+  - Bước 1, "Xem trước dữ liệu sẽ xóa" (chạy thử, không ghi gì): email che một phần và số bản ghi theo từng bảng.
+  - Bước 2, gõ đúng toàn bộ email → xóa tài khoản và dữ liệu dây chuyền.
+  - Nhật ký chỉ lưu mã bút danh, không lưu email.
+  - Tài khoản có quyền quản trị phải được gỡ quyền trước (`target_is_staff`).
+- **Chưa có:** email thông báo sau khi xóa (tài khoản đã bị xóa nên không còn hộp thư trong hệ thống); hạn xử lý tự động. Cả hai chờ chính sách lưu trữ được phê duyệt.
+
+### 3. Cổng phát hành Community Chat
+- `assets/afn-core.js`: `CHAT_PUBLIC_DOMAINS = []`.
+  - Trên **tên miền thật**, chat tự tắt: không có lối vào, không kết nối Realtime.
+  - Trên Preview/localhost vẫn bật để kiểm thử.
+- Muốn mở trên tên miền nào phải ghi tên miền đó vào danh sách. Test `site-config` sẽ báo đỏ để việc mở là quyết định có chủ đích, sau kết luận pháp lý.
+- **Giới hạn:** đây là cổng ở giao diện. API `send_chat_message` vẫn hoạt động vì Preview và Production dự kiến dùng chung một project Supabase. Trước khi phát hành, nếu chat vẫn tắt, nên thêm cờ tắt chat phía máy chủ.
+
+### 4. Gói Shared Core cho 5 website
+- `tools/site-package.cjs check` kiểm tra mỗi site:
+  - tên miền khớp `functions/_site.js`;
+  - nhận diện (tên, ấn triện, tagline);
+  - **tương phản màu nhấn ≥ 4.5**;
+  - phim nổi bật có trong danh mục;
+  - mọi hàng phim có thể loại hợp lệ và có phim;
+  - sitemap khớp danh mục;
+  - Social dự phòng là https;
+  - cổng index và cổng chat đang tắt.
+
+  **Kết quả: 5/5 OK.**
+
+  | Site | Danh mục | Tương phản | URL sitemap |
+  |---|---|---|---|
+  | xuongphim | 16 | 10.17 | 17 |
+  | khophim | 20 | 6.47 | 21 |
+  | phephim | 16 | 5.9 | 17 |
+  | phimhay | 20 | 5.58 | 21 |
+  | ghienphim | 20 | 6.59 | 21 |
+- `manifest`: danh sách 40 tệp Shared Core kèm SHA-256. 5 website dùng **cùng một bộ tệp**; khác biệt duy nhất nằm trong `assets/sites.js` và dữ liệu Supabase theo `site_id`.
+- `verify <url> <site>`:
+  - tải bản đã triển khai và so SHA-256 từng tệp;
+  - kiểm tra `robots.txt`/`sitemap.xml` theo site;
+  - dùng sau mỗi lần triển khai một site (chạy được trên PC Nhân bằng Node có sẵn).
+- **Runbook đồng bộ lần lượt 4 site** (khi có phê duyệt; áp dụng mô hình đã duyệt cho Xưởng Phim):
+  1. Tạo project Pages riêng cho site.
+  2. Production branch của project đó = nhánh RC.
+  3. Chạy `verify` trên `<project>.pages.dev`.
+  4. Thêm URL `https://www.<site>.ai/?auth=…` vào Supabase Redirect URLs.
+  5. Chuyển đúng 2 tên miền (apex + www) của site đó.
+  6. Smoke test.
+  7. Rollback = chuyển tên miền về project cũ (`c6dd520`).
+
+### 5. Migration 4.3 trên Staging (đã được chủ dự án phê duyệt lúc 12:30)
+- **Điều kiện an toàn trước khi áp:**
+  - **Production `main` @ `c6dd520` không chứa bất kỳ tham chiếu Supabase nào**, nên không thể dùng project `ai-film-network`.
+  - Project `ai-film-network` (Singapore, PG 17.11) chỉ phục vụ các nhánh Preview.
+  - **Dữ liệu trùng 35/35** với bản backup mã hóa lúc 10:39 (đã thử khôi phục đạt), nên không cần backup mới.
+  - Phụ thuộc đầy đủ: `is_site_admin`, `audit`, `event_key`, chỉ mục chống trùng thông báo. Không có view phụ thuộc. Tên ràng buộc khớp script gỡ.
+  - Đã trình nội dung migration trước khi anh duyệt trên Supabase.
+- **Áp dụng:** `apply_migration level4_3_isolation_privacy` → success. Bảng migration có 12 bản ghi.
+- **Schema sau migration trùng bản đã kiểm thử cục bộ:**
+  - policy 58, RLS 27/27, cột 216, trigger 10: md5 trùng;
+  - 39 hàm: 37 trùng tuyệt đối; 2 hàm chỉ khác **chú thích** (logic trùng khi bỏ chú thích).
+  - Quyền UPDATE trực tiếp lên `member_privacy_requests` = 0; anon gọi được 3 hàm mới = 0.
+- **Dữ liệu không đổi:** 27 bảng (số dòng + md5), 6 tài khoản, tổng ví 60, 0 ví lệch sổ cái.
+- **Kiểm thử hành vi thật trên Staging** với các phiên QA mô phỏng (QA1, QA2, QAADMIN, SIGNUP1, chủ mạng). Chạy trong một giao dịch **tự hủy**; đã kiểm tra lại sau đó: không có dữ liệu nào thay đổi.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Admin Xưởng Phim đọc báo cáo | 5 (đủ của site mình + phòng chung) |
+| QA2 tạm làm **admin Kho Phim** | 4 (3 của mình + 1 phòng chung). Báo cáo phòng phim Xưởng Phim của người khác: **0** (trước 4.3 là 1) |
+| QA1 tạm làm **moderator Kho Phim** | Chỉ báo cáo của mình (1); danh sách khóa chat: 0 |
+| Điểm danh QA2 ở phephim | `claimed` (+12, số dư 22); ở ghienphim cùng ngày → `already` (**dùng chung toàn mạng**) |
+| Mở khóa thiếu điểm / sửa ví trực tiếp | `insufficient` / `permission denied` |
+| Gửi trùng yêu cầu / thành viên tự đổi trạng thái | `duplicate key` / `permission denied` |
+| Admin Kho Phim xem/xử lý yêu cầu Xưởng Phim | 0 dòng / `forbidden` |
+| Admin Xưởng Phim: UPDATE thẳng / qua RPC | `permission denied` / `in_review` + 1 thông báo + 1 dòng nhật ký |
+| Hoàn tất yêu cầu xóa không qua chủ mạng | `use_account_deletion`; admin site gọi xóa → `forbidden` |
+| Chủ mạng chạy thử / gõ sai email | `dry_run` (hu***@gmail.com, đếm 7 tin, 3 giao dịch…) / `email_mismatch`; vẫn 6 tài khoản |
+| Xuất dữ liệu QA1 | Số dư 30, 3 giao dịch, 7 tin nhắn, không chứa email người khác |
+
+- **Công cụ kiểm tra bảo mật của Supabase:** không có phát hiện mới.
+  - Hàm SECURITY DEFINER có chủ đích; mỗi hàm tự kiểm tra quyền.
+  - Mục tồn tại từ trước: leaked-password protection (gói Free), `traffic_events` không có policy (client không được đọc).
+
+### 6. Kiểm thử trên Preview thật (nhánh phát triển @ `9a48e8d`, SHA-256 5 tệp JS trùng commit)
+- **Phiên QA thật: SIGNUP1** (không dùng tài khoản chủ).
+
+| Site | Tên / canonical | Điểm danh (đã điểm danh ở Xưởng Phim) | Lối vào chat | Chân trang pháp lý | Phim QA lẫn vào | Tải trang | Cuộn ngang |
+|---|---|---|---|---|---|---|---|
+| xuongphim | XưởngPhim.ai / www.xuongphim.ai | đã điểm danh | có | 2 | có (đúng site) | — | không |
+| khophim | KhoPhim.ai / www.khophim.ai | **đã điểm danh** | có | 2 | không | 327 ms | không |
+| phephim | PhêPhim.ai / www.phephim.ai | **đã điểm danh** | có | 2 | không | 114 ms | không |
+| phimhay | PhimHay.ai / www.phimhay.ai | **đã điểm danh** | có | 2 | không | 130 ms | không |
+| ghienphim | GhiềnPhim.ai / www.ghienphim.ai | **đã điểm danh** | có | 2 | không | 121 ms | không |
+
+- Mỗi trang ~50 request, 12 lời gọi Supabase.
+- Tập 2 đã mua phát được (`get_playback_source` = ok).
+- Xuất dữ liệu thật: 18 mục; không có `actor` của giao dịch; không chứa email người khác.
+- Gửi yêu cầu xóa trên giao diện → "Yêu cầu xóa tài khoản · Chờ xử lý"; gửi lần 2 bị chặn. Máy chủ có 1 bản ghi đúng `subject_id`.
+- Gọi trực tiếp API bằng phiên thành viên:
+  - đổi trạng thái → `forbidden`; xóa → `forbidden`; UPDATE → `permission denied`;
+  - chỉ đọc được 1 báo cáo của mình, 0 khóa chat, 1 ví.
+- Dashboard `?site=khophim` với thành viên thường → "Bạn chưa được cấp quyền quản trị."
+- **Dữ liệu QA mới phát sinh:** 1 yêu cầu xóa tài khoản *pending* của SIGNUP1 (tài khoản QA). Sẽ do QA Admin từ chối kèm lý do ở phiên Dashboard kế tiếp, hoặc gom vào đợt dọn dữ liệu QA (R1). **Không** thực thi xóa.
+
+### 7. Kiểm thử tự động
+- SQL functional **178** (+44 cho 4.3).
+- Concurrency/staging **17** (thêm: 4.3 thay đổi schema; gỡ 98 về đúng 4.2; 98 rồi 99 gỡ hết Level 4; áp lại đủ chuỗi).
+- **Đối chứng:** test cách ly **thất bại trên policy 4.2** và đạt trên 4.3.
+- E2E **92/92**, gồm:
+  - ma trận 5 site (điểm danh, mở khóa + phát, chat phòng phim đúng site, Member Hub, cách ly nội dung, không cuộn ngang, CSP);
+  - điểm danh toàn mạng;
+  - Dashboard cách ly;
+  - quy trình quyền riêng tư;
+  - xuất dữ liệu;
+  - cổng chat trên `www.xuongphim.ai`.
+- site-config **11/11**, contract **11/11**.
+- `auth-browser` / `level3-hub` cần `jsdom`, môi trường hiện không có (giới hạn có sẵn, không phải hồi quy).
+
+### Kết luận
+| Hạng mục | Trạng thái |
+|---|---|
+| **MIGRATION 4.3** | **PASS**: schema, RLS, hàm và dữ liệu sau migration được xác minh thực tế trên Staging |
+| **RC3 REGRESSION** | **PASS**: E2E 92/92; luồng RC2/RC3 trên Preview thật không đổi |
+| **MULTI-SITE FEATURE PARITY** | **PASS**: 5/5 site đạt cùng bộ chức năng (E2E + Preview thật) |
+| **DATA ISOLATION** | **PASS**: ví và điểm danh dùng chung; nội dung, báo cáo, yêu cầu quyền riêng tư, Dashboard tách theo site |
+| **SECURITY** | **PASS** cho phạm vi kỹ thuật đã kiểm. Còn mở: cờ tắt chat phía máy chủ trước Production; leaked-password protection (gói trả phí) |
+| **SHARED CORE PACKAGE** | **READY** |
+| **FOUR-SITE PREVIEW** | **READY**: 4 site chạy đúng trên Preview chung qua `?site=`. Project Pages riêng cho từng site chưa tạo (cần phê duyệt) |
+| **PRODUCTION** | **ON HOLD**: chờ pháp lý (chính sách, chat, Luật Điện ảnh), phê duyệt R1–R7 |
+
+---
+
 ## Cập nhật 01/11/2026 12:10 — RC3: Chính sách riêng tư & sẵn sàng pháp lý
 
 ### 1. Nhánh và commit
