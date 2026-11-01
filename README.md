@@ -50,3 +50,43 @@ Có thể thêm `?site=khophim` vào cuối địa chỉ để mở thẳng mộ
 5. Chờ 5–30 phút để DNS cập nhật. Vercel tự cấp chứng chỉ HTTPS.
 
 Từ đó, mỗi lần mã nguồn trên GitHub thay đổi, cả 5 site tự cập nhật.
+
+## Level 4 — Website mẫu (điểm danh, ví điểm, mở khóa tập, Social, Dashboard)
+
+Nhánh `feature/master-site-xuongphim-2026-10-31`. Chỉ chạy trên Preview, chưa đưa vào `main`.
+
+**Kích hoạt trên Supabase `ai-film-network`** (một lần, sau các migration Level 3):
+SQL Editor → chạy `db/level4_rewards_unlock_social_v1.sql`. Migration chỉ thêm bảng và hàm mới,
+không xóa dữ liệu thành viên. Nó cũng sửa lỗi Level 3: khách chưa đăng nhập không đọc được phim đã phát hành.
+Chạy lại nhiều lần vẫn an toàn.
+
+**Cấu trúc mới (dùng chung cho cả 5 site):**
+
+```
+assets/afn-core.js        Shared Core: nhận diện thương hiệu, Supabase client, URL phim, toast
+assets/rewards.js         Nút điểm danh trên header, mở khóa/phát tập, Lưu · Chia sẻ · Báo lỗi
+assets/social.js          Liên kết mạng xã hội + ghi nhận lượt vào từ UTM/ref (không lưu IP)
+assets/member-rewards.js  Tab "Điểm thưởng" trong Member Hub
+assets/studio-ops.js      Dashboard: Tổng quan, Tập & quyền xem, Điểm danh & ví, Báo lỗi, Social, Traffic, Nhật ký, Phân quyền
+assets/master.css         Giao diện các phần trên
+_headers / _redirects / 404.html   Header bảo mật (CSP), link /phim/<mã>/tap/<n>, trang 404 thật
+```
+
+**Vận hành:**
+
+- Mức điểm danh: Dashboard → Điểm danh & ví điểm. Chỉ chủ hệ thống (`network_staff`) được sửa.
+- Tập mở sớm: Dashboard → Tập & quyền xem. Chọn "Mở sớm bằng điểm", nhập giá, tùy chọn ngày tự miễn phí.
+- Social: Dashboard → Social. Đường dẫn phải đúng tên miền của nền tảng.
+- Link chia sẻ có UTM: Dashboard → Traffic → "Tạo đường dẫn chia sẻ có UTM".
+
+**Kiểm thử:**
+
+```bash
+PGHOST=... PGPORT=... PGUSER=postgres bash tests/sql/run.sh
+node --test tests/level4-contract.test.cjs
+npx playwright test -c playwright.master.config.cjs
+```
+
+- `tests/sql/run.sh` chạy trên một PostgreSQL tạm, **không bao giờ** trỏ vào Supabase thật.
+- `node --test tests/level4-contract.test.cjs`: kiểm tra JS ↔ SQL và các quy tắc an toàn.
+- `npx playwright test -c playwright.master.config.cjs`: E2E Chromium và bộ test Level 3 cũ.

@@ -1,0 +1,6 @@
+BEGIN;
+SET LOCAL ROLE anon;
+SELECT * FROM public.site_films WHERE site_id = 'ghienphim' AND published ORDER BY created_at DESC LIMIT 60;
+SELECT * FROM public.site_episodes WHERE site_id = 'ghienphim' AND published;
+SELECT * FROM public.chat_settings;
+COMMIT;

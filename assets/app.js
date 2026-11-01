@@ -4,21 +4,15 @@
   var ALL_FILMS = window.FILMS || [];
   var GENRES = [];
   var TYPE_LABEL = { bo: "Phim bộ", le: "Phim lẻ", ngan: "Phim ngắn" };
-  var SORTS = { moi: "Mới cập nhật", xem: "Xem nhiều", ten: "Tên A–Z" };
+  var SORTS = { moi: "Mới cập nhật", xem: "Nổi bật", ten: "Tên A–Z" };
   var $ = function (s, r) { return (r || document).querySelector(s); };
 
   /* ---------- 1. Nhận diện site theo tên miền ---------- */
   function store(key, val) {
     try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch (e) { return null; }
   }
-  function detectSite() {
-    var host = location.hostname.toLowerCase().replace(/^www\./, "");
-    var byHost = SITES.find(function (s) { return host === s.domain || host.endsWith("." + s.domain); });
-    if (byHost) return { site: byHost, preview: false };
-    var candidates = [new URLSearchParams(location.search).get("site"), location.hash.slice(1), store("pv-site")];
-    var chosen = candidates.map(function (id) { return SITES.find(function (s) { return s.id === id; }); }).find(Boolean);
-    return { site: chosen || SITES[0], preview: true };
-  }
+  // Bộ nhận diện chung (assets/sites.js): tên miền thật → Preview khóa theo site → ?site= → #hash → lựa chọn trước đó.
+  function detectSite() { return window.AFN_RESOLVE_SITE(); }
 
   var state = detectSite();
   var site = state.site;
@@ -32,6 +26,9 @@
     return String(t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
   function norm(t) { return t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); }
+  // Lượt xem của kho phim mẫu là số minh họa → không hiển thị như số liệu thật.
+  // Chỉ hiện khi dữ liệu được đánh dấu là thống kê thật (viewsVerified: true, từ hệ thống đo lường).
+  function realViews(f) { return !!f && f.viewsVerified === true && f.views > 0; }
   function fmtViews(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1).replace(".", ",") + " triệu";
     if (n >= 1e3) return Math.round(n / 1e3) + " nghìn";
@@ -78,6 +75,9 @@
   function applyBrand() {
     var world = site.world || "co-trang";
     document.documentElement.setAttribute("data-world", world);
+    document.documentElement.setAttribute("data-site", site.id);
+    var th = document.querySelector("link[data-site-theme]");      // lớp giao diện riêng: đổi theo site đang xem thử
+    if (th && th.getAttribute("data-site-theme") !== site.id) { th.href = "assets/themes/" + site.id + ".css"; th.setAttribute("data-site-theme", site.id); }
     GENRES = (window.GENRES || {})[world] || [];
     films = ALL_FILMS.filter(function (f) { return (f.world || "co-trang") === world && (!f.sites || f.sites.indexOf(site.id) !== -1); });
     var root = document.documentElement.style;
@@ -85,6 +85,7 @@
     root.setProperty("--on-accent", site.onAccent);
     document.title = site.name + ".ai · " + site.tagline;
     var meta = $('meta[name="description"]'); if (meta) meta.setAttribute("content", site.name + ".ai: " + site.tagline + ".");
+    setSeo(typeof dlg !== "undefined" && dlg && dlg.open ? current : null);
     $("#logo").innerHTML = '<span class="seal" aria-hidden="true">' + site.seal + '</span><span class="name">' +
       esc(site.name.replace(/\s+/g, "")) + '<span class="tld">.ai</span></span>';
     $("#logo").setAttribute("aria-label", site.name + ".ai, về trang chủ");
@@ -93,9 +94,19 @@
       return '<a href="https://' + s.domain + '" style="--c:' + s.accent + '"' + (s.id === site.id ? ' aria-current="true"' : "") + '>' +
         '<span class="seal" aria-hidden="true">' + s.seal + '</span><span class="n">' + esc(s.domain) + '</span></a>';
     }).join("");
+    var side = $("#side-network");
+    if (side) side.innerHTML = SITES.map(function (s) {
+      return '<a href="https://' + s.domain + '" style="--c:' + s.accent + '" title="' + esc(s.name) + '"' + (s.id === site.id ? ' aria-current="true"' : "") + '>' +
+        '<span class="seal" aria-hidden="true">' + s.seal + '</span><span class="lbl">' + esc(s.name) + '</span></a>';
+    }).join("");
+    document.querySelectorAll("[data-member-tab]").forEach(function (a) {
+      a.setAttribute("href", "member.html" + (state.preview ? "?site=" + encodeURIComponent(site.id) : "") + "#" + a.dataset.memberTab);
+    });
     var bar = $("#preview-bar");
     bar.hidden = !state.preview;
-    if (state.preview) {
+    if (state.preview && state.locked) {          // Preview riêng của một website: không cho chuyển sang site khác
+      $("#pv-pills").innerHTML = '<span class="pv-pill" aria-current="true" style="--c:' + site.accent + '"><span class="dot"></span>' + esc(site.domain) + ' · bản xem thử riêng</span>';
+    } else if (state.preview) {
       $("#pv-pills").innerHTML = SITES.map(function (s) {
         return '<button class="pv-pill" type="button" data-site="' + s.id + '" aria-pressed="' + (s.id === site.id) + '" style="--c:' + s.accent + '">' +
           '<span class="dot"></span>' + esc(s.domain) + '</button>';
@@ -105,7 +116,7 @@
 
   /* ---------- 3. Thành phần ---------- */
   function posterHTML(f) {
-    var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="320x480"';
+    var bg = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="640x360"';
     var progress = seriesProgress(f);
     var right = f.type === "bo" ? (!progress ? '<span class="badge">Phim bộ</span>' : !progress.completed ? '<span class="badge accent">' + (progress.aired ? "Tập " + progress.aired : "Sắp chiếu") + '</span>' : '<span class="badge">' + progress.total + ' tập</span>') :
       f.type === "ngan" ? '<span class="badge">' + esc(f.duration) + '</span>' : "";
@@ -132,7 +143,7 @@
       '<h1>' + esc(f.title) + '</h1>' +
       '<p class="synopsis">' + esc(f.synopsis) + '</p>' +
       '<div class="tags"><span class="tag age">' + esc(f.age) + '</span><span class="tag">' + esc(f.duration) + '</span>' +
-      '<span class="tag">' + fmtViews(f.views) + ' lượt xem</span></div>' +
+      (realViews(f) ? '<span class="tag">' + fmtViews(f.views) + ' lượt xem</span>' : '') + '</div>' +
       '<div class="actions">' +
       '<button class="btn primary" type="button" data-film="' + f.id + '" data-play="1">' + playIcon(18) + (!hasVideo ? "Xem demo" : f.type === "bo" ? "Xem tập 1" : "Xem ngay") + '</button>' +
       '<button class="btn ghost" type="button" data-film="' + f.id + '">Thông tin phim</button>' +
@@ -152,6 +163,31 @@
       '<div class="scroller">' + list.map(cardHTML).join("") + '</div></section>';
   }
 
+  /* "Xem tiếp": chỉ lưu trên trình duyệt này (mã phim + số tập), không gửi đi đâu. */
+  function historyKey() { return "afn-cw:" + site.id; }
+  function readHistory() {
+    try { var a = JSON.parse(store(historyKey()) || "[]"); return Array.isArray(a) ? a.filter(function (x) { return x && typeof x.id === "string"; }) : []; }
+    catch (e) { return []; }
+  }
+  function rememberWatch(f, ep) {
+    if (!f) return;
+    var list = readHistory().filter(function (x) { return x.id !== f.id; });
+    list.unshift({ id: f.id, ep: Number(ep) || 1, at: Date.now() });
+    store(historyKey(), JSON.stringify(list.slice(0, 12)));
+  }
+  function continueHTML() {
+    var items = readHistory().map(function (x) { var f = byId(x.id); return f ? { f: f, ep: x.ep } : null; }).filter(Boolean).slice(0, 8);
+    if (!items.length) return "";
+    return '<section class="continue-row">' + headHTML("Xem tiếp", isFuture() ? "▶" : "續", '<span class="count">Trên thiết bị này</span>') +
+      '<div class="scroller">' + items.map(function (it) {
+        var label = it.f.type === "bo" || hasEpisodeList(it.f) ? "Tập " + it.ep : "Tiếp tục";
+        return '<button class="card cw" type="button" data-film="' + it.f.id + '" data-resume="' + it.ep + '">' + posterHTML(it.f) +
+          '<span class="cw-badge">' + playIcon(12) + esc(label) + '</span>' +
+          '<span class="c-title">' + esc(it.f.title) + '</span>' +
+          '<span class="c-meta">' + it.f.year + ' · ' + esc(it.f.genres.join(", ")) + '</span></button>';
+      }).join("") + '</div></section>';
+  }
+
   function genresHTML() {
     return '<section>' + headHTML("Thể loại", null, '<button class="more" type="button" data-catalog="{}">Vào kho phim</button>') +
       '<div class="genre-grid">' + GENRES.map(function (g) {
@@ -164,7 +200,7 @@
 
   function rankingHTML() {
     var top = query({ sort: "xem" }).slice(0, 10);
-    return '<section>' + headHTML("Bảng xếp hạng", isFuture() ? "TOP" : "榜", '<span class="count">Theo lượt xem</span>') +
+    return '<section>' + headHTML("Phim nổi bật", isFuture() ? "TOP" : "榜", '<span class="count">Gợi ý của biên tập</span>') +
       '<div class="rank-list">' + top.map(function (f, i) {
         return '<button class="rank" type="button" data-film="' + f.id + '" aria-label="Hạng ' + (i + 1) + ': ' + esc(f.title) + '">' +
           '<span class="num" aria-hidden="true">' + (i + 1) + '</span>' + posterHTML(f) + '</button>';
@@ -211,7 +247,7 @@
       $("#hero-slot").innerHTML = featured ? heroHTML(featured) : "";
       var rows = site.rows.map(rowHTML);
       rows.splice(1, 0, rankingHTML());
-      $("#content").innerHTML = genresHTML() + rows.join("");
+      $("#content").innerHTML = continueHTML() + genresHTML() + rows.join("");
     } else {
       $("#hero-slot").innerHTML = "";
       $("#content").innerHTML = catalogHTML(view);
@@ -230,33 +266,304 @@
   /* ---------- 5. Chi tiết phim + trình phát ---------- */
   var dlg = $("#film-dialog");
   var current = null;
-  function openFilm(id, autoplay) {
+  var playToken = 0;
+  function hasEpisodeList(f) { return !!(f && Array.isArray(f.episodeList) && f.episodeList.length); }
+  function episodeOpen(e) { return e.access_tier === "free" || (e.access_tier === "early" && e.free_from && new Date(e.free_from) <= new Date()); }
+  function episodeBadge(e) {
+    if (episodeOpen(e)) return "";
+    if (e.access_tier === "member") return ' <span class="ep-badge member" title="Dành cho thành viên đã đăng nhập">TV</span>';
+    return ' <span class="ep-badge early" title="Mở sớm bằng ' + e.price_points + ' điểm">Sớm ' + e.price_points + '</span>';
+  }
+  function selectedEpisode() {
+    var b = $(".episodes [aria-pressed='true']");
+    return b ? Number(b.dataset.ep) || 1 : 1;
+  }
+  // Each opened film gets its own shareable address (?film=…&tap=…). Pretty /phim/… links redirect here.
+  function setFilmUrl(filmId, ep) {
+    try {
+      var u = new URL(location.href);
+      if (filmId) { u.searchParams.set("film", filmId); if (ep > 1) u.searchParams.set("tap", String(ep)); else u.searchParams.delete("tap"); }
+      else { u.searchParams.delete("film"); u.searchParams.delete("tap"); }
+      history.replaceState(history.state, "", u.href);
+    } catch (e) {}
+  }
+  // SEO: canonical + Open Graph theo trang đang xem. Canonical luôn trỏ về tên miền thật của site
+  // (https://www.<domain>, trùng AFN.filmUrl), dạng /phim/<id> — trùng đường dẫn đẹp trong _redirects và sitemap.
+  function setMeta(attr, key, value) {
+    var m = document.head.querySelector("meta[" + attr + '="' + key + '"]');
+    if (!m) { m = document.createElement("meta"); m.setAttribute(attr, key); document.head.appendChild(m); }
+    m.setAttribute("content", value);
+  }
+  function setSeo(f) {
+    var base = "https://www." + site.domain;   // tên miền chuẩn: xuongphim.ai chuyển 301 sang www (Cloudflare Redirect Rule)
+    var url = f ? base + "/phim/" + encodeURIComponent(f.id) : base + "/";
+    var title = f ? f.title + " · " + site.name + ".ai" : site.name + ".ai · " + site.tagline;
+    var desc = f ? String(f.synopsis || "").slice(0, 160) : site.name + ".ai: " + site.tagline + ".";
+    document.title = title;
+    var d = $('meta[name="description"]'); if (d) d.setAttribute("content", desc);
+    var link = document.head.querySelector('link[rel="canonical"]');
+    if (!link) { link = document.createElement("link"); link.rel = "canonical"; document.head.appendChild(link); }
+    link.href = url;
+    setMeta("property", "og:type", f ? "video.movie" : "website");
+    setMeta("property", "og:site_name", site.name + ".ai");
+    setMeta("property", "og:locale", "vi_VN");
+    setMeta("property", "og:title", title);
+    setMeta("property", "og:description", desc);
+    setMeta("property", "og:url", url);
+    setMeta("name", "twitter:card", "summary");
+  }
+  function openFilm(id, autoplay, startEp) {
     var f = byId(id); if (!f) return;
     current = f;
+    playToken++;
     var specs = [["Thể loại", f.genres.join(", ")], ["Loại", TYPE_LABEL[f.type]], ["Tình trạng", status(f)], ["Năm", f.year],
-      ["Thời lượng", f.duration], ["Chất lượng", f.quality], ["Độ tuổi", f.age], ["Lượt xem", fmtViews(f.views)]];
+      ["Thời lượng", f.duration], ["Chất lượng", f.quality], ["Độ tuổi", f.age]].concat(realViews(f) ? [["Lượt xem", fmtViews(f.views)]] : []);
     var eps = "";
-    if (f.type === "bo") {
+    var wantEp = Number(startEp) || 1;
+    if (hasEpisodeList(f)) {
+      var chosen = f.episodeList.some(function (e) { return e.episode_no === wantEp; }) ? wantEp : f.episodeList[0].episode_no;
+      eps = '<div class="ep-head">Danh sách tập</div><div class="episodes list" role="group" aria-label="Chọn tập">' +
+        f.episodeList.map(function (e) {
+          return '<button type="button" data-ep="' + e.episode_no + '" data-ep-id="' + esc(e.id) + '" aria-pressed="' + (e.episode_no === chosen) + '">' +
+            '<span class="ep-no">Tập ' + String(e.episode_no).padStart(2, "0") + '</span>' + episodeBadge(e) +
+            (e.title ? '<span class="ep-name">' + esc(e.title) + '</span>' : "") + '</button>';
+        }).join("") + '</div>' +
+        (f.episodeList.some(function (e) { return !episodeOpen(e); }) ? '<p class="ep-legend"><span class="ep-badge early">Sớm</span> mở sớm bằng điểm thưởng · <span class="ep-badge member">TV</span> dành cho thành viên đã đăng nhập</p>' : "");
+    } else if (f.type === "bo") {
       var progress = seriesProgress(f);
+      var pick = progress && wantEp >= 1 && wantEp <= progress.aired ? wantEp : 1;
       eps = progress ? '<div class="ep-head">Danh sách tập</div><div class="episodes" role="group" aria-label="Chọn tập">' +
         Array.from({ length: progress.total }, function (_, i) {
           var n = i + 1, off = n > progress.aired;
-          return '<button type="button" data-ep="' + n + '" aria-pressed="' + (n === 1 && !off) + '"' + (off ? ' disabled title="Sắp chiếu"' : "") + '>Tập ' + String(n).padStart(2, "0") + '</button>';
+          return '<button type="button" data-ep="' + n + '" aria-pressed="' + (n === pick && !off) + '"' + (off ? ' disabled title="Sắp chiếu"' : "") + '>Tập ' + String(n).padStart(2, "0") + '</button>';
         }).join("") + '</div>' : '<p class="ep-head">Chưa có thông tin số tập hợp lệ.</p>';
     }
     var art = f.poster ? ' style="background-image:url(\'' + encodeURI(f.poster) + '\')"' : ' data-art="' + f.id + '" data-size="960x540"';
     $("#film-content").innerHTML =
       '<div class="player" id="player"' + art + '><button class="play" type="button" id="play-btn" aria-label="Phát phim">' + playIcon(30) + '</button></div>' +
-      '<div class="film-body"><h3 id="film-title">' + esc(f.title) + '</h3>' +
+      (eps && /data-ep=/.test(eps) ? '<div class="player-bar" id="player-bar">' +
+        '<button type="button" class="pb-step" data-ep-step="-1" aria-label="Tập trước">‹ <span>Tập trước</span></button>' +
+        '<span class="pb-now" id="pb-now" aria-live="polite"></span>' +
+        '<button type="button" class="pb-step" data-ep-step="1" aria-label="Tập tiếp theo"><span>Tập tiếp</span> ›</button></div>' : "") +
+      '<div class="film-body' + (eps ? " has-eps" : "") + '"><div class="film-main"><h3 id="film-title">' + esc(f.title) + '</h3>' +
       '<div class="tags"><span class="tag age">' + esc(f.age) + '</span>' + f.genres.map(function (g) { return '<span class="tag">' + esc(g) + '</span>'; }).join("") + '</div>' +
-      '<p>' + esc(f.synopsis) + '</p>' + eps +
-      '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join("") + '</dl></div>';
+      '<div class="film-actions" id="film-actions"></div>' +
+      '<p>' + esc(f.synopsis) + '</p>' +
+      '<dl class="specs">' + specs.map(function (s) { return '<div><dt>' + esc(s[0]) + '</dt><dd>' + esc(s[1]) + '</dd></div>'; }).join("") + '</dl>' +
+      '<div class="film-social" id="film-social" hidden></div>' +
+      '<section class="film-chat" id="film-chat" hidden aria-label="Bàn luận về phim"></section></div>' +
+      (eps ? '<aside class="film-eps" aria-label="Danh sách tập">' + eps + '</aside>' : "") + '</div>';
+    updatePlayerBar();
     window.InkArt.hydrate($("#film-content"), byId);
+    if (window.AFN_FILM_ACTIONS) window.AFN_FILM_ACTIONS.mount($("#film-actions"), f, selectedEpisode);
+    if (window.AFN_SOCIAL) window.AFN_SOCIAL.render($("#film-social"), "film", { title: "Bàn luận phim cùng cộng đồng" });
     if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+    setFilmUrl(f.id, selectedEpisode());
+    setSeo(f);
+    window.dispatchEvent(new CustomEvent("afn-film-opened", { detail: { site: site.id, film: f.id } }));
     if (autoplay) play();
   }
+  function epButtons() { return Array.prototype.slice.call(document.querySelectorAll(".episodes [data-ep]")); }
+  function updatePlayerBar() {
+    var now = $("#pb-now"); if (!now) return;
+    var list = epButtons(), cur = list.findIndex(function (b) { return b.getAttribute("aria-pressed") === "true"; });
+    var b = list[cur];
+    var name = b && b.querySelector(".ep-name");
+    now.textContent = b ? "Tập " + String(b.dataset.ep).padStart(2, "0") + " / " + String(list.length).padStart(2, "0") + (name ? " · " + name.textContent : "") : "Chọn tập để xem";
+    function usable(dir) { for (var i = cur + dir; i >= 0 && i < list.length; i += dir) if (!list[i].disabled) return list[i]; return null; }
+    document.querySelectorAll("[data-ep-step]").forEach(function (s) { s.disabled = !usable(Number(s.dataset.epStep)); });
+    var sel = b; if (sel && sel.scrollIntoView && dlg.open) { var box = sel.closest(".episodes"); if (box && box.scrollHeight > box.clientHeight) box.scrollTop = sel.offsetTop - box.offsetTop - 40; }
+  }
+  function stepEpisode(dir) {
+    var list = epButtons(), cur = list.findIndex(function (b) { return b.getAttribute("aria-pressed") === "true"; });
+    for (var i = cur + dir; i >= 0 && i < list.length; i += dir) if (!list[i].disabled) { list[i].click(); return; }
+  }
+  function playerNote(p, text, actions) {
+    var box = document.createElement("div"); box.className = "player-gate";
+    var msg = document.createElement("p"); msg.textContent = text; box.appendChild(msg);
+    (actions || []).forEach(function (a) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "btn " + (a.primary ? "primary" : "ghost");
+      b.textContent = a.label; b.addEventListener("click", a.run); box.appendChild(b);
+    });
+    p.replaceChildren(box);
+    var first = box.querySelector("button"); if (first && dlg.open) first.focus();
+  }
+  // onFail(reason): gọi khi nguồn không phát được (YouTube báo lỗi nhúng/đã gỡ, video HTTPS lỗi tải).
+  // Level 4.7: route = kết quả Language Router (phụ đề YouTube / WebVTT). Facebook, Google Drive phát bằng iframe nhúng chính thức.
+  var EMBED_OK = /^https:\/\/(www\.facebook\.com\/plugins\/video\.php\?href=https%3A%2F%2Fwww\.facebook\.com%2F|drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{20,100}\/preview$)/;
+  function playSource(p, f, kind, value, epNo, onFail, route) {
+    var sub = route && route.subtitle;
+    if (kind === "embed" && typeof value === "string" && EMBED_OK.test(value)) {
+      var fr = document.createElement("iframe");
+      fr.src = value; fr.title = f.title;
+      fr.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; fullscreen");
+      fr.setAttribute("allowfullscreen", ""); fr.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      fr.style.cssText = "width:100%;aspect-ratio:16/9;border:0;background:#000";
+      fr.dataset.provider = /drive\.google/.test(value) ? "gdrive" : "facebook";
+      p.replaceChildren(fr);
+      rememberWatch(f, epNo || 1);
+      return true;
+    }
+    if (kind === "youtube" && typeof value === "string" && /^[A-Za-z0-9_-]{11}$/.test(value)) {
+      p.replaceChildren();
+      var holder = document.createElement("div");
+      holder.className = "youtube-player";
+      holder.style.cssText = "width:100%;aspect-ratio:16/9;background:#000";
+      p.appendChild(holder);
+      if (typeof window.AFN_PLAY_YOUTUBE === "function") {
+        window.AFN_PLAY_YOUTUBE({ holder: holder, filmId: f.id, videoId: value, episode: epNo || 1,
+          captionLang: sub && sub.source === "youtube" ? sub.language : null,
+          onError: function (code) { if (onFail) onFail("youtube:" + code); } });
+        rememberWatch(f, epNo || 1);
+      } else {
+        var iframe = document.createElement("iframe");
+        iframe.src = "https://www.youtube-nocookie.com/embed/" + value + "?rel=0" +
+          (sub && sub.source === "youtube" ? "&cc_load_policy=1&cc_lang_pref=" + encodeURIComponent(sub.language) + "&hl=" + encodeURIComponent(sub.language) : "");
+        iframe.title = f.title;
+        iframe.setAttribute("allow", "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture");
+        iframe.setAttribute("allowfullscreen", "");
+        iframe.style.cssText = "width:100%;height:100%;border:0";
+        holder.appendChild(iframe);
+      }
+      return true;
+    }
+    if (kind === "native" && typeof value === "string" && /^https:\/\/\S+$/.test(value)) {
+      var v = document.createElement("video");
+      v.controls = true; v.autoplay = true; v.playsInline = true; v.src = value;
+      if (sub && sub.source === "vtt" && /^https:\/\/\S+$/.test(sub.url || "")) {
+        var tr = document.createElement("track");
+        tr.kind = "subtitles"; tr.srclang = sub.language; tr.label = window.AFN_LANG ? window.AFN_LANG.name(sub.language) : sub.language;
+        tr.src = sub.url; tr.default = true; v.crossOrigin = "anonymous"; v.appendChild(tr);
+      }
+      v.addEventListener("error", function () {
+        if (onFail) { onFail("native"); return; }
+        playerNote(p, "Không phát được video tập này. Bạn có thể báo lỗi để quản trị viên kiểm tra.", [
+          { label: "Thử lại", primary: true, run: function () { play(); } }]);
+      });
+      p.replaceChildren(v);
+      rememberWatch(f, epNo || 1);
+      if ((window.AFN_LEVEL3_CONFIG?.enabledSites || ["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
+        window.AFN_TRACK_VIDEO({ video: v, filmId: f.id, episode: epNo || 1 });
+      }
+      return true;
+    }
+    return false;
+  }
+  // Thanh chọn ngôn ngữ (Level 4.7): chỉ hiện khi tập có ≥ 2 lựa chọn. Đổi ngôn ngữ = phát lại CÙNG tập với lựa chọn mới.
+  var viewerLang = null;
+  function renderLangBar(p, f, route) {
+    var bar = p.parentNode && p.parentNode.querySelector(".lang-bar");
+    if (!route || !route.options || route.options.length < 2) { if (bar) bar.remove(); return; }
+    if (!bar) { bar = document.createElement("div"); bar.className = "lang-bar"; bar.setAttribute("role", "group"); bar.setAttribute("aria-label", "Ngôn ngữ"); p.insertAdjacentElement("afterend", bar); }
+    bar.replaceChildren();
+    var lab = document.createElement("span"); lab.className = "lang-label"; lab.textContent = "Ngôn ngữ:"; bar.appendChild(lab);
+    route.options.forEach(function (o) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "lang-opt"; b.dataset.lang = o.language;
+      b.setAttribute("aria-pressed", String(o.language === route.language));
+      b.textContent = o.name + (o.audio ? "" : " (phụ đề)");
+      b.addEventListener("click", function () {
+        viewerLang = o.language;
+        if (window.AFN_LANG) window.AFN_LANG.saveChoice(o.language);
+        playEpisode(p, f);
+      });
+      bar.appendChild(b);
+    });
+  }
+  // Live episodes: the source is fetched from the server only after the access check passes.
+  function playEpisode(p, f) {
+    var btn = $(".episodes [aria-pressed='true']");
+    var info = f.episodeList.find(function (e) { return btn && e.id === btn.dataset.epId; }) || f.episodeList[0];
+    setFilmUrl(f.id, info.episode_no);
+    if (!window.AFN_PLAYBACK) { playerNote(p, "Trình phát chưa sẵn sàng trên bản này."); return; }
+    var token = ++playToken;
+    playerNote(p, "Đang kiểm tra quyền xem tập " + info.episode_no + "…");
+    window.AFN_PLAYBACK.resolve(info.id, { lang: viewerLang }).then(function (res) {
+      if (token !== playToken || !p.isConnected) return;
+      showResult(p, f, info, res);
+    });
+  }
+  function showResult(p, f, info, res) {
+    var price = AFN_fmt(info.price_points);
+    var freeFrom = info.free_from ? " Tập sẽ miễn phí từ " + new Date(info.free_from).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "." : "";
+    var status = res && res.status;
+    if (status === "ok") {
+      // Nguồn dự phòng (Level 4.1): chỉ có khi máy chủ đã cho phép xem tập này; tự chuyển khi nguồn chính lỗi.
+      var fb = res.fallback && (res.fallback.source_kind === "youtube" || res.fallback.source_kind === "native" || res.fallback.source_kind === "embed") ? res.fallback : null;
+      var route = res.afn_route || null;
+      renderLangBar(p, f, route);
+      var token = playToken, usedFallback = false;
+      var giveUp = function () {
+        if (token !== playToken || !p.isConnected) return;
+        playerNote(p, "Không phát được video tập " + info.episode_no + (usedFallback ? " (đã thử cả nguồn dự phòng)" : "") +
+          ". Bạn có thể thử lại hoặc báo lỗi để quản trị viên kiểm tra.", [
+          { label: "Thử lại", primary: true, run: function () { play(); } },
+          { label: "Báo lỗi", run: function () { var r = Array.prototype.find.call(document.querySelectorAll("#film-actions .afn-act"), function (b) { return /Báo lỗi/.test(b.textContent); }); if (r) { r.click(); r.scrollIntoView({ block: "center" }); } } }]);
+        p.dataset.playback = "failed";
+      };
+      var failed = function () {
+        if (token !== playToken || !p.isConnected) return;
+        if (fb && !usedFallback) {
+          usedFallback = true;
+          p.dataset.playback = "fallback";
+          if (window.AFN && window.AFN.toast) window.AFN.toast("Nguồn chính đang gặp sự cố — đã chuyển sang nguồn dự phòng.");
+          if (!playSource(p, f, fb.source_kind, fb.youtube_id || fb.video_url || fb.embed_url, info.episode_no, giveUp, null)) giveUp();
+          return;
+        }
+        giveUp();
+      };
+      p.dataset.playback = "primary";
+      if (!playSource(p, f, res.source_kind, res.youtube_id || res.video_url || res.embed_url, info.episode_no, failed, route)) failed();
+      return;
+    }
+    if (status === "login_required") {
+      playerNote(p, info.access_tier === "member"
+        ? "Tập " + info.episode_no + " dành cho thành viên. Đăng nhập miễn phí để xem."
+        : "Tập " + info.episode_no + " đang mở sớm cho thành viên với " + price + " điểm." + freeFrom,
+        [{ label: "Đăng nhập để xem", primary: true, run: function () { if (window.AFN) window.AFN.openLogin(); } }]);
+      return;
+    }
+    if (status === "locked") {
+      var bal = window.AFN_PLAYBACK.balance;
+      playerNote(p, "Tập " + info.episode_no + " đang mở sớm với " + price + " điểm." + (bal !== null && bal !== undefined ? " Số dư của bạn: " + AFN_fmt(bal) + " điểm." : "") + freeFrom, [
+        { label: "Mở khóa · " + price + " điểm", primary: true, run: function (e) { doUnlock(p, f, info, e.currentTarget); } }]);
+      return;
+    }
+    if (status === "no_source") { playerNote(p, "Tập " + info.episode_no + " chưa có nguồn phát. Vui lòng quay lại sau."); return; }
+    if (status === "not_found") { playerNote(p, "Tập này không còn được phát hành."); return; }
+    playerNote(p, "Không tải được nguồn phát. Vui lòng kiểm tra kết nối.", [
+      { label: "Thử lại", primary: true, run: function () { play(); } }]);
+  }
+  function doUnlock(p, f, info, button) {
+    if (button) { button.disabled = true; button.textContent = "Đang mở khóa…"; }
+    window.AFN_PLAYBACK.unlock(info.id).then(function (r) {
+      if (!p.isConnected) return;
+      var s = r && r.status;
+      if (s === "unlocked" || s === "already_unlocked" || s === "free" || s === "member_access") {
+        if (s === "unlocked" && window.AFN) window.AFN.toast("Đã mở khóa tập " + info.episode_no + " (−" + AFN_fmt(r.price) + " điểm). Chúc bạn xem phim vui!");
+        playEpisode(p, f);
+        return;
+      }
+      if (s === "insufficient") {
+        var need = Math.max(0, (r.price || info.price_points) - (r.balance || 0));
+        playerNote(p, "Bạn cần thêm " + AFN_fmt(need) + " điểm để mở khóa tập này (số dư " + AFN_fmt(r.balance) + "). Điểm danh mỗi ngày để tích điểm.", [
+          { label: "Điểm danh hôm nay", primary: true, run: function () {
+            if (window.AFN_REWARDS) window.AFN_REWARDS.claim().then(function () { playEpisode(p, f); });
+          } }]);
+        return;
+      }
+      if (s === "login_required") return;
+      if (s === "disabled") { playerNote(p, "Website này chưa mở chức năng mở khóa tập bằng điểm."); return; }
+      playerNote(p, "Chưa mở khóa được. Điểm của bạn chưa bị trừ — vui lòng thử lại.", [
+        { label: "Thử lại", primary: true, run: function (e) { doUnlock(p, f, info, e.currentTarget); } }]);
+    });
+  }
+  function AFN_fmt(n) { return Number(n || 0).toLocaleString("vi-VN"); }
+  // Read-only hook for modules that load after a deep-linked film is already open (rewards.js, social.js).
+  window.AFN_APP = Object.freeze({ current: function () { return dlg.open ? current : null; }, selectedEpisode: selectedEpisode });
   function play() {
     var p = $("#player"), f = current; if (!p || !f) return;
+    if (hasEpisodeList(f)) { playEpisode(p, f); return; }
     var progress = seriesProgress(f);
     if (f.type === "bo" && (!progress || progress.aired === 0)) {
       if (!p.querySelector(".note")) {
@@ -270,6 +577,7 @@
     var src = Array.isArray(f.video) ? f.video[(ep ? +ep.dataset.ep : 1) - 1] : f.video;
     var yt = Array.isArray(f.youtube) ? f.youtube[(ep ? +ep.dataset.ep : 1) - 1] : f.youtube;
     if (f.live && typeof yt === "string" && /^[A-Za-z0-9_-]{11}$/.test(yt)) {
+      rememberWatch(f, ep ? Number(ep.dataset.ep) || 1 : 1);
       p.replaceChildren();
       var holder=document.createElement("div");
       holder.className="youtube-player";
@@ -289,6 +597,7 @@
       }
     } else if (src) {
       p.innerHTML = '<video controls autoplay playsinline src="' + encodeURI(src) + '"></video>';
+      rememberWatch(f, ep ? Number(ep.dataset.ep) || 1 : 1);
       // Progress is recorded only for actually playing native video, with explicit viewer consent.
       if ((window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(site.id) && typeof window.AFN_TRACK_VIDEO === "function") {
         window.AFN_TRACK_VIDEO({
@@ -304,14 +613,16 @@
   }
   function closeFilm() {
     var v = dlg.querySelector("video"); if (v) v.pause();
+    playToken++;
     if (typeof dlg.close === "function") dlg.close(); else dlg.removeAttribute("open");
   }
+  dlg.addEventListener("close", function () { playToken++; setFilmUrl(null); setSeo(null); window.dispatchEvent(new CustomEvent("afn-film-closed")); });
 
   /* ---------- 6. Sự kiện ---------- */
   document.addEventListener("click", function (e) {
     var t = e.target.closest("button, a"); if (!t) return;
     var d = t.dataset;
-    if (d.site && state.preview) {
+    if (d.site && state.preview && !state.locked) {
       site = SITES.find(function (s) { return s.id === d.site; }) || site;
       store("pv-site", site.id);
       $("#q").value = "";
@@ -323,7 +634,9 @@
       }
       applyBrand(); go({ kind: "home" }); return;
     }
-    if (d.film) { openFilm(d.film, !!d.play); return; }
+    if (d.film) { openFilm(d.film, !!d.play || !!d.resume, d.resume); return; }
+    if (d.epStep) { stepEpisode(Number(d.epStep)); return; }
+    if (t.id === "side-toggle") { setSide(document.body.dataset.side === "collapsed" ? "expanded" : "collapsed", true); return; }
     if (d.nav) {
       $("#q").value = "";
       if (d.nav === "home") go({ kind: "home" });
@@ -336,7 +649,9 @@
     if (d.ep) {
       if (t.disabled) return;
       t.parentElement.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", b === t ? "true" : "false"); });
-      if ($("#player video") || (current && current.video)) play();
+      if (current) setFilmUrl(current.id, Number(d.ep) || 1);
+      updatePlayerBar();
+      if ($("#player video") || (current && (current.video || hasEpisodeList(current)))) play();
       return;
     }
     if (t.id === "play-btn") { play(); return; }
@@ -356,17 +671,36 @@
     if (q) { view = { kind: "catalog", q: q }; render(); } else go({ kind: "home" });
   });
 
+  /* ---------- 7. Thanh bên thu gọn (ghi nhớ trên trình duyệt này) ---------- */
+  function setSide(mode, save) {
+    document.body.dataset.side = mode;
+    var b = $("#side-toggle");
+    if (b) { b.setAttribute("aria-expanded", String(mode === "expanded")); b.setAttribute("aria-label", mode === "expanded" ? "Thu gọn thanh bên" : "Mở rộng thanh bên"); }
+    if (save) store("afn-side", mode);
+  }
+  function measureHeader() {
+    var h = $(".site-header"); if (h) document.documentElement.style.setProperty("--hdr-h", h.offsetHeight + "px");
+  }
+  measureHeader();
+  window.addEventListener("resize", measureHeader);
+  if (typeof ResizeObserver === "function" && $(".site-header")) new ResizeObserver(measureHeader).observe($(".site-header"));
+  setSide(store("afn-side") === "collapsed" || store("afn-side") === "expanded" ? store("afn-side") : (window.innerWidth >= 1100 ? "expanded" : "collapsed"), false);
+
   applyBrand();
   render();
   // Published metadata loads asynchronously. Refresh catalog without replacing the viewer's session.
   window.addEventListener("afn-catalog-updated",function(){
     applyBrand();render();
   });
-  var requestFilm=new URLSearchParams(location.search).get("film");
+  var requestParams=new URLSearchParams(location.search);
+  var requestFilm=requestParams.get("film");
+  var requestEp=Math.max(1,Math.min(10000,parseInt(requestParams.get("tap")||"1",10)||1));
   if(requestFilm && /^[a-z0-9][a-z0-9-]{0,119}$/.test(requestFilm)) {
-    if(byId(requestFilm))openFilm(requestFilm,false);
-    else window.addEventListener("afn-catalog-updated",function(){
-      if(byId(requestFilm))openFilm(requestFilm,false);
+    if(byId(requestFilm))openFilm(requestFilm,false,requestEp);
+    // Live films (and their episode lists) arrive asynchronously; reopen once they are known.
+    window.addEventListener("afn-catalog-updated",function(){
+      var f=byId(requestFilm);
+      if(f && (!dlg.open || (current && current.id===requestFilm && !$(".episodes [data-ep-id]") && hasEpisodeList(f))))openFilm(requestFilm,false,requestEp);
     },{once:true});
   }
 })();

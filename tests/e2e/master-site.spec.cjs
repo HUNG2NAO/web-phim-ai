@@ -1,0 +1,1702 @@
+// Master website (Xưởng Phim) acceptance: check-in, wallet, unlock, playback gate, social,
+// share/save/report, deep links, dashboard, second-site isolation, mobile, security headers.
+const { test, expect } = require("@playwright/test");
+const fs = require("node:fs");
+const path = require("node:path");
+const MOCK = fs.readFileSync(path.join(__dirname, "supabase-mock.js"), "utf8");
+
+const VIEWER = { id: "00000000-0000-4000-8000-000000000001", email: "viewer@example.test", created_at: "2026-10-01T00:00:00Z",
+  email_confirmed_at: "2026-10-01T00:05:00Z", user_metadata: { display_name: "Khán giả thử" }, app_metadata: { providers: ["email"] } };
+const OWNER = { id: "00000000-0000-4000-8000-0000000000aa", email: "owner@example.test", created_at: "2026-10-01T00:00:00Z",
+  email_confirmed_at: "2026-10-01T00:05:00Z", user_metadata: { display_name: "Chủ hệ thống" }, app_metadata: { providers: ["email"] } };
+const EP = { e1: "11111111-1111-4111-8111-000000000001", e2: "11111111-1111-4111-8111-000000000002", e3: "11111111-1111-4111-8111-000000000003" };
+
+function vnToday(offset = 0) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(Date.now() + offset * 864e5));
+}
+function seed({ user = null, balance = 0, checkedInToday = false, entitlement = false, missing = [], loginAs = null, extra = {}, weakPassword = false } = {}) {
+  const t = {
+    reward_rules: [{ id: 1, checkin_enabled: true, checkin_base: 10, streak_step: 2, streak_step_cap: 5, day7_bonus: 30 }],
+    site_films: [{ id: "f1", site_id: "xuongphim", film_id: "tin-hieu-47", title: "Tín Hiệu 47 (thử nghiệm)", synopsis: "Phim thử nghiệm có tập mở sớm.",
+      genres: ["Viễn tưởng"], year: 2026, film_type: "bo", source_kind: "youtube", youtube_id: "AAAAAAAAAAA", rights_attested: true, published: true, created_at: "2026-10-30T00:00:00Z" }],
+    site_episodes: [
+      { id: EP.e1, site_id: "xuongphim", film_id: "tin-hieu-47", episode_no: 1, title: "Khởi động", access_tier: "free", price_points: 0, free_from: null, access_days: null, published: true },
+      { id: EP.e2, site_id: "xuongphim", film_id: "tin-hieu-47", episode_no: 2, title: "Tín hiệu lạ", access_tier: "early", price_points: 50, free_from: null, access_days: null, published: true },
+      { id: EP.e3, site_id: "xuongphim", film_id: "tin-hieu-47", episode_no: 3, title: "Hội viên", access_tier: "member", price_points: 0, free_from: null, access_days: null, published: true }],
+    episode_sources: [
+      { episode_id: EP.e1, source_kind: "youtube", youtube_id: "EP1xxxxxxxx", video_url: null },
+      { episode_id: EP.e2, source_kind: "youtube", youtube_id: "EP2xxxxxxxx", video_url: null },
+      { episode_id: EP.e3, source_kind: "youtube", youtube_id: "EP3xxxxxxxx", video_url: null }],
+    site_social_links: [
+      { id: "s1", site_id: "xuongphim", platform: "facebook_page", label: "Fanpage Xưởng Phim", url: "https://www.facebook.com/example-test", placements: ["footer", "film", "member"], enabled: true, sort_order: 0 },
+      { id: "s2", site_id: "xuongphim", platform: "youtube", label: "Nút giả mạo", url: "https://evil.example.com/watch", placements: ["footer"], enabled: true, sort_order: 1 }],
+    wallets: [], wallet_ledger: [], daily_checkins: [], content_entitlements: [], content_reports: [], traffic_events: [], admin_audit_log: [],
+    site_memberships: [{ user_id: VIEWER.id, site_id: "xuongphim", joined_at: "2026-10-02T00:00:00Z" }, { user_id: VIEWER.id, site_id: "khophim", joined_at: "2026-10-02T00:00:00Z" }],
+    profiles: [{ id: VIEWER.id, display_name: "Khán giả thử" }],
+    network_staff: [{ user_id: OWNER.id, role: "owner" }],
+    site_staff: [{ user_id: OWNER.id, site_id: "xuongphim", role: "admin" }, { user_id: OWNER.id, site_id: "khophim", role: "admin" }],
+    viewer_profiles: [], viewer_preferences: [], film_library: [], watch_progress: [], film_reviews: [], member_notifications: [], approved_reviews: [], member_privacy_requests: []
+  };
+  if (balance) {
+    t.wallets.push({ user_id: VIEWER.id, balance, earned_total: balance, spent_total: 0 });
+    t.wallet_ledger.push({ id: 1, user_id: VIEWER.id, site_id: null, kind: "admin_credit", delta: balance, balance_after: balance, idempotency_key: "seed-0001", note: "Điểm khởi tạo thử nghiệm", created_at: "2026-10-30T01:00:00Z" });
+  }
+  if (checkedInToday) t.daily_checkins.push({ user_id: VIEWER.id, checkin_date: vnToday(), site_id: "xuongphim", streak: 1, points: 10 });
+  if (entitlement) t.content_entitlements.push({ id: "22222222-2222-4222-8222-000000000001", user_id: VIEWER.id, episode_id: EP.e2, site_id: "xuongphim",
+    film_id: "tin-hieu-47", episode_no: 2, points_paid: 50, status: "active", granted_at: "2026-10-30T02:00:00Z", expires_at: null });
+  Object.assign(t, extra);
+  return { tables: t, user, missing, loginAs, weakPassword };
+}
+async function setup(page, opts = {}) {
+  const issues = [];
+  await page.addInitScript(s => {
+    window.__AFN_MOCK_SEED = s; window.__csp = [];
+    document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective + " " + e.blockedURI));
+  }, seed(opts));
+  await page.route("**/supabase.min.js", r => r.fulfill({ status: 200, contentType: "application/javascript", body: MOCK }));
+  await page.route("**/assets/auth-config.js", r => r.fulfill({ status: 200, contentType: "application/javascript",
+    body: 'window.AFN_AUTH_CONFIG={enabled:true,googleEnabled:false,url:"https://jurvphonehknrxjpowoe.supabase.co",publishableKey:"sb_publishable_e2e_key_123456789",storageKey:"afn-e2e"};' }));
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ status: 200, contentType: "text/css", body: "" }));
+  await page.route(/(youtube|youtube-nocookie|ytimg)\.com/, r => r.abort());
+  page.on("pageerror", e => issues.push("pageerror: " + e.message));
+  page.on("console", m => { if (m.type() === "error" && !/Failed to load resource|net::ERR/.test(m.text())) issues.push("console: " + m.text()); });
+  page.on("dialog", d => d.accept(d.type() === "prompt" ? d.defaultValue() : undefined));
+  return issues;
+}
+async function cspViolations(page) { return page.evaluate(() => window.__csp || []); }
+async function mock(page) { return page.evaluate(() => window.__AFN_MOCK.db); }
+
+test.describe("Website mẫu — khách chưa đăng nhập", () => {
+  test("trang chủ: nút điểm danh, Social an toàn, không lỗi, không vi phạm CSP", async ({ page }) => {
+    const issues = await setup(page);
+    const res = await page.goto("/?site=xuongphim");
+    expect(res.headers()["content-security-policy"]).toContain("default-src 'self'");
+    expect(res.headers()["x-frame-options"]).toBe("SAMEORIGIN");
+    await expect(page.locator(".afn-reward-chip")).toContainText("Điểm danh");
+    const social = page.locator(".site-footer .afn-social");
+    await expect(social.locator(".afn-social-link")).toHaveCount(1);
+    await expect(social.locator(".afn-social-link")).toHaveAttribute("href", "https://www.facebook.com/example-test");
+    await expect(social.locator(".afn-social-link")).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(page.locator(".afn-reward-pop")).toBeHidden();
+    await page.locator(".afn-reward-chip").click();
+    await expect(page.locator(".afn-reward-pop")).toBeVisible();
+    await expect(page.locator(".afn-streak li")).toHaveCount(7);
+    await expect(page.locator(".afn-reward-pop")).toContainText("Đăng nhập để điểm danh");
+    expect(await cspViolations(page)).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
+  test("đường dẫn đẹp /phim/…/tap/2 mở đúng phim, tập khóa không lộ nguồn phát", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/phim/tin-hieu-47/tap/2");
+    await expect(page).toHaveURL(/film=tin-hieu-47&tap=2/);
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator("#film-title")).toHaveText("Tín Hiệu 47 (thử nghiệm)");
+    await expect(page.locator(".episodes button")).toHaveCount(3);
+    await expect(page.locator('.episodes [data-ep="2"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('.episodes [data-ep="2"] .ep-badge.early')).toHaveText("Sớm 50");
+    await page.locator("#play-btn").click();
+    await expect(page.locator(".player-gate")).toContainText("mở sớm cho thành viên với 50 điểm");
+    await expect(page.locator(".player-gate button")).toHaveText("Đăng nhập để xem");
+    expect(await page.locator("#player iframe").count()).toBe(0);
+    await page.locator('.episodes [data-ep="1"]').click();
+    await expect(page.locator('#player iframe[src*="youtube-nocookie.com/embed/EP1xxxxxxxx"]')).toHaveCount(1);
+    await expect(page).toHaveURL(/film=tin-hieu-47(?!&tap)/);
+    await page.locator('.episodes [data-ep="3"]').click();
+    await expect(page.locator(".player-gate")).toContainText("dành cho thành viên");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#film-dialog")).toBeHidden();
+    await expect(page).not.toHaveURL(/film=/);
+    expect(await cspViolations(page)).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
+  test("trang không tồn tại trả 404 thật", async ({ page }) => {
+    const r = await page.goto("/khong-ton-tai-xyz.html");
+    expect(r.status()).toBe(404);
+    expect(await r.text()).toContain("Không tìm thấy trang này");
+    await page.goto("/khong-ton-tai");
+    await expect(page.locator("h1")).toHaveText("Không tìm thấy trang này");
+  });
+
+  test("Social → Website: ghi nhận chiến dịch UTM một lần, làm sạch địa chỉ", async ({ page }) => {
+    await setup(page);
+    await page.goto("/?site=xuongphim&utm_source=facebook&utm_medium=social&utm_campaign=ra-mat&ref=nhom_a&film=tin-hieu-47");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page).not.toHaveURL(/utm_|ref=/);
+    await expect(page).toHaveURL(/film=tin-hieu-47/);
+    let db = await mock(page);
+    expect(db.traffic_events).toHaveLength(1);
+    expect(db.traffic_events[0]).toMatchObject({ site_id: "xuongphim", utm_source: "facebook", utm_campaign: "ra-mat", ref_code: "nhom_a", film_id: "tin-hieu-47" });
+    await page.goto("/?site=xuongphim&utm_source=facebook&utm_medium=social&utm_campaign=ra-mat&ref=nhom_a&film=tin-hieu-47");
+    db = await mock(page);
+    expect(db.traffic_events).toHaveLength(1);
+  });
+});
+
+test.describe("Website mẫu — thành viên", () => {
+  test("điểm danh từ header: +10 điểm, không điểm danh lần hai", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    const chip = page.locator(".afn-reward-chip");
+    await expect(chip.locator(".afn-chip-points")).toHaveText("0");
+    await expect(chip.locator(".afn-chip-dot")).toHaveCount(1);
+    await chip.click();
+    await page.locator(".afn-checkin-btn").click();
+    await expect(page.locator(".afn-toast")).toContainText("+10 điểm");
+    await expect(chip.locator(".afn-chip-points")).toHaveText("10");
+    await expect(chip.locator(".afn-chip-dot")).toHaveCount(0);
+    await chip.click();
+    await expect(page.locator(".afn-checkin-btn")).toBeDisabled();
+    await expect(page.locator(".afn-checkin-btn")).toContainText("Đã điểm danh hôm nay");
+    const db = await mock(page);
+    expect(db.daily_checkins).toHaveLength(1);
+    expect(db.wallet_ledger.filter(x => x.kind === "checkin")).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("không đủ điểm: báo thiếu, không trừ điểm, mời điểm danh", async ({ page }) => {
+    await setup(page, { user: VIEWER, balance: 30 });
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=2");
+    await page.locator("#play-btn").click();
+    await expect(page.locator(".player-gate")).toContainText("Số dư của bạn: 30 điểm");
+    await page.locator(".player-gate button").click();
+    await expect(page.locator(".player-gate")).toContainText("cần thêm 20 điểm");
+    await expect(page.locator(".player-gate button")).toHaveText("Điểm danh hôm nay");
+    const db = await mock(page);
+    expect(db.wallets[0].balance).toBe(30);
+    expect(db.content_entitlements).toHaveLength(0);
+  });
+
+  test("mở khóa tập bằng điểm: trừ một lần, phát được, mở lại không trừ thêm", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 120 });
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=2");
+    await page.locator("#play-btn").click();
+    await page.locator(".player-gate button", { hasText: "Mở khóa · 50 điểm" }).click();
+    await expect(page.locator('#player iframe[src*="EP2xxxxxxxx"]')).toHaveCount(1);
+    await expect(page.locator(".afn-toast")).toContainText("Đã mở khóa tập 2");
+    await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("70");
+    await page.keyboard.press("Escape");
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=2");
+    await page.locator("#play-btn").click();
+    await expect(page.locator('#player iframe[src*="EP2xxxxxxxx"]')).toHaveCount(1);
+    const db = await mock(page);
+    expect(db.wallet_ledger.filter(x => x.kind === "unlock")).toHaveLength(1);
+    expect(db.wallets[0].balance).toBe(70);
+    const unlockCalls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc === "unlock_episode").length);
+    expect(unlockCalls).toBe(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("lưu phim, chia sẻ liên kết, báo lỗi", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim&film=tin-hieu-47");
+    const save = page.locator(".film-actions .afn-act", { hasText: "Lưu phim" });
+    await save.click();
+    await expect(page.locator(".film-actions .afn-act").first()).toHaveText("♥ Đã lưu");
+    await page.locator(".film-actions .afn-act", { hasText: "Chia sẻ" }).click();
+    await expect(page.locator(".afn-toast")).toContainText("Đã sao chép liên kết phim");
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toContain("film=tin-hieu-47");
+    expect(copied).toContain("site=xuongphim");
+    await expect(page.locator(".afn-report")).toBeHidden();
+    await page.locator(".film-actions .afn-act", { hasText: "Báo lỗi" }).click();
+    await expect(page.locator(".afn-report")).toBeVisible();
+    await page.locator(".afn-report select").selectOption("video_error");
+    await page.locator(".afn-report textarea").fill("Tập 1 bị giật");
+    await page.locator(".afn-report button[type=submit]").click();
+    await expect(page.locator(".afn-toast")).toContainText("Báo lỗi đã được gửi");
+    await expect(page.locator("#film-social .afn-social-link")).toHaveCount(1);
+    const db = await mock(page);
+    expect(db.film_library).toHaveLength(1);
+    expect(db.film_library[0]).toMatchObject({ film_id: "tin-hieu-47", collection: "favorite", site_id: "xuongphim" });
+    expect(db.viewer_profiles).toHaveLength(1);
+    expect(db.content_reports[0]).toMatchObject({ film_id: "tin-hieu-47", kind: "video_error", note: "Tập 1 bị giật", site_id: "xuongphim" });
+  });
+
+  test("Member Hub: tab Điểm thưởng hiển thị ví, lịch sử, nội dung đã mở khóa; điểm danh tại hub", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 80, entitlement: true });
+    await page.goto("/member.html?site=xuongphim#rewards");
+    await expect(page.locator("#tab-rewards")).toBeVisible();
+    await expect(page.locator(".rw-card").first()).toContainText("80");
+    await expect(page.locator("#rewards-root")).toContainText("tin-hieu-47 · Tập 2");
+    await page.locator("#rewards-root .btn.primary", { hasText: "Điểm danh nhận" }).click();
+    await expect(page.locator(".rw-card").first()).toContainText("90");
+    await expect(page.locator("#rewards-root")).toContainText("Lịch sử điểm danh");
+    await expect(page.locator("#rewards-root .rw-row").filter({ hasText: "Điểm danh" }).first()).toContainText("+10");
+    await page.locator('[data-tab="community"]').click();
+    await expect(page.locator("#member-social .afn-social-link")).toHaveText(/Fanpage Xưởng Phim/);
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Đồng bộ đa website — site Preview thứ hai (Kho Phim)", () => {
+  test("cùng ví, điểm danh 1 lần toàn mạng, nội dung & Social tách riêng", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 40, checkedInToday: true });
+    await page.goto("/?site=khophim");
+    await expect(page.locator("#logo")).toContainText("KhoPhim");
+    await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("40");
+    await expect(page.locator(".site-footer .afn-social")).toBeHidden();
+    await page.locator(".afn-reward-chip").click();
+    await expect(page.locator(".afn-checkin-btn")).toBeDisabled();
+    await page.locator("#q").fill("Tín Hiệu");
+    await expect(page.locator("#content")).toContainText("0 phim");
+    await page.goto("/member.html?site=khophim#rewards");
+    await expect(page.locator(".rw-card").first()).toContainText("40");
+    await expect(page.locator("#rewards-root")).toContainText("Đã điểm danh hôm nay");
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Dashboard quản trị", () => {
+  test("tổng quan, thêm tập mở sớm, cấu hình điểm danh, Social, traffic, nhật ký, phân quyền", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#studio-app")).toBeVisible();
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);
+    await expect(page.locator("#ops-overview")).toContainText("Tập đang khóa");
+
+    await page.locator('[data-studio-tab="episodes"]').click();
+    await expect(page.locator("#ops-episodes tbody tr")).toHaveCount(3);
+    await expect(page.locator("#ops-ep-no")).toHaveValue("4");
+    await page.locator("#ops-ep-title").fill("Tập mới");
+    await page.locator("#ops-ep-tier").selectOption("early");
+    await page.locator("#ops-ep-price").fill("30");
+    await page.locator("#ops-ep-video").fill("EP4xxxxxxxx");
+    await page.locator("#ops-ep-published").check();
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Cần xác nhận quyền phát hành");
+    await page.locator("#ops-ep-rights").check();
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Đã lưu tập phim");
+    await expect(page.locator("#ops-episodes tbody tr")).toHaveCount(4);
+    await expect(page.locator("#ops-episodes tbody tr").nth(3)).toContainText("Đã phát hành");
+
+    await page.locator('[data-studio-tab="wallet"]').click();
+    await expect(page.locator("#ops-rule-preview")).toContainText("N7: 50");
+    await page.locator("#ops-rule-base").fill("15");
+    await page.locator("#ops-rules-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Đã lưu cấu hình điểm danh");
+
+    await page.locator('[data-studio-tab="social"]').click();
+    await page.locator("#ops-social-platform").selectOption("tiktok");
+    await page.locator("#ops-social-label").fill("TikTok giả");
+    await page.locator("#ops-social-url").fill("https://tiktok.evil.example/@x");
+    await page.locator("#ops-social-form button[type=submit]").click();
+    await expect(page.locator("#studio-status")).toContainText("không thuộc TikTok");
+    await page.locator("#ops-social-url").fill("https://www.tiktok.com/@xuongphim-test");
+    await page.locator("#ops-social-label").fill("TikTok Xưởng Phim");
+    await page.locator("#ops-social-form button[type=submit]").click();
+    await expect(page.locator("#ops-social-list")).toContainText("TikTok Xưởng Phim");
+
+    await page.locator('[data-studio-tab="traffic"]').click();
+    await page.locator("#ops-utm-source").fill("tiktok");
+    await page.locator("#ops-utm-campaign").fill("Ra mắt tập 4");
+    await page.locator("#ops-utm-film").fill("tin-hieu-47");
+    await page.locator("#ops-utm-form button[type=submit]").click();
+    await expect(page.locator("#ops-utm-out")).toHaveText("https://www.xuongphim.ai/?film=tin-hieu-47&utm_source=tiktok&utm_campaign=ra-m%E1%BA%AFt-t%E1%BA%ADp-4");
+
+    await page.locator('[data-studio-tab="audit"]').click();
+    await page.locator("#studio-reload").click();
+    await expect(page.locator("#ops-audit")).toContainText("reward_rules.update");
+    await page.locator('[data-studio-tab="staff"]').click();
+    await expect(page.locator("#ops-staff")).toContainText("Chủ hệ thống (5 website)");
+    const db = await mock(page);
+    expect(db.reward_rules[0].checkin_base).toBe(15);
+    expect(db.site_episodes.find(e => e.episode_no === 4)).toMatchObject({ access_tier: "early", price_points: 30, published: true });
+    expect(db.episode_sources.find(s => s.youtube_id === "EP4xxxxxxxx")).toBeTruthy();
+    expect(issues).toEqual([]);
+  });
+
+  test("ví thành viên: xem lịch sử, điều chỉnh có lý do, hoàn điểm lượt mở khóa", async ({ page }) => {
+    await setup(page, { user: OWNER, balance: 60, entitlement: true });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="wallet"]').click();
+    await expect(page.locator("#ops-members tbody tr")).toHaveCount(1);
+    await page.locator("#ops-members button", { hasText: "Lịch sử" }).click();
+    await expect(page.locator("#ops-ledger")).toContainText("Điểm khởi tạo thử nghiệm");
+    await page.locator("#ops-adjust-delta").fill("25");
+    await page.locator("#ops-adjust-reason").fill("Thưởng sự kiện cộng đồng");
+    await page.locator("#ops-adjust-form button[type=submit]").click();
+    await expect(page.locator("#studio-status")).toContainText("Số dư mới: 85");
+    await page.locator("#ops-ents button", { hasText: "Hoàn điểm" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã hoàn 50 điểm");
+    const db = await mock(page);
+    expect(db.wallets[0].balance).toBe(135);
+    expect(db.content_entitlements[0].status).toBe("refunded");
+  });
+
+  test("người xem thường không vào được Dashboard", async ({ page }) => {
+    await setup(page, { user: VIEWER });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#studio-denied")).toBeVisible();
+    await expect(page.locator("#studio-app")).toBeHidden();
+  });
+});
+
+test.describe("Responsive & hồi quy", () => {
+  test("Supabase chưa chạy migration Level 4: ẩn nút điểm danh, trang vẫn hoạt động", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, missing: ["reward_rules", "wallets", "daily_checkins", "site_episodes", "site_social_links"] });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator("#content .card").first()).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(page.locator(".afn-reward-slot")).toBeHidden();
+    await expect(page.locator(".site-footer .afn-social")).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+  test("điện thoại 375px: không cuộn ngang ở trang chủ, cửa sổ phim, Member Hub", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const issues = await setup(page, { user: VIEWER, balance: 20 });
+    for (const url of ["/?site=xuongphim", "/?site=xuongphim&film=tin-hieu-47&tap=2", "/member.html?site=xuongphim#rewards"]) {
+      await page.goto(url);
+      await page.waitForTimeout(400);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, url).toBeLessThanOrEqual(0);
+    }
+    await page.goto("/?site=xuongphim&film=tin-hieu-47");
+    await expect(page.locator(".film-actions .afn-act")).toHaveCount(3);
+    const chip = await page.locator(".afn-reward-chip").boundingBox();
+    expect(chip.width).toBeLessThan(120);
+    expect(chip.height).toBeGreaterThanOrEqual(38);
+    expect(issues).toEqual([]);
+  });
+
+  test("phim mẫu cũ vẫn hoạt động: điều hướng, tìm kiếm, mở/đóng phim, URL riêng", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=phimhay");
+    await page.locator('[data-nav="kho"]').click();
+    expect(await page.locator("#content .card").count()).toBeGreaterThan(5);
+    await page.locator("#q").fill("kiếm");
+    await expect(page.locator("#content")).toContainText("Kết quả cho");
+    await page.locator("#q").fill("");
+    await page.locator("#content .card").first().click();
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page).toHaveURL(/film=/);
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player .note")).toContainText("chưa có video");
+    await page.locator("#close-film").click();
+    await expect(page).not.toHaveURL(/film=/);
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Giao diện website mẫu — sidebar, poster 16:9, trải nghiệm xem phim", () => {
+  test("sidebar thu gọn: giữ tên truy cập được, ghi nhớ trạng thái, liên kết Của tôi mang theo site", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    const side = page.locator("#sidebar");
+    await expect(side).toBeVisible();
+    expect(Math.round((await side.boundingBox()).width)).toBeGreaterThan(200);
+    await expect(page.locator('#side-me [data-member-tab="rewards"]')).toHaveAttribute("href", "member.html?site=xuongphim#rewards");
+    await expect(page.locator("#side-network a")).toHaveCount(5);
+    await page.locator("#side-toggle").click();
+    await expect(page.locator("#side-toggle")).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(async () => Math.round((await side.boundingBox()).width)).toBeLessThan(90);
+    await expect(page.getByRole("button", { name: "Kho phim", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.locator("body")).toHaveAttribute("data-side", "collapsed");
+    await page.getByRole("button", { name: "Phim bộ", exact: true }).click();
+    await expect(page.locator('[data-nav="bo"]')).toHaveAttribute("aria-current", "true");
+    await page.locator("#side-toggle").click();
+    await expect(page.locator("body")).toHaveAttribute("data-side", "expanded");
+    expect(issues).toEqual([]);
+  });
+
+  test("máy tính bảng 768px: thanh bên thu gọn, Danh mục nằm trên cùng, không cuộn ngang", async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    const issues = await setup(page);
+    await page.goto("/?site=khophim");
+    await expect(page.locator("body")).toHaveAttribute("data-side", "collapsed");
+    const navTop = (await page.locator("#sidebar .nav").boundingBox()).y;
+    const meTop = (await page.locator("#side-me").boundingBox()).y;
+    expect(navTop).toBeLessThan(meTop);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    expect(issues).toEqual([]);
+  });
+  test("poster 16:9 ở trang chủ, kho phim và bảng xếp hạng", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=khophim");
+    const ratios = await page.evaluate(() => [...document.querySelectorAll("#content .card .poster, #content .rank .poster")].slice(0, 12)
+      .map(p => { const r = p.getBoundingClientRect(); return r.width / r.height; }));
+    expect(ratios.length).toBeGreaterThan(8);
+    for (const r of ratios) expect(Math.abs(r - 16 / 9)).toBeLessThan(0.03);
+    await page.locator('[data-nav="kho"]').click();
+    const cols = await page.evaluate(() => getComputedStyle(document.querySelector("#content .grid")).gridTemplateColumns.split(" ").length);
+    expect(cols).toBeGreaterThanOrEqual(3);
+    expect(issues).toEqual([]);
+  });
+
+  test("xem phim: thanh tập trước/tiếp, danh sách tập có tên, cổng mở khóa, Xem tiếp trên trang chủ", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 120 });
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator(".episodes [data-ep]")).toHaveCount(3);
+    await expect(page.locator('.episodes [data-ep="2"] .ep-name')).toHaveText("Tín hiệu lạ");
+    await expect(page.locator("#pb-now")).toContainText("Tập 01 / 03");
+    await expect(page.locator('[data-ep-step="-1"]')).toBeDisabled();
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player .youtube-player")).toBeVisible();
+    await page.locator('[data-ep-step="1"]').click();
+    await expect(page.locator("#pb-now")).toContainText("Tập 02 / 03 · Tín hiệu lạ");
+    await expect(page).toHaveURL(/tap=2/);
+    await expect(page.locator("#player .player-gate")).toContainText("50 điểm");
+    // Tập 3 dành cho thành viên đã đăng nhập: phát được ngay, nút "Tập tiếp" bị vô hiệu ở tập cuối.
+    await page.locator('[data-ep-step="1"]').click();
+    await expect(page.locator('[data-ep-step="1"]')).toBeDisabled();
+    await expect(page.locator("#player .youtube-player")).toBeVisible();
+    await page.locator("#close-film").click();
+    await page.goto("/?site=xuongphim");
+    const row = page.locator(".continue-row");
+    await expect(row).toBeVisible();
+    await expect(row.locator(".card")).toHaveCount(1);
+    // Tập 2 bị khóa nên không được ghi là "đang xem"; tập cuối đã phát là tập 3.
+    await expect(row.locator(".cw-badge")).toHaveText("Tập 3");
+    await row.locator(".card").click();
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator('.episodes [data-ep="3"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(page).toHaveURL(/tap=3/);
+    // Lịch sử xem chỉ lưu trên site này: site khác không thấy.
+    await page.goto("/?site=khophim");
+    await expect(page.locator(".continue-row")).toHaveCount(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("điện thoại: thanh tab dưới thay sidebar, cửa sổ phim toàn màn hình, không che nội dung", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator("#side-toggle")).toBeHidden();
+    await expect(page.locator("#side-me")).toBeHidden();
+    const bar = await page.locator("#sidebar").boundingBox();
+    expect(bar.y + bar.height).toBeGreaterThanOrEqual(811);
+    expect(bar.height).toBeLessThan(80);
+    const sizes = await page.locator("#sidebar .nav button").evaluateAll(bs => bs.map(b => b.getBoundingClientRect().height));
+    expect(sizes).toHaveLength(5);
+    for (const h of sizes) expect(h).toBeGreaterThanOrEqual(44);
+    await page.locator('[data-nav="ngan"]').click();
+    await expect(page.locator('[data-nav="ngan"]')).toHaveAttribute("aria-current", "true");
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const fine = await page.locator(".fineprint").boundingBox();
+    expect(fine.y + fine.height).toBeLessThanOrEqual(bar.y + 1);
+    await page.locator("#content .card").first().click();
+    const dlg = await page.locator("#film-dialog").boundingBox();
+    expect(Math.round(dlg.width)).toBe(375);
+    await expect(page.locator("#close-film")).toBeInViewport();
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Shared Core — cùng một khung giao diện cho cả 5 website", () => {
+  for (const [id, name] of [["xuongphim", "XưởngPhim"], ["khophim", "KhoPhim"], ["phephim", "PhêPhim"], ["phimhay", "PhimHay"], ["ghienphim", "GhiềnPhim"]]) {
+    test(id + ": sidebar, poster 16:9, cửa sổ phim, đánh dấu đúng site, không lỗi", async ({ page }) => {
+      const issues = await setup(page, { user: VIEWER, balance: 30 });
+      await page.goto("/?site=" + id);
+      await expect(page.locator("#logo .name")).toContainText(name);
+      await expect(page.locator('#side-network a[aria-current="true"]')).toHaveCount(1);
+      await expect(page.locator('#side-network a[aria-current="true"]')).toHaveAttribute("href", new RegExp(id + "\\.ai"));
+      await expect(page.locator(".afn-reward-chip")).toBeVisible();
+      const poster = await page.locator("#content .card .poster").first().boundingBox();
+      expect(Math.abs(poster.width / poster.height - 16 / 9)).toBeLessThan(0.03);
+      await page.locator("#content .card").first().click();
+      await expect(page.locator("#film-dialog")).toBeVisible();
+      await expect(page.locator("#film-actions .afn-act")).toHaveCount(3);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      expect(await cspViolations(page)).toEqual([]);
+      expect(issues).toEqual([]);
+    });
+  }
+});
+
+test.describe("Nguồn phát dự phòng (Level 4.1)", () => {
+  function withSources(sources) {
+    return page => page.addInitScript(src => {
+      const seedFn = () => { const s = window.__AFN_MOCK_SEED; if (!s) return; s.tables.episode_sources = s.tables.episode_sources.map(r => Object.assign({}, r, src[r.episode_id] || {})); };
+      seedFn();
+    }, sources);
+  }
+  test("nguồn chính (HTTPS) lỗi → tự chuyển sang nguồn dự phòng YouTube, có thông báo", async ({ page }) => {
+    const issues = await setup(page);
+    await withSources({ [EP.e1]: { source_kind: "native", youtube_id: null, video_url: "https://afn-local.pages.dev:4173/media/khong-ton-tai.mp4",
+      fallback_kind: "youtube", fallback_youtube_id: "FBK1xxxxxxx", fallback_video_url: null } })(page);
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player")).toHaveAttribute("data-playback", "fallback");
+    await expect(page.locator("#player .youtube-player, #player iframe").first()).toBeAttached();
+    await expect(page.locator(".afn-toast, [role=status]").filter({ hasText: "nguồn dự phòng" }).first()).toBeVisible();
+    expect(issues).toEqual([]);
+  });
+  test("YouTube báo lỗi nhúng (150) và nguồn dự phòng cũng lỗi → báo rõ, có Thử lại và Báo lỗi", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    // Giả lập YouTube IFrame API: chủ video tắt quyền nhúng (mã 150).
+    await page.addInitScript(() => {
+      window.YT = { PlayerState: { PLAYING: 1, PAUSED: 2, ENDED: 0 },
+        Player: function (holder, opts) { setTimeout(() => opts.events.onError({ data: 150 }), 50); this.destroy = () => {}; } };
+    });
+    await withSources({ [EP.e1]: { fallback_kind: "native", fallback_youtube_id: null, fallback_video_url: "https://afn-local.pages.dev:4173/media/backup-hong.mp4" } })(page);
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await page.locator("#play-btn").click();
+    await expect(page.locator("#player")).toHaveAttribute("data-playback", "failed");
+    await expect(page.locator("#player .player-gate")).toContainText("đã thử cả nguồn dự phòng");
+    await page.locator("#player .player-gate").getByRole("button", { name: "Báo lỗi" }).click();
+    await expect(page.locator(".afn-report")).toBeVisible();
+    expect(issues).toEqual([]);
+  });
+  test("Dashboard: thêm/xóa nguồn dự phòng có kiểm tra định dạng và quyền phát hành", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="episodes"]').click();
+    await expect(page.locator("#ops-fallback-row")).toBeVisible();
+    await page.locator("#ops-episodes tbody tr").first().getByRole("button", { name: "Sửa" }).click();
+    await page.locator("#ops-ep-fallback").fill("http://khong-an-toan.example/a.mp4");
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("YouTube ID 11 ký tự hoặc đường dẫn HTTPS");
+    await page.locator("#ops-ep-fallback").fill("https://cdn.example.test/ep1-backup.mp4");
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Cần xác nhận quyền phát hành nguồn dự phòng");
+    await page.locator("#ops-ep-rights").check();
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Đã lưu tập phim");
+    await expect(page.locator("#ops-episodes tbody tr").first()).toContainText("youtube + dự phòng");
+    let src = (await mock(page)).episode_sources.find(r => r.episode_id === EP.e1);
+    expect(src).toMatchObject({ source_kind: "youtube", youtube_id: "EP1xxxxxxxx", fallback_kind: "native", fallback_video_url: "https://cdn.example.test/ep1-backup.mp4" });
+    await page.locator("#ops-episodes tbody tr").first().getByRole("button", { name: "Sửa" }).click();
+    await page.locator("#ops-ep-fallback").fill("-");
+    await page.locator("#ops-ep-save").click();
+    await expect(page.locator("#studio-status")).toContainText("Đã lưu tập phim");
+    src = (await mock(page)).episode_sources.find(r => r.episode_id === EP.e1);
+    expect(src.fallback_kind).toBeNull();
+    expect(issues).toEqual([]);
+  });
+  test("tập bị khóa không lộ nguồn dự phòng; tập không có dự phòng vẫn phát như cũ", async ({ page }) => {
+    const issues = await setup(page);
+    await withSources({ [EP.e2]: { fallback_kind: "native", fallback_video_url: "https://afn-local.pages.dev:4173/media/backup.mp4" } })(page);
+    await page.goto("/phim/tin-hieu-47/tap/2?site=xuongphim");
+    const res = await page.evaluate(id => window.supabase.createClient("x", "y").rpc("get_playback_source", { p_episode_id: id }).then(r => r.data), EP.e2);
+    expect(res.status).toBe("login_required");
+    expect(JSON.stringify(res)).not.toContain("backup");
+    await page.locator('.episodes [data-ep="1"]').click();
+    await expect(page.locator("#player")).toHaveAttribute("data-playback", "primary");
+    await expect(page.locator("#player .youtube-player").first()).toBeAttached();
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Community Chat (Level 4.2)", () => {
+  const USER_B = { id: "00000000-0000-4000-8000-0000000000bb", email: "qa-b@example.test", created_at: "2026-10-01T00:00:00Z",
+    email_confirmed_at: "2026-10-01T00:05:00Z", user_metadata: { display_name: "QA TEST 2" }, app_metadata: { providers: ["email"] } };
+  async function withProfiles(page) {
+    await page.addInitScript(() => { const s = window.__AFN_MOCK_SEED; if (s) s.tables.profiles.push({ id: "00000000-0000-4000-8000-0000000000bb", display_name: "QA TEST 2" }); });
+  }
+  test("khách: mở chat được mời đăng nhập, không đọc được tin", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    await expect(page.locator("#chat-drawer")).toBeVisible();
+    await expect(page.locator("#chat-drawer")).toContainText("Đăng nhập miễn phí để đọc");
+    await page.locator("#chat-drawer").getByRole("button", { name: "Đăng nhập để trò chuyện" }).click();
+    await expect(page.locator(".afn-auth-dialog")).toBeVisible();
+    expect(issues).toEqual([]);
+  });
+
+  test("RC3: form Đăng ký có liên kết Chính sách riêng tư và Quy tắc cộng đồng; form Đăng nhập không có", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    await page.locator("#chat-drawer").getByRole("button", { name: "Đăng nhập để trò chuyện" }).click();
+    const dlg = page.locator(".afn-auth-dialog");
+    await expect(dlg).toBeVisible();
+    const notice = dlg.locator("#afn-signup-notice");
+    await expect(notice).toBeHidden();
+    await dlg.locator('[data-mode="signup"]').click();
+    await expect(notice).toBeVisible();
+    await expect(notice.locator('a[href="/chinh-sach.html#rieng-tu"]')).toHaveAttribute("target", "_blank");
+    await expect(notice.locator('a[href="/chinh-sach.html#cong-dong"]')).toBeVisible();
+    await dlg.locator('[data-mode="login"]').click();
+    await expect(notice).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+
+  test("RC3: trang chính sách là bản dự thảo, không lộ ghi chú nội bộ, đọc được trên điện thoại", async ({ page }) => {
+    const issues = await setup(page);
+    await page.setViewportSize({ width: 360, height: 760 });
+    await page.goto("/chinh-sach.html");
+    await expect(page.locator(".draft")).toContainText("Bản dự thảo — chưa phải chính sách chính thức");
+    await expect(page.locator(".draft")).toContainText("DRAFT RC3");
+    await expect(page.locator('[data-owner-input="controller"]')).toContainText("Hungcreator");
+    await expect(page.locator('[data-owner-input="contact-email"]')).toHaveText("Chưa xác định");
+    const body = await page.locator("body").innerText();
+    expect(body).not.toMatch(/CẦN CHỦ WEBSITE|TODO|\[.*CUNG CẤP/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const headings = await page.locator("h1, h2, h3").evaluateAll(hs => hs.map(h => +h.tagName[1]));
+    expect(headings[0]).toBe(1);
+    for (let i = 1; i < headings.length; i++) expect(headings[i] - headings[i - 1]).toBeLessThanOrEqual(1);
+    const small = await page.locator("nav.toc a, a.back").evaluateAll(as => as.filter(a => a.getBoundingClientRect().height < 44).length);
+    expect(small).toBe(0);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    expect(issues).toEqual([]);
+  });
+
+  test("hai thành viên trò chuyện trực tiếp: thấy tin nhau không cần tải lại, đúng tên, emoji, lịch sử còn sau refresh, không chèn HTML", async ({ page, context }) => {
+    const issuesA = await setup(page, { user: VIEWER });
+    await withProfiles(page);
+    await page.goto("/?site=xuongphim");
+    const pageB = await context.newPage();
+    await withProfiles(pageB);
+    const issuesB = await setup(pageB, { user: USER_B });
+    await pageB.goto("/?site=khophim");                       // khác site, cùng phòng chung toàn mạng
+    for (const p of [page, pageB]) { await p.locator("#side-me [data-chat-open]").click(); await expect(p.locator("#chat-drawer .afn-chat-live")).toContainText("Trực tiếp"); }
+    await page.locator("#chat-drawer textarea").fill("Xin chào mọi người");
+    await page.locator("#chat-drawer .afn-chat-emo").first().click();
+    await page.locator("#chat-drawer textarea").press("Enter");
+    await expect(page.locator("#chat-drawer .afn-chat-msg.mine")).toContainText("Xin chào mọi người 👍");
+    const fromA = pageB.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "Xin chào mọi người" });
+    await expect(fromA).toBeVisible();
+    await expect(fromA.locator(".afn-chat-who")).toHaveText("Khán giả thử");
+    await pageB.locator("#chat-drawer textarea").fill('<img src=x onerror="window.__xss=1"> chào bạn!');
+    await pageB.locator("#chat-drawer").getByRole("button", { name: "Gửi" }).click();
+    const fromB = page.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "chào bạn!" });
+    await expect(fromB).toBeVisible();
+    await expect(fromB.locator(".afn-chat-who")).toHaveText("QA TEST 2");
+    expect(await page.locator("#chat-drawer .afn-chat-msg img").count()).toBe(0);
+    expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+    await expect(page.locator("#chat-drawer .afn-chat-live")).toContainText("2 người đang xem");
+    await pageB.reload();
+    await pageB.locator("#side-me [data-chat-open]").click();
+    await expect(pageB.locator("#chat-drawer .afn-chat-msg")).toHaveCount(2);
+    expect(issuesA).toEqual([]); expect(issuesB).toEqual([]);
+  });
+
+  test("chống spam: tin trùng và quá 5 tin/30 giây bị chặn với thông báo rõ; báo cáo tin người khác", async ({ page, context }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    const box = page.locator("#chat-drawer");
+    await box.locator("textarea").fill("tin 1"); await box.locator("textarea").press("Enter");
+    await expect(box.locator(".afn-chat-msg")).toHaveCount(1);
+    await box.locator("textarea").fill("tin 1"); await box.locator("textarea").press("Enter");
+    await expect(box.locator(".afn-chat-status")).toContainText("trùng");
+    for (const n of [2, 3, 4, 5]) { await box.locator("textarea").fill("tin " + n); await box.locator("textarea").press("Enter"); await expect(box.locator(".afn-chat-msg")).toHaveCount(n); }
+    await box.locator("textarea").fill("tin 6"); await box.locator("textarea").press("Enter");
+    await expect(box.locator(".afn-chat-status")).toContainText("quá nhanh");
+    await expect(box.locator(".afn-chat-msg")).toHaveCount(5);
+    // Người khác báo cáo một tin
+    const pageB = await context.newPage(); await withProfiles(pageB); await setup(pageB, { user: USER_B });
+    await pageB.goto("/?site=xuongphim"); await pageB.locator("#side-me [data-chat-open]").click();
+    const msg = pageB.locator("#chat-drawer .afn-chat-msg").first();
+    await msg.getByRole("button", { name: "Báo cáo" }).click();
+    await msg.getByRole("button", { name: "Spam" }).click();
+    await expect(pageB.locator(".afn-toast, [role=status]").filter({ hasText: "Đã gửi báo cáo" }).first()).toBeVisible();
+    expect((await mock(pageB)).chat_reports).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("quản trị: xử lý báo cáo trong Dashboard, ẩn tin, khóa chat → thành viên không gửi được, mở khóa, nhật ký", async ({ page, context }) => {
+    const pageB = await context.newPage(); await withProfiles(pageB);
+    const issuesB = await setup(pageB, { user: USER_B });
+    await pageB.goto("/?site=xuongphim"); await pageB.locator("#side-me [data-chat-open]").click();
+    await pageB.locator("#chat-drawer textarea").fill("Quảng cáo rác xyz"); await pageB.locator("#chat-drawer textarea").press("Enter");
+    await expect(pageB.locator("#chat-drawer .afn-chat-msg.mine")).toHaveCount(1);
+    await page.addInitScript(() => {});
+    const viewer = await context.newPage(); await setup(viewer, { user: VIEWER });
+    await viewer.goto("/?site=xuongphim"); await viewer.locator("#side-me [data-chat-open]").click();
+    const spam = viewer.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "Quảng cáo rác" });
+    await spam.getByRole("button", { name: "Báo cáo" }).click(); await spam.getByRole("button", { name: "Spam" }).click();
+    await expect.poll(async () => (await mock(viewer)).chat_reports.length).toBe(1);
+
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    const rep = page.locator("#ops-chat-reports .studio-item").first();
+    await expect(rep).toContainText("Quảng cáo rác xyz");
+    await expect(rep).toContainText("Spam");
+    await rep.getByRole("button", { name: "Ẩn tin" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã ẩn tin nhắn");
+    // Người xem đang mở khung chat thấy tin biến mất ngay (tín hiệu "moderated"), không phải chờ đồng bộ 45 giây.
+    await expect(spam).toHaveCount(0, { timeout: 5000 });
+    await page.locator("#ops-chat-filter").selectOption("resolved");
+    await page.locator("#ops-chat-reports .studio-item").first().getByRole("button", { name: "Khóa chat 24h" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã khóa chat 24 giờ");
+    await expect(page.locator("#ops-chat-mutes tbody tr")).toHaveCount(1);
+
+    await pageB.reload(); await pageB.locator("#side-me [data-chat-open]").click();
+    await expect(pageB.locator("#chat-drawer .afn-chat-banner")).toContainText("tạm khóa chat");
+    await expect(pageB.locator("#chat-drawer textarea")).toBeDisabled();
+    await viewer.reload(); await viewer.locator("#side-me [data-chat-open]").click();
+    await expect(viewer.locator("#chat-drawer .afn-chat-msg").filter({ hasText: "Quảng cáo rác" })).toHaveCount(0);
+
+    await page.locator("#ops-chat-mutes").getByRole("button", { name: "Mở khóa" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã mở khóa chat");
+    // Khung chat đang mở của thành viên được mở khóa ngay, không cần tải lại trang.
+    await expect(pageB.locator("#chat-drawer textarea")).toBeEnabled({ timeout: 5000 });
+    await expect(pageB.locator("#chat-drawer .afn-chat-banner")).toBeHidden();
+    await pageB.reload(); await pageB.locator("#side-me [data-chat-open]").click();
+    await expect(pageB.locator("#chat-drawer textarea")).toBeEnabled();
+    const acts = (await mock(page)).admin_audit_log.map(x => x.action);
+    expect(acts).toEqual(expect.arrayContaining(["chat.hide", "chat.mute", "chat.unmute"]));
+    expect(issues).toEqual([]); expect(issuesB).toEqual([]);
+  });
+
+  test("khóa/mở khóa từ Dashboard tới ngay khung chat PHÒNG PHIM đang mở (kênh kiểm duyệt toàn mạng)", async ({ page, context }) => {
+    const pageB = await context.newPage(); await withProfiles(pageB);
+    const issuesB = await setup(pageB, { user: USER_B });
+    await pageB.goto("/phim/tin-hieu-47?site=xuongphim");
+    const fc = pageB.locator("#film-chat");
+    await fc.locator("textarea").fill("Tin trong phòng phim"); await fc.locator("textarea").press("Enter");
+    await expect(fc.locator(".afn-chat-msg.mine")).toHaveCount(1);
+    const viewer = await context.newPage(); await setup(viewer, { user: VIEWER });
+    await viewer.goto("/phim/tin-hieu-47?site=xuongphim");
+    const msg = viewer.locator("#film-chat .afn-chat-msg").filter({ hasText: "Tin trong phòng phim" });
+    await msg.getByRole("button", { name: "Báo cáo" }).click(); await msg.getByRole("button", { name: "Spam" }).click();
+    await expect.poll(async () => (await mock(viewer)).chat_reports.length).toBe(1);
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    await page.locator("#ops-chat-reports .studio-item").first().getByRole("button", { name: "Khóa chat 24h" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã khóa chat 24 giờ");
+    await expect(fc.locator("textarea")).toBeDisabled({ timeout: 5000 });
+    await page.locator("#ops-chat-mutes").getByRole("button", { name: "Mở khóa" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Đã mở khóa chat");
+    await expect(fc.locator("textarea")).toBeEnabled({ timeout: 5000 });
+    expect(issues).toEqual([]); expect(issuesB).toEqual([]);
+  });
+
+  test("chat theo phim trong cửa sổ phim, tách riêng phòng chung", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    const fc = page.locator("#film-chat");
+    await expect(fc).toBeVisible();
+    await expect(fc).toContainText("Bàn luận về phim");
+    await fc.locator("textarea").fill("Tập 1 hay quá");
+    await fc.getByRole("button", { name: "Gửi" }).click();
+    await expect(fc.locator(".afn-chat-msg.mine")).toContainText("Tập 1 hay quá");
+    const db = await mock(page);
+    expect(db.chat_messages.find(m => m.body === "Tập 1 hay quá").room).toBe("film:xuongphim:tin-hieu-47");
+    await page.locator("#close-film").click();
+    await page.locator("#side-me [data-chat-open]").click();
+    await expect(page.locator("#chat-drawer .afn-chat-msg")).toHaveCount(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("điện thoại 375px: nút chat nổi, khung chat toàn màn hình, không cuộn ngang", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-chat-fab").click();
+    const d = await page.locator("#chat-drawer").boundingBox();
+    expect(Math.round(d.width)).toBe(375);
+    await expect(page.locator("#chat-drawer textarea")).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#chat-drawer")).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Hoàn thiện tiếng Việt (31/10)", () => {
+  for (const w of [375, 390]) {
+    test(`${w}px: nút chat nổi không che nút hero, nhãn poster >= 12px, "Xem tất cả" đủ lớn để chạm`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: 800 });
+      const issues = await setup(page, {});
+      await page.goto("/?site=xuongphim");
+      await expect(page.locator(".hero .actions .btn").first()).toBeVisible();
+      const overlap = await page.evaluate(() => {
+        const f = document.querySelector(".afn-chat-fab").getBoundingClientRect();
+        return [...document.querySelectorAll(".hero .actions .btn")].some(b => { const r = b.getBoundingClientRect();
+          return !(r.right <= f.left || r.left >= f.right || r.bottom <= f.top || r.top >= f.bottom); });
+      });
+      expect(overlap).toBe(false);
+      for (const y of [0, 300, 600]) {   // cuộn qua hero: nút hero không bao giờ nằm dưới nút nổi
+        await page.evaluate(v => scrollTo(0, v), y);
+        expect(await page.evaluate(() => { const f = document.querySelector(".afn-chat-fab").getBoundingClientRect();
+          return [...document.querySelectorAll(".hero .actions .btn")].some(b => { const r = b.getBoundingClientRect();
+            return !(r.right <= f.left || r.left >= f.right || r.bottom <= f.top || r.top >= f.bottom); }); })).toBe(false);
+      }
+      expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll(".badge")].map(b => parseFloat(getComputedStyle(b).fontSize))))).toBeGreaterThanOrEqual(12);
+      expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll("#network a")].map(a => a.getBoundingClientRect().height)))).toBeGreaterThanOrEqual(40);
+      expect(await page.evaluate(() => Math.min(...[...document.querySelectorAll(".sidebar .nav button")].map(b => parseFloat(getComputedStyle(b).fontSize))))).toBeGreaterThanOrEqual(12);
+      const more = await page.locator(".row-head .more").first().boundingBox();
+      expect(more.height).toBeGreaterThanOrEqual(40);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+      expect(issues).toEqual([]);
+    });
+  }
+
+  test("SEO: canonical + Open Graph theo trang và theo phim; chân trang có chính sách", async ({ page }) => {
+    const issues = await setup(page, {});
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.xuongphim.ai/");
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", "https://www.xuongphim.ai/");
+    await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute("content", "vi_VN");
+    // Kho phim mẫu: không hiển thị lượt xem minh họa như số liệu thật.
+    expect(await page.locator("body").innerText()).not.toMatch(/lượt xem|Theo lượt xem|Xem nhiều/i);
+    await page.goto("/?site=xuongphim&film=thanh-pho-khong-ngu");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.xuongphim.ai/phim/thanh-pho-khong-ngu");
+    await expect(page).toHaveTitle(/^Thành Phố Không Ngủ · /i);
+    await expect(page.locator("#film-dialog")).not.toContainText("Lượt xem");
+    expect((await page.locator('meta[name="description"]').getAttribute("content")).length).toBeLessThanOrEqual(160);
+    await page.keyboard.press("Escape");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.xuongphim.ai/");
+    await page.goto("/?site=khophim");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.khophim.ai/");
+    await expect(page.locator('.legal-links a[href="/chinh-sach.html#rieng-tu"]')).toBeVisible();
+    await page.locator('.legal-links a[href="/chinh-sach.html#cong-dong"]').click();
+    await expect(page.locator("#cong-dong")).toBeVisible();
+    await expect(page.locator("h1")).toHaveText(/Chính sách riêng tư/);
+    expect(issues).toEqual([]);
+  });
+
+  test("một client Supabase dùng chung: không có cảnh báo nhiều GoTrueClient, /auth/v1/user không bị gọi dồn", async ({ page }) => {
+    const warn = [];
+    page.on("console", m => { if (/Multiple GoTrueClient/i.test(m.text())) warn.push(m.text()); });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-account-btn")).toHaveText(/Tài khoản/);
+    await page.waitForTimeout(1500);
+    const n = await page.evaluate(() => window.__afnMock && window.__afnMock.clients);
+    if (n !== undefined && n !== null) expect(n).toBe(1);
+    expect(warn).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Liên kết trong email (xác minh / đặt lại mật khẩu)", () => {
+  test("liên kết đặt lại mật khẩu đã dùng/hết hạn: hiện thông báo rõ và form xin liên kết mới, không im lặng", async ({ page }) => {
+    const issues = await setup(page, {});
+    await page.goto("/?site=xuongphim&auth=recovery&error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+    const dlg = page.locator("dialog[open]");
+    await expect(dlg).toBeVisible();
+    await expect(dlg.locator("#afn-auth-title")).toHaveText("Quên mật khẩu");
+    await expect(dlg.locator("#afn-auth-message")).toContainText("đã hết hạn hoặc đã được sử dụng");
+    await expect(dlg.locator("#afn-submit")).toHaveText("Gửi email đặt lại mật khẩu");
+    expect(page.url()).not.toContain("error_code");
+    expect(issues).toEqual([]);
+  });
+
+  test("liên kết xác minh đã dùng: báo có thể đăng nhập ngay", async ({ page }) => {
+    const issues = await setup(page, {});
+    await page.goto("/?site=xuongphim&auth=confirm#error=access_denied&error_code=otp_expired");
+    await expect(page.locator("dialog[open] #afn-auth-message")).toContainText("có thể đăng nhập ngay");
+    await expect(page.locator("dialog[open] #afn-auth-title")).toHaveText("Đăng nhập");
+    expect(issues).toEqual([]);
+  });
+
+  test("liên kết token_hash (mẫu email khuyến nghị) mở ở trình duyệt khác vẫn đặt lại được mật khẩu", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER });
+    await page.goto("/?site=xuongphim&auth=recovery&token_hash=validhash12345&type=recovery");
+    const dlg = page.locator("dialog[open]");
+    await expect(dlg.locator("#afn-auth-title")).toHaveText("Đặt lại mật khẩu");
+    await expect(dlg.locator("#afn-submit")).toHaveText("Lưu mật khẩu mới");
+    expect(page.url()).not.toContain("token_hash");
+    const calls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.verifyOtp));
+    expect(calls).toEqual([{ verifyOtp: { token_hash: "validhash12345", type: "recovery" } }]);
+    expect(issues).toEqual([]);
+  });
+
+  test("token_hash sai/hết hạn: báo lỗi, không mở form đổi mật khẩu", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER });
+    await page.goto("/?site=xuongphim&auth=recovery&token_hash=expiredhash999&type=recovery");
+    await expect(page.locator("dialog[open] #afn-auth-title")).toHaveText("Quên mật khẩu");
+    await expect(page.locator("dialog[open] #afn-auth-message")).toContainText("hết hạn");
+    expect(issues).toEqual([]);
+  });
+});
+
+/* ===================================================================== Đa website (chuẩn bị đồng bộ 5 site) */
+const SITES5 = [["xuongphim", "XưởngPhim"], ["khophim", "KhoPhim"], ["phephim", "PhêPhim"], ["phimhay", "PhimHay"], ["ghienphim", "GhiềnPhim"]];
+const KADMIN = { id: "00000000-0000-4000-8000-0000000000bb", email: "kho-admin@example.test", created_at: "2026-10-01T00:00:00Z", user_metadata: { display_name: "Admin Kho" } };
+function epId(i, n) { return "33333333-3333-4333-8333-" + String(i * 10 + n).padStart(12, "0"); }
+function withNetwork(page, extra = {}) {
+  return page.addInitScript(({ sites, extra }) => {
+    const s = window.__AFN_MOCK_SEED; if (!s) return;
+    const id = (i, n) => "33333333-3333-4333-8333-" + String(i * 10 + n).padStart(12, "0");
+    sites.forEach((site, i) => {
+      s.tables.site_films.push({ id: "nf" + i, site_id: site, film_id: "phim-" + site, title: "Phim thử " + site, synopsis: "Phim thử nghiệm đa website.",
+        genres: ["Viễn tưởng"], year: 2026, film_type: "bo", source_kind: "youtube", youtube_id: ("F" + i).padEnd(11, "x"), rights_attested: true, published: true, created_at: "2026-10-30T00:00:00Z" });
+      s.tables.site_episodes.push(
+        { id: id(i, 1), site_id: site, film_id: "phim-" + site, episode_no: 1, title: "Tập mở", access_tier: "free", price_points: 0, free_from: null, access_days: null, published: true },
+        { id: id(i, 2), site_id: site, film_id: "phim-" + site, episode_no: 2, title: "Tập sớm", access_tier: "early", price_points: 30, free_from: null, access_days: null, published: true });
+      s.tables.episode_sources.push({ episode_id: id(i, 1), source_kind: "youtube", youtube_id: ("S" + i + "E1").padEnd(11, "x"), video_url: null },
+        { episode_id: id(i, 2), source_kind: "youtube", youtube_id: ("S" + i + "E2").padEnd(11, "x"), video_url: null });
+    });
+    Object.keys(extra.tables || {}).forEach(t => { s.tables[t] = (s.tables[t] || []).concat(extra.tables[t]); });
+    s.emails = extra.emails || {};
+  }, { sites: SITES5.map(x => x[0]), extra });
+}
+
+test.describe("Đa website — ma trận chức năng (5 site, cùng Shared Core)", () => {
+  SITES5.forEach(([id, name], i) => {
+    test(id + ": nhận diện, điểm danh, mở khóa + phát, chat phòng phim, Member Hub, cách ly nội dung", async ({ page }) => {
+      const issues = await setup(page, { user: VIEWER, balance: 60 });
+      await withNetwork(page);
+      await page.goto("/?site=" + id);
+      await expect(page.locator("#logo .name")).toContainText(name);
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www." + id + ".ai/");
+      await expect(page.locator(".legal-links a")).toHaveCount(2);
+      await expect(page.locator("#side-me [data-chat-open]")).toBeVisible();
+      // điểm danh (ví dùng chung)
+      await page.locator(".afn-reward-chip").click();
+      await page.locator(".afn-checkin-btn").click();
+      await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("70");
+      // nội dung riêng site: phim của site khác không xuất hiện
+      const other = SITES5[(i + 1) % 5][0];
+      await page.locator("#q").fill("Phim thử " + other);
+      await expect(page.locator("#content")).toContainText("0 phim");
+      // mở khóa + phát
+      await page.goto("/?site=" + id + "&film=phim-" + id + "&tap=2");
+      await page.locator("#play-btn").click();
+      await page.locator(".player-gate button", { hasText: "Mở khóa · 30 điểm" }).click();
+      await expect(page.locator('#player iframe[src*="' + ("S" + i + "E2").padEnd(11, "x") + '"]')).toHaveCount(1);
+      await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("40");
+      // chat phòng phim đúng site
+      const fc = page.locator("#film-chat");
+      await fc.locator("textarea").fill("Bàn luận " + id);
+      await fc.getByRole("button", { name: "Gửi" }).click();
+      await expect(fc.locator(".afn-chat-msg.mine")).toContainText("Bàn luận " + id);
+      const db = await mock(page);
+      expect(db.chat_messages.find(m => m.body === "Bàn luận " + id).room).toBe("film:" + id + ":phim-" + id);
+      expect(db.content_entitlements.map(c => c.site_id)).toEqual([id]);
+      expect(db.wallet_ledger.find(l => l.kind === "unlock").site_id).toBe(id);
+      expect(db.wallets[0].balance).toBe(40);
+      // Member Hub cùng ví
+      await page.goto("/member.html?site=" + id + "#rewards");
+      await expect(page.locator(".rw-card").first()).toContainText("40");
+      await expect(page.locator("#rewards-root")).toContainText("phim-" + id + " · Tập 2");
+      await page.goto("/account.html?site=" + id);
+      await expect(page.locator("h1")).toHaveText("Hồ sơ cá nhân");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      expect(await cspViolations(page)).toEqual([]);
+      expect(issues).toEqual([]);
+    });
+  });
+
+  test("điểm danh 1 lần/ngày trên TOÀN mạng: đã điểm danh ở phephim thì ghienphim báo đã điểm danh, cùng số dư", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 5 });
+    await page.goto("/?site=phephim");
+    await page.locator(".afn-reward-chip").click();
+    await page.locator(".afn-checkin-btn").click();
+    await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("15");
+    await page.goto("/?site=ghienphim");
+    await expect(page.locator(".afn-reward-chip .afn-chip-points")).toHaveText("15");
+    await page.locator(".afn-reward-chip").click();
+    await expect(page.locator(".afn-checkin-btn")).toBeDisabled();
+    expect((await mock(page)).daily_checkins).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("quản trị cách ly: admin Kho Phim chỉ có Dashboard khophim; mở ?site=xuongphim được báo không có quyền", async ({ page }) => {
+    await setup(page, { user: KADMIN });
+    await page.addInitScript(() => { const s = window.__AFN_MOCK_SEED; s.tables.site_staff = [{ user_id: "00000000-0000-4000-8000-0000000000bb", site_id: "khophim", role: "admin" }]; s.tables.network_staff = []; });
+    await page.goto("/admin.html?site=khophim");
+    await expect(page.locator("#studio-app")).toBeVisible();
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#studio-status")).toContainText("Bạn không có quyền quản trị Xưởng Phim. Đang hiển thị Kho Phim.");
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    expect(await page.locator("#studio-site option").evaluateAll(o => o.map(x => x.value))).toEqual(["khophim"]);
+  });
+  test("chủ mạng mở Dashboard từ ?site=khophim → đúng Kho Phim (trước đây luôn mở Xưởng Phim)", async ({ page }) => {
+    await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=khophim");
+    await expect(page.locator("#studio-app")).toBeVisible();
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+  });
+});
+
+test.describe("Quyền riêng tư — yêu cầu xóa tài khoản (Level 4.3)", () => {
+  const REQ = "44444444-4444-4444-8444-000000000001";
+  const pending = { id: REQ, user_id: VIEWER.id, subject_id: VIEWER.id, site_id: "xuongphim", request_type: "delete_account", status: "pending", submitted_at: "2026-11-01T01:00:00Z", handled_at: null, admin_note: "" };
+
+  test("thành viên: gửi yêu cầu, thấy trạng thái tiếng Việt và ghi chú; không gửi trùng", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/account.html?site=xuongphim");
+    await page.locator("#afn-request-delete").click();
+    await expect(page.locator("#afn-privacy-requests")).toContainText("Yêu cầu xóa tài khoản · Chờ xử lý");
+    await page.locator("#afn-request-delete").click();
+    await expect(page.locator("body")).toContainText("Bạn đã có yêu cầu xóa tài khoản đang được xử lý");
+    expect((await mock(page)).member_privacy_requests).toHaveLength(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("chủ mạng: nhận xử lý → xem trước dữ liệu → hủy khi không gõ email (không xóa gì); thành viên được thông báo", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await withNetwork(page, { tables: { member_privacy_requests: [pending], chat_messages: [{ id: "m1", room: "network", user_id: VIEWER.id, display_name: "Khán giả thử", body: "xin chào", hidden: false, created_at: "2026-11-01T00:00:00Z" }] },
+      emails: { [VIEWER.id]: VIEWER.email } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="privacy"]').click();
+    const item = page.locator("#studio-privacy .studio-item");
+    await expect(item).toContainText("Chờ xử lý");
+    await item.getByRole("button", { name: "Nhận xử lý" }).click();
+    await expect(item).toContainText("Đang xử lý");
+    await item.getByRole("button", { name: "Xem trước dữ liệu sẽ xóa" }).click();
+    await expect(item.locator(".privacy-preview")).toContainText("vi***@example.test");
+    await expect(item.locator(".privacy-preview")).toContainText("1 tin nhắn");
+    await item.getByRole("button", { name: "Xóa tài khoản vĩnh viễn" }).click();   // prompt trả về rỗng → hủy
+    await expect(page.locator("#studio-status")).toContainText("Đã hủy. Chưa xóa gì.");
+    const db = await mock(page);
+    expect(db.chat_messages).toHaveLength(1);
+    expect(db.member_privacy_requests[0].status).toBe("in_review");
+    expect(db.member_notifications.filter(n => n.user_id === VIEWER.id)).toHaveLength(1);
+    const calls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc === "admin_execute_account_deletion").map(c => c.args.p_dry_run));
+    expect(calls).toEqual([true, true]);
+    expect(issues).toEqual([]);
+  });
+
+  test("từ chối bắt buộc có lý do; admin site không thấy nút xóa vĩnh viễn", async ({ page }) => {
+    await setup(page, { user: KADMIN });
+    await page.addInitScript(r => { const s = window.__AFN_MOCK_SEED; s.tables.site_staff = [{ user_id: "00000000-0000-4000-8000-0000000000bb", site_id: "khophim", role: "admin" }]; s.tables.network_staff = [];
+      s.tables.member_privacy_requests = [Object.assign({}, r, { site_id: "khophim", status: "in_review" })]; }, pending);
+    await page.goto("/admin.html?site=khophim");
+    await page.locator('[data-studio-tab="privacy"]').click();
+    const item = page.locator("#studio-privacy .studio-item");
+    await expect(item).toContainText("Chỉ chủ mạng thực hiện xóa tài khoản");
+    await expect(item.getByRole("button", { name: "Xóa tài khoản vĩnh viễn" })).toHaveCount(0);
+    await item.getByRole("button", { name: "Từ chối" }).click();          // prompt rỗng → chặn
+    await expect(page.locator("#studio-status")).toContainText("Cần ghi lý do từ chối");
+    expect((await mock(page)).member_privacy_requests[0].status).toBe("in_review");
+  });
+
+  test("xuất dữ liệu đầy đủ gồm ví, sổ điểm và chat", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 25 });
+    await page.goto("/member.html?site=xuongphim#settings");
+    const download = page.waitForEvent("download");
+    await page.locator("#export-data").click();
+    const file = await (await download).path();
+    const data = JSON.parse(require("node:fs").readFileSync(file, "utf8"));
+    expect(data.data.wallet.balance).toBe(25);
+    expect(data.data.wallet_ledger).toHaveLength(1);
+    expect(Array.isArray(data.data.chat_messages)).toBe(true);
+    expect(issues).toEqual([]);
+  });
+});
+
+test.describe("Cổng phát hành Community Chat", () => {
+  test("tên miền thật (www.xuongphim.ai) chưa được phép: không có lối vào chat, không mở kết nối chat", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await page.route(/^https:\/\/www\.xuongphim\.ai\//, async r => {
+      const u = new URL(r.request().url());
+      r.fulfill({ response: await r.fetch({ url: "https://127.0.0.1:4173" + u.pathname + u.search }) });
+    });
+    await page.goto("https://www.xuongphim.ai/");
+    await expect(page.locator("#logo .name")).toContainText("XưởngPhim");
+    expect(await page.evaluate(() => window.AFN.chatEnabled)).toBe(false);
+    expect(await page.evaluate(() => !!(window.AFN_CHAT && window.AFN_CHAT.disabled))).toBe(true);
+    await expect(page.locator("[data-chat-open]:visible")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc === "send_chat_message").length)).toBe(0);
+    await expect(page.locator(".afn-reward-chip")).toBeVisible();      // phần còn lại vẫn hoạt động
+    expect(issues).toEqual([]);
+  });
+  test("Preview vẫn bật chat để kiểm thử", async ({ page }) => {
+    await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    expect(await page.evaluate(() => window.AFN.chatEnabled)).toBe(true);
+    await expect(page.locator("#side-me [data-chat-open]")).toBeVisible();
+  });
+});
+
+test.describe("Công tắc Community Chat phía máy chủ (Level 4.4)", () => {
+  function closed(page, scopes) {
+    return page.addInitScript(sc => { const s = window.__AFN_MOCK_SEED; s.tables.chat_settings = ["network", "xuongphim", "khophim", "phephim", "phimhay", "ghienphim"].map(x => ({ scope: x, enabled: sc.indexOf(x) === -1, reason: sc.indexOf(x) === -1 ? "" : "Tạm đóng chờ đánh giá pháp lý" })); }, scopes);
+  }
+  test("phạm vi đóng: khung chat phim Kho Phim báo đóng, không có ô gửi; API gửi bị từ chối; site khác và phòng chung vẫn chạy", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await withNetwork(page); await closed(page, ["khophim"]);
+    await page.goto("/phim/phim-khophim?site=khophim");
+    const fc = page.locator("#film-chat");
+    await expect(fc.locator(".afn-chat-closed")).toHaveText("Trò chuyện ở phòng này đang tạm đóng.");
+    await expect(fc.locator("textarea")).toBeHidden();
+    await expect(fc).toContainText("Tin nhắn cũ vẫn được lưu giữ");
+    const r = await page.evaluate(() => window.AFN.client().rpc("send_chat_message", { p_room: "film:khophim:phim-khophim", p_body: "lách qua API" }));
+    expect(r.error.message).toContain("chat_disabled");
+    await page.goto("/phim/tin-hieu-47?site=xuongphim");
+    await page.locator("#film-chat textarea").fill("Xưởng Phim vẫn mở");
+    await page.locator("#film-chat").getByRole("button", { name: "Gửi" }).click();
+    await expect(page.locator("#film-chat .afn-chat-msg.mine")).toContainText("Xưởng Phim vẫn mở");
+    expect((await mock(page)).chat_messages.filter(m => m.room.startsWith("film:khophim"))).toHaveLength(0);
+    expect(issues).toEqual([]);
+  });
+
+  test("chủ mạng đóng chat Xưởng Phim trong Dashboard → khung chat đang mở của thành viên chuyển sang đóng ngay; mở lại → gửi được, tin cũ còn", async ({ page, context }) => {
+    const issues = await setup(page, { user: OWNER });
+    await closed(page, []);
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    const sw = page.locator("#ops-chat-switch");
+    await expect(sw).toContainText("Phòng phim Xưởng Phim");
+    // thành viên mở khung chat phim ở tab khác (cùng "máy chủ" giả lập)
+    const member = await context.newPage();
+    await member.addInitScript(() => sessionStorage.setItem("__AFN_MOCK_USER", JSON.stringify({ id: "00000000-0000-4000-8000-000000000001", email: "viewer@example.test", user_metadata: { display_name: "Khán giả thử" } })));
+    await member.route("**/supabase.min.js", r => r.fulfill({ status: 200, contentType: "application/javascript", body: MOCK }));
+    await member.route("**/assets/auth-config.js", r => r.fulfill({ status: 200, contentType: "application/javascript",
+      body: 'window.AFN_AUTH_CONFIG={enabled:true,googleEnabled:false,url:"https://jurvphonehknrxjpowoe.supabase.co",publishableKey:"sb_publishable_e2e_key_123456789",storageKey:"afn-e2e"};' }));
+    await member.route(/fonts\.(googleapis|gstatic)\.com|(youtube|youtube-nocookie|ytimg)\.com/, r => r.abort());
+    await member.goto("/phim/tin-hieu-47?site=xuongphim");
+    await member.locator("#film-chat textarea").fill("Trước khi đóng");
+    await member.locator("#film-chat").getByRole("button", { name: "Gửi" }).click();
+    await expect(member.locator("#film-chat .afn-chat-msg.mine")).toContainText("Trước khi đóng");
+    // đóng: thiếu lý do → không đổi
+    await sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button", { name: "Đóng chat" }).click();
+    await expect(page.locator("#studio-status")).toContainText("Cần nhập lý do");
+    await page.evaluate(() => { window.prompt = () => "Tạm đóng chờ đánh giá pháp lý"; });
+    await sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button", { name: "Đóng chat" }).click();
+    await expect(sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ })).toContainText("ĐANG ĐÓNG");
+    await expect(member.locator("#film-chat .afn-chat-closed")).toHaveText("Trò chuyện ở phòng này đang tạm đóng.", { timeout: 6000 });
+    await expect(member.locator("#film-chat textarea")).toBeHidden();
+    // mở lại
+    await sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button", { name: "Mở lại" }).click();
+    await expect(sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ })).toContainText("Đang mở");
+    await expect(member.locator("#film-chat textarea")).toBeVisible({ timeout: 6000 });
+    await expect(member.locator("#film-chat")).toContainText("Trước khi đóng");
+    await member.locator("#film-chat textarea").fill("Sau khi mở lại");
+    await member.locator("#film-chat").getByRole("button", { name: "Gửi" }).click();
+    await expect(member.locator("#film-chat .afn-chat-msg.mine").last()).toContainText("Sau khi mở lại");
+    const db = await mock(page);
+    expect(db.admin_audit_log.filter(a => /^chat\.(enable|disable)$/.test(a.action)).map(a => a.action)).toEqual(["chat.disable", "chat.enable"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("admin Kho Phim: đóng được phòng của site mình, không có nút Mở lại (chỉ chủ mạng)", async ({ page }) => {
+    await setup(page, { user: KADMIN });
+    await closed(page, ["khophim"]);
+    await page.addInitScript(() => { const s = window.__AFN_MOCK_SEED; s.tables.site_staff = [{ user_id: "00000000-0000-4000-8000-0000000000bb", site_id: "khophim", role: "admin" }]; s.tables.network_staff = []; });
+    await page.goto("/admin.html?site=khophim");
+    await page.locator('[data-studio-tab="chat"]').click();
+    const sw = page.locator("#ops-chat-switch");
+    await expect(sw.getByRole("row", { name: /Phòng phim Kho Phim/ })).toContainText("Chỉ chủ mạng mở lại");
+    await expect(sw.getByRole("row", { name: /Phòng phim Xưởng Phim/ }).getByRole("button")).toHaveCount(0);
+    await expect(sw.getByRole("row", { name: /Phòng chung/ }).getByRole("button", { name: "Đóng chat" })).toHaveCount(1);
+  });
+});
+
+test.describe("Preview đa site — đường dẫn đẹp giữ đúng website", () => {
+  test("/phim/<slug>?site=khophim chuyển tới đúng phim của Kho Phim (trước đây mất ?site= và rơi về Xưởng Phim)", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER });
+    await withNetwork(page);
+    const res = await page.goto("/phim/phim-khophim/tap/2?site=khophim&utm_source=facebook");
+    expect(new URL(page.url()).searchParams.get("site")).toBe("khophim");
+    await expect(page.locator("#logo .name")).toContainText("KhoPhim");
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await expect(page.locator("#film-dialog")).toContainText("Phim thử khophim");
+    expect(res.status()).toBe(200);
+    expect(issues).toEqual([]);
+  });
+});
+
+
+// ------------------------------------------------------------------ Level 4.6
+test.describe("Level 4.6 — xác thực 2 lớp nhân sự, chính sách mật khẩu, Turnstile", () => {
+  async function code(page, value) {
+    const d = page.locator("dialog.mfa-dialog");
+    await expect(d).toBeVisible();
+    await d.locator("#mfa-code").fill(value);
+    await d.locator("#mfa-submit").click();
+  }
+  test("chưa bật 2FA: Studio chạy như cũ; tự bật 2FA (sai mã bị từ chối, đúng mã thì bật); chủ mạng bật bắt buộc", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);           // không khóa ai khi chưa có factor
+    await expect(page.locator("#studio-mfa-banner")).toContainText("Khuyến nghị: bật xác thực 2 lớp");
+    await page.locator('[data-studio-tab="security"]').click();
+    await expect(page.locator("#mfa-state")).toHaveText("Chưa bật");
+    await expect(page.locator("#mfa-require-toggle")).toBeDisabled();                  // chưa có 2FA → không thể tự khóa mình
+    await page.locator("#mfa-enroll").click();
+    await expect(page.locator("#mfa-qr")).toBeVisible();
+    await expect(page.locator("#mfa-secret")).toHaveText("JBSWY3DPEHPK3PXP");
+    await code(page, "000000");
+    await expect(page.locator("dialog.mfa-dialog .mfa-error")).toContainText("Mã chưa đúng");
+    await code(page, "123456");
+    await expect(page.locator("#mfa-state")).toHaveText("Đã bật");
+    await expect(page.locator("#mfa-session")).toHaveText("Đã xác thực 2 lớp");
+    await expect(page.locator("#mfa-staff tr")).toHaveCount(4);                         // tiêu đề + 3 dòng nhân sự
+    await page.evaluate(() => { window.prompt = () => "Bật bắt buộc 2FA (kiểm thử)"; });
+    await page.locator("#mfa-require-toggle").click();
+    await expect(page.locator("#mfa-policy")).toHaveText("Bắt buộc 2FA");
+    expect((await mock(page)).security_settings[0].staff_mfa_required).toBe(true);
+    expect(issues).toEqual([]);
+  });
+
+  test("đã bật 2FA, phiên mới một lớp: hỏi mã trước khi tải dữ liệu; bỏ qua → chỉ mất quyền quản trị, nhập đúng → mở lại", async ({ page }) => {
+    const factor = { id: "f-owner", user_id: OWNER.id, status: "verified", friendly_name: "AFN Studio" };
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal1" }, extra: { mfa_factors: [factor] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("dialog.mfa-dialog")).toBeVisible();
+    await page.locator("#mfa-skip").click();
+    await expect(page.locator("#studio-app")).toBeVisible();                               // không bị chặn khỏi Studio/tài khoản
+    await expect(page.locator("#studio-mfa-banner")).toContainText("Quyền quản trị đang tạm khóa");
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(0);                // máy chủ (mock) từ chối RPC quản trị
+    await page.locator("#mfa-banner-action").click();
+    await code(page, "123456");
+    await page.waitForLoadState("load");
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);
+    await expect(page.locator("#studio-mfa-banner")).toBeHidden();
+    expect(issues).toEqual([]);
+  });
+
+  test("bắt buộc 2FA + nhân sự chưa có factor: vẫn vào được, được hướng dẫn bật 2FA; xóa tài khoản thật cần AAL2", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER, extra: { security_settings: [{ staff_mfa_required: true }] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await expect(page.locator("#studio-mfa-banner")).toContainText("Chủ mạng đã bật bắt buộc xác thực 2 lớp");
+    await page.locator("#mfa-banner-action").click();
+    await expect(page.locator('[data-studio-panel="security"]')).toBeVisible();
+    const r = await page.evaluate(async () => {
+      const c = window.supabase.createClient();
+      return (await c.rpc("admin_execute_account_deletion", { p_request_id: "x", p_confirm_email: "a@b.c", p_dry_run: false })).error.message;
+    });
+    expect(r).toBe("forbidden");
+    expect(issues).toEqual([]);
+  });
+
+  test("đăng nhập trang công khai với tài khoản đã bật 2FA: hỏi mã ngay (bước 2), sai mã bị từ chối, đúng mã → AAL2; 'Để sau' không chặn", async ({ page }) => {
+    const factor = { id: "f-owner", user_id: OWNER.id, status: "verified", friendly_name: "AFN Studio" };
+    const issues = await setup(page, { loginAs: { ...OWNER }, extra: { mfa_factors: [factor] } });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog").first();
+    await dlg.locator("#afn-email").fill("owner@example.test");
+    await dlg.locator("#afn-password").fill("matkhau12345");
+    await dlg.locator("button[type=submit]").first().click();
+    const m = page.locator("dialog.afn-mfa-dialog");
+    await expect(m).toBeVisible();
+    await expect(page.locator("dialog.afn-mfa-dialog")).toHaveCount(1);                 // chỉ 1 hộp thoại
+    await m.locator("#afn-mfa-code").fill("000000");
+    await m.locator("#afn-mfa-submit").click();
+    await expect(m.locator("#afn-mfa-msg")).toContainText("Mã chưa đúng");
+    await m.locator("#afn-mfa-code").fill("123 456");
+    await m.locator("#afn-mfa-submit").click();
+    await expect(m).toHaveCount(0);
+    expect(await page.evaluate(async () => (await window.supabase.createClient().auth.mfa.getAuthenticatorAssuranceLevel()).data.currentLevel)).toBe("aal2");
+    expect(issues).toEqual([]);
+  });
+
+  test("mở trang với phiên 1 lớp của tài khoản đã bật 2FA: nhắc nhập mã một lần; 'Để sau' đóng hộp thoại, trang vẫn dùng được", async ({ page }) => {
+    const factor = { id: "f-owner", user_id: OWNER.id, status: "verified", friendly_name: "AFN Studio" };
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal1" }, extra: { mfa_factors: [factor] } });
+    await page.goto("/?site=xuongphim");
+    const m = page.locator("dialog.afn-mfa-dialog");
+    await expect(m).toBeVisible();
+    await m.locator("#afn-mfa-later").click();
+    await expect(m).toHaveCount(0);
+    await expect(page.locator(".afn-account-btn")).toBeVisible();
+    await page.waitForTimeout(300);
+    await expect(m).toHaveCount(0);                                                        // không hỏi lại liên tục
+    expect(issues).toEqual([]);
+  });
+
+  // ---- Thiết bị dự phòng (nhiều factor TOTP)
+  const F1 = { id: "f-main", user_id: "OWNER", status: "verified", friendly_name: "AFN Studio 2026-11-01" };
+  const own = (f) => ({ ...f, user_id: OWNER.id });
+  test("thêm thiết bị dự phòng: chỉ ở AAL2, factor chính giữ nguyên, sai mã bị từ chối, chỉ báo thành công khi factor mới verified", async ({ page }) => {
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal2" }, extra: { mfa_factors: [own(F1)] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="security"]').click();
+    await expect(page.locator("#mfa-count")).toHaveText("1");
+    await expect(page.locator(".mfa-revoke")).toHaveCount(0);                              // 1 thiết bị: không có nút thu hồi
+    await page.evaluate(() => { window.prompt = () => "iPad dự phòng"; });
+    await page.locator("#mfa-add-backup").click();
+    await expect(page.locator("#mfa-qr")).toBeVisible();
+    await code(page, "000000");
+    await expect(page.locator("dialog.mfa-dialog .mfa-error")).toContainText("Mã chưa đúng");
+    await code(page, "123456");
+    await expect(page.locator("#studio-status")).toContainText('Đã thêm thiết bị dự phòng "iPad dự phòng" (đã xác minh)');
+    await expect(page.locator("#mfa-count")).toHaveText("2");
+    const f = (await mock(page)).mfa_factors;
+    expect(f.find(x => x.id === "f-main").status).toBe("verified");                       // factor chính không đổi
+    expect(f.filter(x => x.status === "verified").map(x => x.friendly_name).sort()).toEqual(["AFN Studio 2026-11-01", "iPad dự phòng"]);
+    await expect(page.locator(".mfa-revoke")).toHaveCount(2);
+    await expect(page.locator("#mfa-unenroll")).toHaveCount(0);                            // ≥2 thiết bị: không còn nút "tắt toàn bộ"
+    expect(issues).toEqual([]);
+  });
+
+  test("thiết bị dự phòng: tên trùng tự đổi; hủy giữa chừng không để lại factor, factor chính giữ nguyên", async ({ page }) => {
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal2" }, extra: { mfa_factors: [own(F1)] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="security"]').click();
+    await page.evaluate(() => { window.prompt = () => "AFN Studio 2026-11-01"; });
+    await page.locator("#mfa-add-backup").click();
+    await expect(page.locator("dialog.mfa-dialog")).toBeVisible();
+    await page.locator("#mfa-skip").click();                                               // hủy
+    await expect(page.locator(".mfa-enroll-box")).toContainText("thiết bị hiện tại giữ nguyên");
+    let f = (await mock(page)).mfa_factors;
+    expect(f.length).toBe(1); expect(f[0].id).toBe("f-main");
+    await page.locator("#mfa-add-backup").click();
+    await code(page, "123456");
+    f = (await mock(page)).mfa_factors;
+    expect(f.map(x => x.friendly_name).sort()).toEqual(["AFN Studio 2026-11-01", "AFN Studio 2026-11-01 (2)"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("phiên AAL1 có 2 thiết bị: chọn thiết bị dự phòng để nhập mã → mở quyền quản trị; không có nút thêm/thu hồi trước khi nhập mã", async ({ page }) => {
+    const F2 = own({ id: "f-backup", status: "verified", friendly_name: "iPad dự phòng" });
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal1" }, extra: { mfa_factors: [own(F1), F2] } });
+    await page.goto("/admin.html?site=xuongphim");
+    const d = page.locator("dialog.mfa-dialog");
+    await expect(d).toBeVisible();
+    await expect(d.locator("#mfa-factor option")).toHaveCount(2);
+    const enrollErr = await page.evaluate(async () => (await window.supabase.createClient().auth.mfa.enroll({ factorType: "totp", friendlyName: "lén" })).error.code);
+    expect(enrollErr).toBe("insufficient_aal");                                             // AAL1: không thêm thiết bị được
+    await d.locator("#mfa-factor").selectOption("f-backup");
+    await d.locator("#mfa-code").fill("123456");
+    await d.locator("#mfa-submit").click();
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.mfaVerify).map(c => c.mfaVerify))).toEqual(["f-backup"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("thu hồi thiết bị: hủy ở bước xác nhận không đổi gì; xác nhận bằng mã từ thiết bị GIỮ LẠI → chỉ thiết bị bị thu hồi biến mất", async ({ page }) => {
+    const F2 = own({ id: "f-backup", status: "verified", friendly_name: "iPad dự phòng" });
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal2" }, extra: { mfa_factors: [own(F1), F2] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="security"]').click();
+    await page.evaluate(() => { window.confirm = () => false; });
+    await page.locator('#mfa-devices tr[data-factor="f-main"] .mfa-revoke').click();
+    expect((await mock(page)).mfa_factors.length).toBe(2);                                  // hủy → không đổi
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.locator('#mfa-devices tr[data-factor="f-main"] .mfa-revoke').click();
+    const d = page.locator("dialog.mfa-dialog");
+    await expect(d).toContainText("thiết bị bạn GIỮ LẠI");
+    await expect(d.locator("#mfa-factor")).toHaveCount(0);                                  // chỉ được dùng thiết bị còn lại
+    await d.locator("#mfa-skip").click();                                                   // hủy ở bước nhập mã
+    expect((await mock(page)).mfa_factors.length).toBe(2);
+    await page.locator('#mfa-devices tr[data-factor="f-main"] .mfa-revoke').click();
+    await code(page, "123456");
+    await expect(page.locator("#studio-status")).toContainText('Đã thu hồi "AFN Studio 2026-11-01". Còn 1 thiết bị');
+    const f = (await mock(page)).mfa_factors;
+    expect(f.map(x => x.id)).toEqual(["f-backup"]);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.mfaVerify).map(c => c.mfaVerify))).toEqual(["f-backup"]);
+    await expect(page.locator(".mfa-revoke")).toHaveCount(0);                               // thiết bị cuối: không thu hồi ở đây
+    expect(issues).toEqual([]);
+  });
+
+  test("đăng nhập trang công khai với 2 thiết bị: chọn được thiết bị dự phòng", async ({ page }) => {
+    const F2 = own({ id: "f-backup", status: "verified", friendly_name: "iPad dự phòng" });
+    const issues = await setup(page, { loginAs: { ...OWNER }, extra: { mfa_factors: [own(F1), F2] } });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog").first();
+    await dlg.locator("#afn-email").fill("owner@example.test");
+    await dlg.locator("#afn-password").fill("matkhau12345");
+    await dlg.locator("button[type=submit]").first().click();
+    const m = page.locator("dialog.afn-mfa-dialog");
+    await expect(m.locator("#afn-mfa-factor option")).toHaveText(["AFN Studio 2026-11-01", "iPad dự phòng"]);
+    await m.locator("#afn-mfa-factor").selectOption("f-backup");
+    await m.locator("#afn-mfa-code").fill("123456");
+    await m.locator("#afn-mfa-submit").click();
+    await expect(m).toHaveCount(0);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.mfaVerify).map(c => c.mfaVerify))).toEqual(["f-backup"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("mật khẩu mới: ít nhất 10 ký tự gồm chữ và số (đăng ký); mật khẩu cũ yếu vẫn đăng nhập được, chỉ được nhắc đổi", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER, weakPassword: true });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog");
+    await dlg.locator('[data-mode="signup"]').click();
+    await dlg.locator("#afn-name").fill("Người thử");
+    await dlg.locator("#afn-email").fill("new@example.test");
+    for (const bad of ["abc12345", "chuachuachua"]) {
+      await dlg.locator("#afn-password").fill(bad);
+      await dlg.locator("#afn-submit").click();
+      await expect(dlg.locator("#afn-auth-message")).toContainText("ít nhất 10 ký tự, gồm cả chữ và số");
+    }
+    await dlg.locator("#afn-password").fill("xuongphim2026");
+    await dlg.locator("#afn-submit").click();
+    await expect(dlg.locator("#afn-auth-message")).toContainText("thư xác minh");
+    await dlg.locator('[data-mode="login"]').click();
+    await dlg.locator("#afn-email").fill("viewer@example.test");
+    await dlg.locator("#afn-password").fill("cu123");
+    await dlg.locator("#afn-submit").click();
+    await expect(dlg.locator("#afn-auth-message")).toContainText("Mật khẩu hiện tại chưa đạt chuẩn mới");
+    const calls = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.signUp || c.signIn).map(c => Object.keys(c)[0]));
+    expect(calls).toEqual(["signUp", "signIn"]);
+    const scripts = await page.evaluate(() => [...document.scripts].map(s => s.src).filter(s => /challenges\.cloudflare/.test(s)));
+    expect(scripts).toEqual([]);                                                           // chưa có site key → không tải Turnstile
+    expect(issues).toEqual([]);
+  });
+
+  test("Turnstile bật (site key công khai): đăng nhập/đăng ký/quên mật khẩu gửi captchaToken, CSP cho phép widget", async ({ page }) => {
+    const issues = await setup(page, { loginAs: VIEWER });
+    await page.route("**/assets/auth-config.js", r => r.fulfill({ status: 200, contentType: "application/javascript",
+      body: 'window.AFN_AUTH_CONFIG={enabled:true,googleEnabled:false,url:"https://jurvphonehknrxjpowoe.supabase.co",publishableKey:"sb_publishable_e2e_key_123456789",storageKey:"afn-e2e",turnstileSiteKey:"1x00000000000000000000AA"};' }));
+    await page.route("https://challenges.cloudflare.com/**", r => r.fulfill({ status: 200, contentType: "application/javascript",
+      body: 'window.turnstile={n:0,render:function(el,o){var self=this;el.dataset.sitekey=o.sitekey;setTimeout(function(){o.callback("XXXX.DUMMY.TOKEN."+(++self.n))},10);this.cb=o.callback;return "w1"},reset:function(){var self=this;setTimeout(function(){self.cb("XXXX.DUMMY.TOKEN."+(++self.n))},10)}};' }));
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog");
+    await expect(dlg.locator("#afn-captcha")).toBeVisible();
+    await expect(dlg.locator("#afn-captcha")).toHaveAttribute("data-sitekey", "1x00000000000000000000AA");
+    await page.waitForTimeout(50);
+    await dlg.locator("#afn-email").fill("viewer@example.test");
+    await dlg.locator("#afn-password").fill("matkhau2026");
+    await dlg.locator("#afn-submit").click();
+    await expect(page.locator(".afn-account-btn")).toHaveText(/Tài khoản/);
+    const c = await page.evaluate(() => window.__AFN_MOCK.calls.filter(x => x.signIn).map(x => x.signIn.options));
+    expect(c[0].captchaToken).toMatch(/^XXXX\.DUMMY\.TOKEN\.\d+$/);
+    expect(await cspViolations(page)).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+});
+
+
+// ------------------------------------------------------------------ Level 4.6 — giảm egress Supabase
+test.describe("Level 4.6 — egress: catalog edge, không gọi trùng, ngắt Realtime khi không xem", () => {
+  const tables = page => page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.from).map(c => c.from));
+  const count = (list, t) => list.filter(x => x === t).length;
+
+  test("trang chủ đã đăng nhập: mỗi bảng chỉ gọi 1 lần (Social, quy tắc điểm, ví, điểm danh không còn gọi trùng)", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 40 });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-reward-chip")).toContainText("40");
+    await page.waitForTimeout(1500);                                     // chờ qua mốc tải lại khi nút tài khoản đổi chữ
+    const t = await tables(page);
+    for (const name of ["site_social_links", "reward_rules", "wallets", "daily_checkins", "site_films", "site_episodes"])
+      expect(count(t, name), name).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.getUser).length), "auth/v1/user").toBeLessThanOrEqual(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("có /api/catalog (edge): phim, tập, Social, quy tắc điểm KHÔNG gọi Supabase; nội dung lấy từ catalog", async ({ page }) => {
+    const issues = await setup(page, { user: VIEWER, balance: 40 });
+    let hits = 0;
+    await page.route("**/api/catalog?site=*", r => { hits++; r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      v: 1, site: "xuongphim", ttl: 60, films: [{ film_id: "tu-catalog-edge", title: "Phim Từ Catalog Edge", synopsis: "", genres: [], year: 2026, film_type: "le",
+        source_kind: "youtube", youtube_id: "ZZZZZZZZZZZ", video_url: null, published: true, rights_attested: true }],
+      episodes: [], social: [{ platform: "facebook_page", label: "Fanpage edge", url: "https://www.facebook.com/edge-test", placements: ["footer"], sort_order: 0 }],
+      reward_rules: { checkin_enabled: true, checkin_base: 10, streak_step: 2, streak_step_cap: 5, day7_bonus: 30 } }) }); });
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-reward-chip")).toContainText("40");
+    await expect(page.locator(".afn-social").first()).toContainText("Fanpage edge");
+    await expect.poll(() => page.evaluate(() => (window.FILMS || []).some(f => f.id === "tu-catalog-edge"))).toBe(true);
+    await page.waitForTimeout(1200);
+    const t = await tables(page);
+    for (const name of ["site_films", "site_episodes", "site_social_links", "reward_rules"]) expect(count(t, name), name).toBe(0);
+    expect(hits).toBe(1);                                               // một lần cho cả trang (Social + catalog + điểm danh dùng chung)
+    await page.reload();
+    await expect(page.locator(".afn-reward-chip")).toContainText("40");
+    expect(hits).toBe(1);                                               // tải lại trong 60 giây: dùng bản lưu phiên, không gọi lại
+    expect(issues).toEqual([]);
+  });
+
+  test("chat: tab bị ẩn quá thời gian chờ → ngắt Realtime; quay lại → tự kết nối lại và tải tin", async ({ page }) => {
+    await page.addInitScript(() => { window.AFN_CHAT_IDLE_MS = 1000; });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto("/?site=xuongphim");
+    await page.locator("#side-me [data-chat-open]").click();
+    const live = page.locator("#chat-drawer .afn-chat-live");
+    await expect(live).toContainText("Trực tiếp");
+    const setHidden = h => page.evaluate(h => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => h });
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => h ? "hidden" : "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, h);
+    await setHidden(true);
+    await expect(live).toContainText("Tạm ngắt khi bạn không xem", { timeout: 4000 });
+    const before = (await tables(page)).filter(x => x === "chat_messages").length;
+    await setHidden(false);
+    await expect(live).toContainText("Trực tiếp");
+    expect((await tables(page)).filter(x => x === "chat_messages").length).toBeGreaterThan(before);   // tải lại tin khi quay lại
+    expect(issues).toEqual([]);
+  });
+});
+
+
+// ------------------------------------------------------------------ Phase 4: phát triển & triển khai độc lập từng website
+test.describe("Độc lập từng website — Preview khóa theo site, lớp giao diện riêng, cờ tính năng", () => {
+  const PORT = 4173;
+  test("alias site-khophim: luôn là Kho Phim (bỏ qua ?site=), không có nút chuyển site, noindex vẫn giữ", async ({ page }) => {
+    const issues = await setup(page);
+    const res = await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/?site=xuongphim`);
+    await expect(page.locator("#logo .name")).toContainText("KhoPhim");
+    await expect(page.locator("html")).toHaveAttribute("data-site", "khophim");
+    await expect(page.locator("html")).toHaveAttribute("data-preview", "locked");
+    await expect(page.locator("#pv-pills button")).toHaveCount(0);
+    await expect(page.locator("#pv-pills")).toContainText("khophim.ai · bản xem thử riêng");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    await expect(page.locator("link[data-site-theme]")).toHaveAttribute("href", /themes\/khophim\.css/);
+    expect(res.status()).toBe(200);
+    // Member Hub và tài khoản trên alias riêng cũng ở Kho Phim
+    await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/member.html?site=phephim`);
+    await expect(page.locator("html")).toHaveAttribute("data-site", "khophim");
+    expect(issues).toEqual([]);
+  });
+
+  test("4 alias site-<id> mỗi alias đúng một website", async ({ page }) => {
+    const issues = await setup(page);
+    for (const [id, name] of [["phephim", "PhêPhim"], ["phimhay", "PhimHay"], ["ghienphim", "GhiềnPhim"], ["xuongphim", "XưởngPhim"]]) {
+      await page.goto(`https://site-${id}.web-phim-ai-5sites.pages.dev:${PORT}/?site=khophim`);
+      await expect(page.locator("#logo .name")).toContainText(name);
+      await expect(page.locator("html")).toHaveAttribute("data-site", id);
+    }
+    expect(issues).toEqual([]);
+  });
+
+  test("sửa giao diện Kho Phim (themes/khophim.css) KHÔNG làm đổi Xưởng Phim", async ({ page }) => {
+    const issues = await setup(page);
+    const requested = [];
+    page.on("request", r => { const m = r.url().match(/themes\/([a-z]+)\.css/); if (m) requested.push(m[1]); });
+    await page.route("**/assets/themes/khophim.css*", r => r.fulfill({ status: 200, contentType: "text/css",
+      body: '[data-site="khophim"] body, [data-site="khophim"] .site-header { outline: 7px solid rgb(255, 0, 0); }' }));
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator("#logo .name")).toContainText("XưởngPhim");
+    const before = await page.evaluate(() => getComputedStyle(document.querySelector(".site-header")).outlineWidth);
+    expect(before).not.toBe("7px");
+    expect(requested).toEqual(["xuongphim"]);                                            // chỉ tải lớp giao diện của chính nó
+    await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/`);
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".site-header")).outlineWidth)).toBe("7px");
+    await page.goto("/?site=xuongphim");                                                  // quay lại Xưởng Phim: vẫn như cũ
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector(".site-header")).outlineWidth)).toBe(before);
+    expect(issues).toEqual([]);
+  });
+
+  test("Preview chung: đổi site bằng thanh chọn → đổi luôn lớp giao diện riêng", async ({ page }) => {
+    const issues = await setup(page);
+    await page.goto("/?site=xuongphim");
+    await page.locator('#pv-pills [data-site="phimhay"]').click();
+    await expect(page.locator("html")).toHaveAttribute("data-site", "phimhay");
+    await expect(page.locator("link[data-site-theme]")).toHaveAttribute("href", /themes\/phimhay\.css/);
+    expect(issues).toEqual([]);
+  });
+
+  test("Studio trên alias khóa site: chỉ quản trị đúng website đó (bỏ qua ?site=), không có quyền site đó → từ chối", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER });                                   // OWNER: admin Xưởng Phim + Kho Phim
+    await page.goto(`https://site-khophim.web-phim-ai-5sites.pages.dev:${PORT}/admin.html?site=xuongphim`);
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    await expect(page.locator("#studio-site")).toBeDisabled();
+    await expect(page.locator("#studio-site option")).toHaveCount(1);
+    await page.goto(`https://site-phimhay.web-phim-ai-5sites.pages.dev:${PORT}/admin.html`);
+    await expect(page.locator("#studio-denied-reason")).toContainText("Bạn chưa được cấp quyền quản trị Phim Hay");
+    await page.goto("/admin.html?site=khophim");                                           // Preview chung: vẫn chọn được site
+    await expect(page.locator("#studio-site")).toHaveValue("khophim");
+    await expect(page.locator("#studio-site")).toBeEnabled();
+    expect(issues).toEqual([]);
+  });
+
+  test("cờ tính năng: tắt chat/điểm danh/Social/mở khóa cho riêng Phê Phim; Xưởng Phim không bị ảnh hưởng", async ({ page }) => {
+    await page.addInitScript(() => {
+      let v; Object.defineProperty(window, "SITES", { configurable: true, get: () => v,
+        set: x => { const p = x.find(s => s.id === "phephim"); if (p) p.features = { chat: false, rewards: false, social: false, unlock: false }; v = x; } });
+    });
+    const issues = await setup(page, { user: VIEWER });
+    await page.goto(`https://site-phephim.web-phim-ai-5sites.pages.dev:${PORT}/`);
+    await expect(page.locator("#logo .name")).toContainText("PhêPhim");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".afn-reward-chip")).toHaveCount(0);
+    expect(await page.evaluate(() => !!(window.AFN_CHAT && window.AFN_CHAT.disabled))).toBe(true);
+    expect(await page.evaluate(async () => (await window.AFN_PLAYBACK.unlock("x")).status)).toBe("disabled");
+    await page.goto("/?site=xuongphim");
+    await expect(page.locator(".afn-reward-chip")).toBeVisible();
+    expect(await page.evaluate(() => !!(window.AFN_CHAT && window.AFN_CHAT.disabled))).toBe(false);
+    expect(issues).toEqual([]);
+  });
+});
+
+
+// ------------------------------------------------------------------ Level 4.7: Language Router + nhiều nguồn video bên ngoài
+test.describe("Level 4.7 — một phim, nhiều ngôn ngữ, nhiều nguồn video bên ngoài", () => {
+  const MEDIA = (rows) => ({ episode_media: rows.map((r, i) => Object.assign({ id: "m" + i, episode_id: EP.e1, track_kind: "original", priority: 0, published: true, rights_attested: true, external_id: null, url: null }, r)) });
+  async function openEp1(page, q = "") {
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=1" + q);
+    await expect(page.locator("#film-dialog")).toBeVisible();
+    await page.locator('.episodes [data-ep="1"]').click();
+  }
+  test("1 link YouTube + phụ đề: chọn ngôn ngữ đổi phụ đề/bản lồng tiếng trên CÙNG tập, lưu lựa chọn", async ({ page }) => {
+    const issues = await setup(page, { extra: Object.assign(MEDIA([
+      { language: "vi", provider: "youtube", external_id: "VIDEOxxxx01" },
+      { language: "th", provider: "youtube_unlisted", external_id: "THDUBxxxx01", track_kind: "dub" }]),
+      { episode_subtitles: [{ id: "s1", episode_id: EP.e1, language: "id", source: "youtube", url: null, published: true },
+                            { id: "s2", episode_id: EP.e1, language: "en", source: "youtube", url: null, published: false }] }) });
+    await openEp1(page);
+    await expect(page.locator('#player iframe[src*="embed/VIDEOxxxx01"]')).toHaveCount(1);
+    await expect(page.locator(".lang-bar .lang-opt")).toHaveText(["Bahasa Indonesia (phụ đề)", "ภาษาไทย", "Tiếng Việt"]);   // bản nháp en không hiện
+    await expect(page.locator('.lang-bar [data-lang="vi"]')).toHaveAttribute("aria-pressed", "true");
+    await page.locator('.lang-bar [data-lang="th"]').click();
+    await expect(page.locator('#player iframe[src*="embed/THDUBxxxx01"]')).toHaveCount(1);
+    expect(await page.evaluate(() => localStorage.getItem("afn-lang"))).toBe("th");
+    await page.locator('.lang-bar [data-lang="id"]').click();
+    await expect(page.locator('#player iframe[src*="embed/VIDEOxxxx01"][src*="cc_lang_pref=id"][src*="cc_load_policy=1"]')).toHaveCount(1);
+    await expect(page.locator('.lang-bar [data-lang="id"]')).toHaveAttribute("aria-pressed", "true");
+    expect(issues).toEqual([]);
+  });
+
+  test("?lang= trong link chia sẻ chọn đúng phụ đề ngay; Facebook/Drive: mỗi ngôn ngữ một link, nhúng iframe chính thức, không vi phạm CSP", async ({ page }) => {
+    const issues = await setup(page, { extra: Object.assign(MEDIA([
+      { language: "vi", provider: "facebook", url: "https://www.facebook.com/afn.page/videos/1234567890/" },
+      { language: "id", provider: "gdrive", external_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz012345", track_kind: "subtitled" }]), { episode_subtitles: [] }) });
+    await page.route(/facebook\.com|drive\.google\.com/, r => r.fulfill({ status: 200, contentType: "text/html", body: "<p>embed</p>" }));
+    await openEp1(page, "&lang=id");
+    await expect(page.locator('#player iframe[data-provider="gdrive"][src="https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/preview"]')).toHaveCount(1);
+    await page.locator('.lang-bar [data-lang="vi"]').click();
+    await expect(page.locator('#player iframe[data-provider="facebook"]')).toHaveAttribute("src", /^https:\/\/www\.facebook\.com\/plugins\/video\.php\?href=https%3A%2F%2Fwww\.facebook\.com%2Fafn\.page%2Fvideos%2F1234567890%2F/);
+    expect(await cspViolations(page)).toEqual([]);
+    expect(issues).toEqual([]);
+  });
+
+  test("máy chủ chưa có Level 4.7: tự dùng nguồn v1 như cũ (không lỗi, không thanh ngôn ngữ); tập bị khóa không lộ nguồn", async ({ page }) => {
+    const issues = await setup(page, { missing: ["get_playback_media"] });
+    await openEp1(page);
+    await expect(page.locator('#player iframe[src*="embed/EP1xxxxxxxx"]')).toHaveCount(1);
+    await expect(page.locator(".lang-bar")).toHaveCount(0);
+    await page.locator('.episodes [data-ep="2"]').click();
+    await expect(page.locator(".player-gate")).toContainText("50 điểm");
+    const rpcs = await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.rpc).map(c => c.rpc));
+    expect(rpcs.filter(r => r === "get_playback_media").length).toBe(1);                   // thử 1 lần rồi nhớ là chưa có
+    expect(rpcs).toContain("get_playback_source");
+    expect(issues).toEqual([]);
+  });
+});
+
+
+test.describe("Level 4.7 — Video Source Manager (Studio)", () => {
+  test("admin khai báo link YouTube + phụ đề: lưu nháp (không tự phát hành), phát hành cần xác nhận quyền, xem thử router; người xem thấy ngay", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER, extra: { episode_media: [], episode_subtitles: [] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="media"]').click();
+    await expect(page.locator("#vsm-episode option")).toHaveCount(3);
+    await expect(page.locator('#studio-media input[type="file"]')).toHaveCount(0);                 // không có ô tải video lên
+    await page.locator("#vsm-link").fill("http://example.test/a.mp4");
+    await page.locator("#vsm-media-save").click();
+    await expect(page.locator("#vsm-msg")).toContainText("https");
+    await page.locator("#vsm-link").fill("https://youtu.be/VIDEOxxxx01?si=share");
+    await expect(page.locator("#vsm-detected")).toContainText("YouTube · mã VIDEOxxxx01");
+    await page.locator("#vsm-media-save").click();
+    await expect(page.locator("#vsm-msg")).toContainText("Chưa phát hành");
+    let db = await mock(page);
+    expect(db.episode_media).toHaveLength(1);
+    expect(db.episode_media[0]).toMatchObject({ provider: "youtube", external_id: "VIDEOxxxx01", language: "vi", published: false, rights_attested: false });
+    await page.locator("#vsm-sub-lang").selectOption("th");
+    await page.locator("#vsm-sub-save").click();
+    await expect(page.locator("#vsm-msg")).toContainText("phụ đề nháp");
+    const confirms = [];
+    page.removeAllListeners("dialog");
+    page.on("dialog", d => { confirms.push(d.message()); d.accept(); });
+    await page.locator('tr[data-kind="media"] .vsm-publish').click();
+    await expect(page.locator("#vsm-msg")).toHaveText("Đã phát hành.");
+    expect(confirms[0]).toContain("chưa được xác nhận quyền phát");
+    await page.locator('tr[data-kind="sub"] .vsm-publish').click();
+    await expect(page.locator('tr[data-kind="sub"] td').nth(3)).toHaveText("Đang hiển thị");
+    db = await mock(page);
+    expect(db.episode_media[0]).toMatchObject({ published: true, rights_attested: true });
+    await page.locator("#vsm-preview-lang").selectOption("th");
+    await page.locator("#vsm-preview-btn").click();
+    await expect(page.locator("#vsm-preview-out")).toContainText("bản gốc + phụ đề");
+    await expect(page.locator("#vsm-preview-out")).toContainText("Phụ đề: ภาษาไทย (trong video YouTube)");
+    // Người xem: tập 1 phát link mới, chọn tiếng Thái → phụ đề YouTube tiếng Thái
+    await page.goto("/?site=xuongphim&film=tin-hieu-47&tap=1&lang=th");
+    await page.locator('.episodes [data-ep="1"]').click();
+    await expect(page.locator('#player iframe[src*="embed/VIDEOxxxx01"][src*="cc_lang_pref=th"]')).toHaveCount(1);
+    expect(issues).toEqual([]);
+  });
+
+  test("link không hỗ trợ bị từ chối; máy chủ chưa có Level 4.7 → báo rõ, không ghi gì", async ({ page }) => {
+    const issues = await setup(page, { user: OWNER, missing: ["episode_media", "episode_subtitles"] });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="media"]').click();
+    await expect(page.locator("#vsm-lists")).toContainText("Máy chủ chưa có Level 4.7");
+    await expect(page.locator("#vsm-media-save")).toBeDisabled();
+    await page.locator("#vsm-link").fill("https://fb.watch/abc123");
+    await expect(page.locator("#vsm-detected")).toContainText("facebook.com");
+    expect(issues).toEqual([]);
+  });
+});

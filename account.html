@@ -88,10 +88,10 @@
         <h2>Bảo mật tài khoản</h2>
         <p>Đổi mật khẩu và email bằng Supabase Auth. Nếu bật xác nhận email, hãy hoàn tất liên kết gửi tới hộp thư.</p>
         <form id="afn-password-form" class="afn-profile-edit">
-          <label for="afn-new-password">Mật khẩu mới (tối thiểu 8 ký tự)</label>
-          <input id="afn-new-password" type="password" minlength="8" autocomplete="new-password" required>
+          <label for="afn-new-password">Mật khẩu mới (ít nhất 10 ký tự, gồm cả chữ và số)</label>
+          <input id="afn-new-password" type="password" minlength="10" autocomplete="new-password" required>
           <label for="afn-confirm-password">Nhập lại mật khẩu</label>
-          <input id="afn-confirm-password" type="password" minlength="8" autocomplete="new-password" required>
+          <input id="afn-confirm-password" type="password" minlength="10" autocomplete="new-password" required>
           <button class="afn-action-primary" type="submit">Cập nhật mật khẩu</button>
         </form>
         <form id="afn-email-form" class="afn-profile-edit">
@@ -107,7 +107,7 @@
           <a class="afn-action-secondary" id="afn-export-link" href="./member.html?site=xuongphim#settings">Xuất dữ liệu của tôi</a>
           <button class="afn-action-quiet" id="afn-request-delete" type="button">Yêu cầu xóa tài khoản</button>
         </div>
-        <p class="afn-auth-hint">Yêu cầu xóa được đưa vào hàng đợi xử lý sau khi xác minh danh tính. Đây không phải thao tác xóa ngay lập tức.</p>
+        <p class="afn-auth-hint">Yêu cầu xóa được đưa vào hàng đợi và xử lý thủ công; bạn nhận thông báo ở mỗi bước. Khi xóa, tài khoản cùng ví điểm, lịch sử điểm, tập đã mở và tin nhắn trên toàn mạng lưới bị xóa. Đây không phải thao tác xóa ngay lập tức.</p>
         <div id="afn-privacy-requests" aria-live="polite"></div>
       </section>
     </div>

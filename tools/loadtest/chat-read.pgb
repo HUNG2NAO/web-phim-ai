@@ -1,0 +1,7 @@
+\set n random(2, 1000)
+\set f random(1, 20)
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"bbbbbbbb-0000-4000-8000-' || lpad(:n::text, 12, '0') || '","role":"authenticated"}', true);
+SELECT id, room, user_id, display_name, body, created_at, hidden FROM public.chat_messages WHERE room = 'film:khophim:phim-' || :f ORDER BY created_at DESC LIMIT 50;
+COMMIT;

@@ -6,8 +6,9 @@
   var brands = Array.isArray(window.SITES) ? window.SITES : [];
   var domainBrand = brands.find(function(b) { return b.domain === hostname; });
   var previewBrand = brands.find(function(b) { return b.id === params.get("site"); });
-  var brand = domainBrand || previewBrand || brands[0];
-  var isMemberPilot = !!(brand && (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(brand.id));
+  var brand = window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE().site : (domainBrand || previewBrand || brands[0]);
+  var isMemberPilot = !!(brand && (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(brand.id)
+    && (!window.AFN_SITE_FEATURE || window.AFN_SITE_FEATURE("memberHub", brand)));
   var memberShortcut = document.getElementById("afn-member-hub-shortcut");
   if(memberShortcut){
     memberShortcut.hidden = !isMemberPilot;
@@ -74,7 +75,7 @@
       var created = await supabase.from("profiles").insert({id:user.id,display_name:name});
       if (created.error && created.error.code !== "23505") throw created.error;
     }
-    if (brand && ["xuongphim","khophim","phephim","phimhay","ghienphim"].includes(brand.id)) {
+    if (brand && (window.SITES||[]).some(function(s){return s.id===brand.id;})) {
       var found = await supabase.from("site_memberships").select("site_id")
         .eq("user_id",user.id).eq("site_id",brand.id).maybeSingle();
       if (found.error) throw found.error;
@@ -185,9 +186,12 @@
     if(!current)return;
     var password=document.getElementById("afn-new-password").value;
     var confirmPassword=document.getElementById("afn-confirm-password").value;
-    if(password.length<8||password!==confirmPassword){
-      showStatus("Mật khẩu phải đủ 8 ký tự và hai lần nhập phải khớp.",true);return;
+    var policy=(window.AFN_AUTH_CONFIG||{}).passwordPolicy||{minLength:10,letterAndDigit:true},min=policy.minLength||10;
+    var policyText="Mật khẩu cần ít nhất "+min+" ký tự"+(policy.letterAndDigit?", gồm cả chữ và số":"");
+    if(password.length<min||(policy.letterAndDigit&&!(/[A-Za-z\u00C0-\u1EF9]/.test(password)&&/\d/.test(password)))){
+      showStatus(policyText+".",true);return;
     }
+    if(password!==confirmPassword){showStatus("Hai lần nhập mật khẩu chưa khớp.",true);return;}
     var btn=passwordForm.querySelector('button[type="submit"]');btn.disabled=true;
     try{
       var response=await supabase.auth.updateUser({password:password});
@@ -215,17 +219,20 @@
     }catch(_){showStatus("Không thể gửi xác nhận đổi email. Kiểm tra cấu hình redirect và SMTP của Supabase.",true);}
     finally{btn.disabled=false;}
   });
+  var PRIVACY_TYPE={delete_account:"Yêu cầu xóa tài khoản",data_export:"Yêu cầu xuất dữ liệu",delete_activity:"Yêu cầu xóa lịch sử hoạt động"};
+  var PRIVACY_STATUS={pending:"Chờ xử lý",in_review:"Đang xử lý",completed:"Đã hoàn tất",rejected:"Chưa được chấp thuận"};
   async function loadPrivacyRequests(){
     if(!current)return;
     var box=document.getElementById("afn-privacy-requests");
-    var response=await supabase.from("member_privacy_requests").select("request_type,status,submitted_at")
+    var response=await supabase.from("member_privacy_requests").select("request_type,status,submitted_at,handled_at,admin_note")
       .eq("user_id",current.id);
     if(response.error){box.textContent="Chưa thể tải trạng thái yêu cầu.";return;}
     box.replaceChildren();
     (response.data||[]).sort((a,b)=>new Date(b.submitted_at)-new Date(a.submitted_at)).slice(0,10).forEach(function(r){
       var p=document.createElement("p");
       p.className="afn-auth-hint";
-      p.textContent="Yêu cầu "+(r.request_type==="delete_account"?"xóa tài khoản":r.request_type)+" · "+r.status+" · "+new Date(r.submitted_at).toLocaleDateString("vi-VN");
+      p.textContent=(PRIVACY_TYPE[r.request_type]||r.request_type)+" · "+(PRIVACY_STATUS[r.status]||r.status)+" · gửi "+new Date(r.submitted_at).toLocaleDateString("vi-VN")+
+        (r.admin_note?" · Ghi chú: "+r.admin_note:"");
       box.append(p);
     });
   }
@@ -234,17 +241,19 @@
     if(!window.confirm("Gửi yêu cầu xóa tài khoản? Quản trị viên sẽ cần xác minh danh tính trước khi thực hiện. Đây chưa phải thao tác xóa ngay."))return;
     var btn=this;btn.disabled=true;
     try{
-      var old=await supabase.from("member_privacy_requests").select("id").eq("user_id",current.id)
-        .eq("request_type","delete_account").eq("status","pending");
+      var old=await supabase.from("member_privacy_requests").select("id,status").eq("user_id",current.id)
+        .eq("request_type","delete_account");
       if(old.error)throw old.error;
-      if((old.data||[]).length){showStatus("Yêu cầu xóa tài khoản đang được tiếp nhận.",false);return;}
+      if((old.data||[]).some(function(x){return x.status==="pending"||x.status==="in_review";})){showStatus("Bạn đã có yêu cầu xóa tài khoản đang được xử lý.",false);return;}
       var response=await supabase.from("member_privacy_requests").insert({
         user_id:current.id,site_id:brand.id,request_type:"delete_account",status:"pending"
       });
       if(response.error)throw response.error;
       await loadPrivacyRequests();
-      showStatus("Đã ghi nhận yêu cầu xóa tài khoản. Quản trị viên sẽ kiểm tra và xác minh.",false);
-    }catch(_){showStatus("Chưa thể gửi yêu cầu xóa. Vui lòng thử lại.",true);}
+      showStatus("Đã ghi nhận yêu cầu xóa tài khoản. Bạn sẽ nhận thông báo khi yêu cầu được xử lý.",false);
+    }catch(e){
+      if(/duplicate|23505/.test(String(e&&(e.code||e.message)))){showStatus("Bạn đã có yêu cầu xóa tài khoản đang được xử lý.",false);await loadPrivacyRequests();return;}
+      showStatus("Chưa thể gửi yêu cầu xóa. Vui lòng thử lại.",true);}
     finally{btn.disabled=false;}
   });
   if(current)loadPrivacyRequests().catch(function(){});

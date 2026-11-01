@@ -1,0 +1,180 @@
+/* AI Film Network — Shared Core (dùng chung cho 5 website).
+   Nhận diện thương hiệu, một Supabase client duy nhất cho các module mới,
+   tiện ích URL phim, khóa chống trùng (idempotency) và thông báo nhỏ (toast).
+   Không chứa khóa bí mật. Mọi quyền hạn được kiểm tra ở Supabase (RLS + hàm server). */
+(function () {
+  "use strict";
+  var SITES = window.SITES || [];
+  var cfg = window.AFN_AUTH_CONFIG || {};
+
+  function store(key, val) {
+    try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch (e) { return null; }
+  }
+  function resolved() { return window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE() : { site: SITES[0] || null, preview: true, locked: false }; }
+  // Tên miền thật (không phải Preview) → site; Preview → null. Dùng chung bộ nhận diện của assets/sites.js.
+  function hostBrand() { var r = resolved(); return r.preview ? null : r.site; }
+  // Thứ tự chung (sites.js): tên miền thật → Preview khóa theo site → ?site= → #hash → lựa chọn trước đó → site đầu tiên.
+  function currentBrand() { return resolved().site; }
+  var configured = cfg.enabled === true
+    && /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(cfg.url || "")
+    && /^sb_publishable_[\w-]+$/.test(cfg.publishableKey || "")
+    && !!(window.supabase && typeof window.supabase.createClient === "function");
+  var clientInstance = null;
+  function client() {
+    if (!configured) return null;
+    if (!clientInstance) {
+      clientInstance = window.supabase.createClient(cfg.url, cfg.publishableKey, { auth: {
+        persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce",
+        storageKey: cfg.storageKey || "afn-film-auth-v1"
+      } });
+    }
+    return clientInstance;
+  }
+  // Một lần hỏi /auth/v1/user cho mọi module: yêu cầu "force" trong 1,5 giây dùng lại kết quả vừa hỏi;
+  // mọi thay đổi phiên (đăng nhập, đăng xuất, đổi người dùng) xóa bộ nhớ đệm ngay.
+  // Level 4.6 (egress/Auth): khôi phục phiên phát cả SIGNED_IN dù người dùng không đổi → chỉ xóa bộ đệm khi
+  // đăng xuất, cập nhật hồ sơ, hoặc mã người dùng thật sự khác; "force" dùng lại kết quả trong 10 giây.
+  var userPromise = null, userAt = 0, authWatched = false, lastUid;
+  function getUser(force) {
+    var c = client();
+    if (!c) return Promise.resolve(null);
+    if (!authWatched) {
+      authWatched = true;
+      c.auth.onAuthStateChange(function (event, session) {
+        var id = (session && session.user && session.user.id) || null;
+        if (event === "SIGNED_OUT" || event === "USER_UPDATED" || (lastUid !== undefined && id !== lastUid)) { userPromise = null; userAt = 0; }
+        lastUid = id;
+      });
+    }
+    if (!userPromise || (force && Date.now() - userAt > 10000)) {
+      userAt = Date.now();
+      userPromise = c.auth.getUser().then(function (r) { var u = (r && r.data && r.data.user) || null; lastUid = u ? u.id : null; return u; })
+        .catch(function () { return null; });
+    }
+    return userPromise;
+  }
+  // Level 4.6 (egress): dữ liệu CÔNG KHAI của website (phim, tập, Social, quy tắc điểm) lấy một lần từ /api/catalog
+  // (Pages Function, cache 60 giây ở edge Cloudflare) + sessionStorage 60 giây. Trả null nếu không có → module tự gọi Supabase.
+  var pubCache = {}, PUB_TTL = 60000;
+  function publicData(site) {
+    site = site || (currentBrand() || {}).id;
+    if (!site || !/^[a-z]+$/.test(site)) return Promise.resolve(null);
+    if (pubCache[site]) return pubCache[site];
+    var key = "afn-pub-v1-" + site;
+    try {
+      var s = JSON.parse(sessionStorage.getItem(key) || "null");
+      if (s && s.data && Date.now() - s.at < PUB_TTL) return (pubCache[site] = Promise.resolve(s.data));
+    } catch (e) {}
+    if (typeof fetch !== "function") return Promise.resolve(null);
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 4000);
+    pubCache[site] = fetch("/api/catalog?site=" + encodeURIComponent(site), { credentials: "omit", signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || d.v !== 1 || d.site !== site || !Array.isArray(d.films) || !Array.isArray(d.episodes)) return null;
+        try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data: d })); } catch (e) {}
+        return d;
+      })
+      .catch(function () { return null; })
+      .then(function (d) { clearTimeout(timer); if (!d) delete pubCache[site]; return d; });
+    return pubCache[site];
+  }
+  function idemKey(prefix) {
+    var rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+      Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    return (prefix + "-" + rnd).replace(/[^A-Za-z0-9_:-]/g, "").slice(0, 100);
+  }
+  // Share link: pretty /phim/<id> on real domains (Cloudflare _redirects), ?film= on previews.
+  function filmUrl(filmId, episode) {
+    var b = currentBrand();
+    if (hostBrand() && b) {
+      return "https://www." + b.domain + "/phim/" + encodeURIComponent(filmId) + (episode > 1 ? "/tap/" + episode : "");
+    }
+    var u = new URL(location.origin + location.pathname.replace(/[^/]*$/, ""));
+    if (b) u.searchParams.set("site", b.id);
+    u.searchParams.set("film", filmId);
+    if (episode > 1) u.searchParams.set("tap", String(episode));
+    return u.href;
+  }
+  function memberUrl(tab) {
+    var u = new URL("./member.html", location.href);
+    var b = currentBrand();
+    if (!hostBrand() && b) u.searchParams.set("site", b.id);
+    if (tab) u.hash = tab;
+    return u.href;
+  }
+  var toastEl = null, toastTimer = 0;
+  function toast(message, isError) {
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.className = "afn-toast";
+      toastEl.setAttribute("role", "status");
+      toastEl.setAttribute("aria-live", "polite");
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = message;
+    toastEl.dataset.error = isError ? "true" : "false";
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, 4200);
+  }
+  function openLogin() {
+    var btn = document.querySelector(".afn-account-btn");
+    if (btn) { btn.click(); return true; }
+    toast("Vui lòng đăng nhập ở trang chủ của website.", true);
+    return false;
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function formatPoints(n) { return Number(n || 0).toLocaleString("vi-VN"); }
+  function vnDate(d) {
+    try { return new Date(d).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" }); }
+    catch (e) { return String(d); }
+  }
+  function vnDateTime(d) {
+    try { return new Date(d).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+    catch (e) { return String(d); }
+  }
+  // Vietnam calendar date (YYYY-MM-DD) of a moment — for display only; the server decides check-ins.
+  function vnDayKey(d) {
+    var parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(d || new Date());
+    return parts;
+  }
+
+  // Community Chat công khai trên tên miền thật CHỈ khi được ghi vào danh sách dưới đây (sau khi đánh giá pháp lý,
+  // xem docs/AI_FILM_NETWORK_MASTER_DELIVERY.md — RC3 mục 5). Preview / localhost luôn bật để kiểm thử.
+  var CHAT_PUBLIC_DOMAINS = [];
+  // Cờ tính năng của website đang xem (assets/sites.js → features). Cờ giao diện; quyền thật do máy chủ quyết định.
+  function feature(name) { return window.AFN_SITE_FEATURE ? window.AFN_SITE_FEATURE(name, currentBrand()) : true; }
+  function chatEnabled() {
+    if (!feature("chat")) return false;
+    var b = hostBrand();
+    return !b || CHAT_PUBLIC_DOMAINS.indexOf(b.domain) !== -1;
+  }
+  window.AFN = Object.freeze({
+    sites: SITES,
+    get chatEnabled() { return chatEnabled(); },
+    feature: feature,
+    get brand() { return currentBrand(); },
+    get siteId() { var b = currentBrand(); return b ? b.id : null; },
+    get preview() { return !hostBrand(); },
+    configured: configured,
+    client: client,
+    getUser: getUser,
+    publicData: publicData,
+    idemKey: idemKey,
+    filmUrl: filmUrl,
+    memberUrl: memberUrl,
+    toast: toast,
+    openLogin: openLogin,
+    el: el,
+    formatPoints: formatPoints,
+    vnDate: vnDate,
+    vnDateTime: vnDateTime,
+    vnDayKey: vnDayKey
+  });
+})();

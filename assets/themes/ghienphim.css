@@ -1,0 +1,8 @@
+/* AI FILM NETWORK — LỚP GIAO DIỆN RIÊNG của website "ghienphim".
+   • Chỉ được tải khi đang xem site ghienphim (assets/sites.js), không ảnh hưởng 4 website còn lại.
+   • MỌI quy tắc phải bắt đầu bằng [data-site="ghienphim"] (tools/site-package.cjs check chặn nếu sai);
+     @keyframes / biến phải có tiền tố "ghienphim-".
+   • Màu nhấn, tên, ấn triện, danh mục, Social, SEO: sửa trong assets/sites.js (mục "ghienphim") hoặc Studio — không ở đây.
+   • Thay đổi Shared Core (assets/*.js, assets/*.css chung) phải chạy hồi quy cho cả 5 website.
+   Ví dụ: [data-site="ghienphim"] .hero h1 { letter-spacing: .01em; } */
+[data-site="ghienphim"] { --site-theme-version: 1; }

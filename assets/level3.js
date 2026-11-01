@@ -8,13 +8,14 @@
   const BRANDS=Array.isArray(window.SITES)?window.SITES:[];
   const params=new URL(window.location.href).searchParams;
   const hostname=window.location.hostname.replace(/^www\./,"");
-  const preview=hostname.endsWith(".pages.dev");
-  const brand=preview
+  const resolved=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE():null;   // Shared Core
+  const preview=resolved?resolved.preview:hostname.endsWith(".pages.dev");
+  const brand=resolved?resolved.site:(preview
     ? (BRANDS.find(b=>b.id===params.get("site"))||BRANDS[0])
-    : BRANDS.find(b=>b.domain===hostname);
+    : BRANDS.find(b=>b.domain===hostname));
   const SITE=brand?.id||"unknown";
   const flags=window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"];
-  const isPilot=flags.includes(SITE);
+  const isPilot=flags.includes(SITE)&&(!window.AFN_SITE_FEATURE||window.AFN_SITE_FEATURE("memberHub",brand));
   const FILMS=ALL.filter(f=>(f.world||"co-trang")===(brand?.world||"co-trang"));
   const byId=new Map(ALL.map(f=>[f.id,f]));
   const cfg=window.AFN_AUTH_CONFIG||{};
@@ -340,7 +341,7 @@
     setActiveProfile(p);await loadSelected();announce("Đã chuyển sang hồ sơ "+p.nickname);
   }
   function setTab(name){
-    if(!["overview","library","discover","community","profiles","inbox","settings"].includes(name))return;
+    if(!["overview","rewards","library","discover","community","profiles","inbox","settings"].includes(name))return;
     state.tab=name;$$("[data-panel]").forEach(p=>p.hidden=p.dataset.panel!==name);
     $$("[data-tab]").forEach(b=>{const active=b.dataset.tab===name;b.classList.toggle("active",active);if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");});
     if(window.location.hash!=="#"+name)window.history.replaceState(window.history.state,"","#"+name);
@@ -453,11 +454,19 @@
   $("#export-data").addEventListener("click",async function(){
     this.disabled=true;
     try{
-      const owned=["profiles","site_memberships","viewer_profiles","viewer_preferences","film_library","watch_progress","film_reviews","member_notifications"];
-      const exports={exported_at:new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:{}};
-      for(const table of owned){
-        const key=table==="profiles"?"id":"user_id";
-        exports.data[table]=await getRows(table,{[key]:state.user.id});
+      let exports;
+      // Level 4.3: toàn bộ dữ liệu (kể cả ví, sổ điểm, chat) qua RPC; CSDL chưa nâng cấp → cách cũ.
+      let full={error:true};
+      try{if(typeof client.rpc==="function")full=await client.rpc("my_data_export");}catch(_){full={error:true};}
+      if(!full.error&&full.data){
+        exports={exported_at:full.data.exported_at||new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:full.data};
+      }else{
+        const owned=["profiles","site_memberships","viewer_profiles","viewer_preferences","film_library","watch_progress","film_reviews","member_notifications"];
+        exports={exported_at:new Date().toISOString(),source:"AI Film Network",viewer_account:state.user.email||"",data:{}};
+        for(const table of owned){
+          const key=table==="profiles"?"id":"user_id";
+          exports.data[table]=await getRows(table,{[key]:state.user.id});
+        }
       }
       const payload=new Blob([JSON.stringify(exports,null,2)],{type:"application/json;charset=utf-8"});
       const link=document.createElement("a");

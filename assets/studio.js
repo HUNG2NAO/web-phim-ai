@@ -9,13 +9,19 @@ const screen=name=>["loading","denied","app"].forEach(x=>$("#studio-"+x).hidden=
 const message=(s,err)=>{const el=$("#studio-status");el.textContent=s;el.style.color=err?"#f8b2b5":"var(--cyan)";};
 if(!cfg.enabled||!window.supabase?.createClient){screen("denied");return;}
 const db=window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:"pkce",storageKey:cfg.storageKey||"afn-film-auth-v1"}});
-let owner=null,roles=[],site="xuongphim",films=[],reviews=[],requests=[],members=[];
+let owner=null,roles=[],isNetworkOwner=false,site="xuongphim",films=[],reviews=[],requests=[],members=[];
 async function get(table,filters={}){
  let q=db.from(table).select("*");
  for(const [k,v] of Object.entries(filters))q=q.eq(k,v);
  const {data,error}=await q;if(error)throw error;return data||[];
 }
 const role=()=>roles.find(x=>x.site_id===site)?.role;
+const PRIVACY_TYPE={delete_account:"Yêu cầu xóa tài khoản",data_export:"Yêu cầu xuất dữ liệu",delete_activity:"Yêu cầu xóa lịch sử hoạt động"};
+const PRIVACY_STATUS={pending:"Chờ xử lý",in_review:"Đang xử lý",completed:"Đã hoàn tất",rejected:"Đã từ chối"};
+const PRIVACY_ERR={forbidden:"Bạn không có quyền với yêu cầu của website này.",invalid_transition:"Trạng thái đã thay đổi, hãy tải lại.",note_required:"Cần ghi lý do từ chối (ít nhất 5 ký tự).",
+ use_account_deletion:"Yêu cầu xóa tài khoản chỉ hoàn tất khi chủ mạng thực hiện xóa.",email_mismatch:"Email nhập không khớp tài khoản — chưa xóa gì.",target_is_staff:"Tài khoản đang có quyền quản trị: gỡ quyền trước khi xóa.",
+ cannot_delete_owner:"Không thể xóa tài khoản chủ mạng.",mfa_required:"Xóa tài khoản thật cần phiên đã xác thực 2 lớp. Mở thẻ Bảo mật để bật 2FA hoặc nhập mã.",invalid_state:"Yêu cầu phải ở trạng thái Đang xử lý.",already_deleted:"Tài khoản đã được xóa trước đó."};
+const privacyError=e=>{const m=String(e&&e.message||"");const k=Object.keys(PRIVACY_ERR).find(x=>m.includes(x));return k?PRIVACY_ERR[k]:"Không thể cập nhật. Kiểm tra quyền truy cập.";};
 function empty(node,text){node.replaceChildren(element("p",text,"muted"));}
 function cards(){
  const out=$("#studio-films");out.replaceChildren();
@@ -38,15 +44,24 @@ function cards(){
   a.append(acts);queue.append(a);
  });
  const list=$("#studio-privacy");list.replaceChildren();
- if(!requests.length)empty(list,"Chưa có yêu cầu nào.");
- requests.forEach(r=>{
+ const visible=requests.slice().sort((a,b)=>String(b.submitted_at).localeCompare(String(a.submitted_at)));
+ if(!visible.length)empty(list,"Chưa có yêu cầu nào.");
+ visible.forEach(r=>{
   const a=element("article",undefined,"studio-item");
-  a.append(element("h3",r.request_type),element("p","Người yêu cầu: "+r.user_id+" · Trạng thái: "+r.status,"muted"));
+  const who=r.user_id?("Thành viên #"+String(r.subject_id||r.user_id).slice(0,8)):("Tài khoản đã xóa #"+String(r.subject_id||"").slice(0,8));
+  a.append(element("h3",PRIVACY_TYPE[r.request_type]||r.request_type),
+   element("p",who+" · Gửi "+new Date(r.submitted_at).toLocaleString("vi-VN")+" · Trạng thái: "+(PRIVACY_STATUS[r.status]||r.status),"muted"));
+  if(r.admin_note)a.append(element("p","Ghi chú: "+r.admin_note,"muted"));
   const actions=element("div",undefined,"actions");
-  if(r.status==="pending")actions.append(button("Nhận xử lý","privacyAction",r.id+"|in_review"));
-  if(r.status==="in_review"&&r.request_type!=="delete_account")actions.append(button("Đã xử lý","privacyAction",r.id+"|completed"));
-  if(r.request_type==="delete_account")a.append(element("p","Không tự động xóa tài khoản. Chỉ quản trị viên mới thực hiện xóa trong Supabase sau khi xác minh danh tính.","muted"));
-  a.append(actions);list.append(a);
+  if(role()==="admin"||isNetworkOwner){
+   if(r.status==="pending")actions.append(button("Nhận xử lý","privacyAction",r.id+"|in_review"),button("Từ chối","privacyAction",r.id+"|rejected"));
+   if(r.status==="in_review"&&r.request_type!=="delete_account")actions.append(button("Đã xử lý xong","privacyAction",r.id+"|completed"),button("Từ chối","privacyAction",r.id+"|rejected"));
+   if(r.status==="in_review"&&r.request_type==="delete_account"){
+    if(isNetworkOwner)actions.append(button("Xem trước dữ liệu sẽ xóa","privacyPreview",r.id),button("Xóa tài khoản vĩnh viễn","privacyDelete",r.id),button("Từ chối","privacyAction",r.id+"|rejected"));
+    else{actions.append(button("Từ chối","privacyAction",r.id+"|rejected"));a.append(element("p","Chỉ chủ mạng thực hiện xóa tài khoản (ví điểm dùng chung toàn mạng).","muted"));}
+   }
+  }
+  const out=element("p","","muted privacy-preview");out.hidden=true;a.append(actions,out);list.append(a);
  });
  $("#studio-recipients").textContent="Có "+members.length+" thành viên đã tham gia website này.";
  $("#studio-send").disabled=role()!=="admin"||members.length===0;
@@ -75,11 +90,24 @@ function setLinks(){
 try{
  const {data,error}=await db.auth.getUser();if(error)throw error;owner=data?.user;
  if(!owner){screen("denied");$("#studio-denied-reason").textContent="Vui lòng đăng nhập ở trang chủ.";return;}
+ // Level 4.6: tài khoản đã bật 2FA → nhập mã (nâng phiên lên AAL2) TRƯỚC khi tải dữ liệu quản trị.
+ if(window.AFN_MFA){try{await window.AFN_MFA.gate(db);}catch(_){}}
  roles=await get("site_staff",{user_id:owner.id});
+ try{isNetworkOwner=(await get("network_staff",{user_id:owner.id})).length>0;}catch(_){isNetworkOwner=false;}
  if(!roles.length){screen("denied");$("#studio-denied-reason").textContent="Bạn chưa được cấp quyền quản trị.";return;}
+ // Tên miền thật / Preview khóa theo site (assets/sites.js): Studio CHỈ quản trị đúng website đó, không chuyển sang site khác.
+ const lock=window.AFN_RESOLVE_SITE?window.AFN_RESOLVE_SITE():null;
+ const lockedSite=lock&&lock.locked&&lock.site?lock.site.id:null;
+ if(lockedSite){roles=roles.filter(x=>x.site_id===lockedSite);
+   if(!roles.length){screen("denied");$("#studio-denied-reason").textContent="Bạn chưa được cấp quyền quản trị "+(lock.site.name||lockedSite)+".";return;}}
  roles.forEach(x=>{$("#studio-site").add(new Option(brandData.find(b=>b.id===x.site_id)?.name||x.site_id,x.site_id));});
- site=roles.some(x=>x.site_id==="xuongphim")?"xuongphim":roles[0].site_id;
- $("#studio-site").value=site;setLinks();screen("app");await refresh();
+ if(lockedSite)$("#studio-site").disabled=true;
+ const wanted=lockedSite||new URLSearchParams(location.search).get("site");
+ site=roles.some(x=>x.site_id===wanted)?wanted:(roles.some(x=>x.site_id==="xuongphim")?"xuongphim":roles[0].site_id);
+ $("#studio-site").value=site;setLinks();screen("app");
+ if(window.AFN_MFA)window.AFN_MFA.render(db).catch(()=>{});
+ await refresh();
+ if(wanted&&wanted!==site){const n=id=>brandData.find(b=>b.id===id)?.name||id;message("Bạn không có quyền quản trị "+n(wanted)+". Đang hiển thị "+n(site)+".",true);}
 }catch(_){screen("denied");$("#studio-denied-reason").textContent="Không thể kiểm tra quyền hoặc tải dữ liệu.";return;}
 $("#studio-site").addEventListener("change",async e=>{site=e.target.value;setLinks();try{await refresh();}catch(_){message("Không thể tải dữ liệu.",true);}});
 $("#studio-reload").addEventListener("click",async()=>{try{await refresh();}catch(_){message("Tải lại thất bại.",true);}});
@@ -107,7 +135,7 @@ $("#studio-film-form").addEventListener("submit",async e=>{
 });
 $("#studio-app").addEventListener("click",async e=>{
  const b=e.target.closest("button");if(!b)return;
- let action=b.dataset.filmToggle||b.dataset.filmDelete||b.dataset.reviewAction||b.dataset.privacyAction;
+ let action=b.dataset.filmToggle||b.dataset.filmDelete||b.dataset.reviewAction||b.dataset.privacyAction||b.dataset.privacyPreview||b.dataset.privacyDelete;
  if(!action)return;b.disabled=true;
  try{
   let response;
@@ -123,8 +151,21 @@ $("#studio-app").addEventListener("click",async e=>{
    response=await db.from("film_reviews").update({moderation_status:status}).eq("id",id).eq("site_id",site);
   }else if(b.dataset.privacyAction){
    const [id,status]=action.split("|");
-   if(role()!=="admin")throw Error("admin required");
-   response=await db.from("member_privacy_requests").update({status,handled_at:status==="completed"?new Date().toISOString():null}).eq("id",id).eq("site_id",site);
+   let note="";
+   if(status==="rejected"){note=(prompt("Lý do từ chối (thành viên sẽ thấy ghi chú này):")||"").trim();if(note.length<5){message(PRIVACY_ERR.note_required,true);return;}}
+   response=await db.rpc("admin_privacy_request_set_status",{p_id:id,p_status:status,p_note:note});
+   if(response.error){message(privacyError(response.error),true);return;}
+  }else if(b.dataset.privacyPreview||b.dataset.privacyDelete){
+   const id=b.dataset.privacyPreview||b.dataset.privacyDelete,box=b.closest("article").querySelector(".privacy-preview");
+   const pre=await db.rpc("admin_execute_account_deletion",{p_request_id:id,p_confirm_email:"",p_dry_run:true});
+   if(pre.error){message(privacyError(pre.error),true);return;}
+   const c=pre.data.counts||{};
+   box.hidden=false;box.textContent="Tài khoản "+pre.data.email_hint+" — sẽ xóa: "+c.chat_messages+" tin nhắn, "+c.wallet_ledger+" giao dịch điểm, "+c.daily_checkins+" lượt điểm danh, "+c.content_entitlements+" tập đã mở, "+c.viewer_profiles+" hồ sơ người xem, "+c.film_reviews+" đánh giá. Bản ghi yêu cầu được giữ ở dạng bút danh.";
+   if(b.dataset.privacyPreview){message("Đã tải bản xem trước. Chưa xóa gì.");return;}
+   const typed=(prompt("Xóa VĨNH VIỄN tài khoản "+pre.data.email_hint+" và toàn bộ dữ liệu liên quan trên cả mạng lưới.\nGõ đầy đủ email của tài khoản để xác nhận:")||"").trim();
+   if(!typed){message("Đã hủy. Chưa xóa gì.");return;}
+   response=await db.rpc("admin_execute_account_deletion",{p_request_id:id,p_confirm_email:typed,p_dry_run:false});
+   if(response.error){message(privacyError(response.error),true);return;}
   }
   if(response.error)throw response.error;
   await refresh();message("Đã cập nhật.");

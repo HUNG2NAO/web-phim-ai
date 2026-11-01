@@ -15,10 +15,10 @@ function ready(){
  });
  return loader;
 }
-function offlineEmbed(holder,id,title){
+function offlineEmbed(holder,id,title,cc){
  if(!holder.isConnected)return;
  const frame=document.createElement("iframe");
- frame.src="https://www.youtube-nocookie.com/embed/"+id+"?rel=0";
+ frame.src="https://www.youtube-nocookie.com/embed/"+id+"?rel=0"+(cc?"&cc_load_policy=1&cc_lang_pref="+encodeURIComponent(cc)+"&hl="+encodeURIComponent(cc):"");
  frame.title=title||"Phim YouTube";
  frame.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";
  frame.allowFullscreen=true;frame.style.cssText="width:100%;height:100%;border:0";
@@ -27,16 +27,18 @@ function offlineEmbed(holder,id,title){
 function playbackClient(){
  const cfg=window.AFN_AUTH_CONFIG||{};
  if(!cfg.enabled||!window.supabase?.createClient||!/^sb_publishable_[\w-]+$/.test(cfg.publishableKey||""))return null;
- return window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
+ return (window.AFN&&window.AFN.client&&window.AFN.client())||window.supabase.createClient(cfg.url,cfg.publishableKey,{auth:{
   persistSession:true,autoRefreshToken:true,storageKey:cfg.storageKey||"afn-film-auth-v1"
  }});
 }
 function currentSite(){
  const host=location.hostname.replace(/^www\./,""),p=new URLSearchParams(location.search);
  const sites=window.SITES||[];
+ if(window.AFN_RESOLVE_SITE)return window.AFN_RESOLVE_SITE().site?.id;
  return host.endsWith(".pages.dev")?(sites.find(x=>x.id===p.get("site"))||sites[0])?.id:sites.find(x=>x.domain===host)?.id;
 }
-window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
+window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1,onError=null,captionLang=null}){
+ const cc=/^[a-z]{2,3}(-[A-Z]{2})?$/.test(captionLang||"")?captionLang:null;   // Level 4.7: phụ đề có sẵn trong video YouTube
  if(!holder||!/^[A-Za-z0-9_-]{11}$/.test(videoId||"")||!/^[a-z0-9][a-z0-9-]{0,119}$/.test(filmId||""))return;
  if(activeInterval)clearInterval(activeInterval);
  if(activePlayer){try{activePlayer.destroy();}catch(_){}activePlayer=null;}
@@ -46,7 +48,7 @@ window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
  async function prepare(){
   if(!client||!site||!flags.includes(site))return;
   try{
-   const result=await client.auth.getUser();user=result.data?.user;
+   user=(window.AFN&&window.AFN.client&&window.AFN.client()===client)?await window.AFN.getUser():(await client.auth.getUser()).data?.user;
    if(!user)return;
    const current=localStorage.getItem("afn-active-viewer:"+user.id+":"+site);
    if(!current||!/^[0-9a-f-]{36}$/i.test(current))return;
@@ -87,16 +89,19 @@ window.AFN_PLAY_YOUTUBE=async function({holder,filmId,videoId,episode=1}){
   const yt=await ready();
   if(!holder.isConnected)return;
   activePlayer=new yt.Player(holder,{videoId,host:"https://www.youtube-nocookie.com",
-   playerVars:{playsinline:1,rel:0,origin:location.origin},
+   playerVars:Object.assign({playsinline:1,rel:0,origin:location.origin},cc?{cc_load_policy:1,cc_lang_pref:cc,hl:cc}:{}),
    events:{
-    onReady:e=>{if(restored>0){try{e.target.seekTo(restored,true);}catch(_){}}},
+    onReady:e=>{if(restored>0){try{e.target.seekTo(restored,true);}catch(_){}}
+     if(cc){try{e.target.loadModule("captions");e.target.setOption("captions","track",{languageCode:cc});}catch(_){}}},
+    // 2 invalid id · 5 HTML5 error · 100 removed/private · 101/150 embedding not allowed by the owner.
+    onError:e=>{if(typeof onError==="function")onError(e.data);},
     onStateChange:e=>{
      if(e.data===yt.PlayerState.PLAYING){dirty=true;startTimer();}
      if(e.data===yt.PlayerState.PAUSED||e.data===yt.PlayerState.ENDED){if(activeInterval)clearInterval(activeInterval);activeInterval=null;dirty=true;save(true);}
     }
    }
   });
- }catch(_){offlineEmbed(holder,videoId,filmId);}
+ }catch(_){offlineEmbed(holder,videoId,filmId,cc);}
 };
 window.addEventListener("pagehide",()=>{if(activeInterval)clearInterval(activeInterval);activeInterval=null;});
 })();

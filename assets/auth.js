@@ -9,7 +9,7 @@
     && cfg.publishableKey.length > 15
     && !/service_role|sb_secret_/i.test(cfg.publishableKey)
     && window.supabase && typeof window.supabase.createClient === "function";
-  var client = ready ? window.supabase.createClient(cfg.url, cfg.publishableKey, {
+  var client = !ready ? null : (window.AFN && window.AFN.client && window.AFN.client()) || window.supabase.createClient(cfg.url, cfg.publishableKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -17,7 +17,7 @@
       flowType: "pkce",
       storageKey: cfg.storageKey || "afn-film-auth-v1"
     }
-  }) : null;
+  });
   var slot = document.createElement("div");
   slot.className = "afn-account-slot";
   var trigger = document.createElement("button");
@@ -41,20 +41,23 @@
   accountMenu.setAttribute("aria-label", "Tùy chọn tài khoản");
   var accountURL = new URL("./account.html", window.location.href);
   var previewBrand = new URL(window.location.href).searchParams.get("site");
-  if (window.location.hostname.endsWith(".pages.dev") && ["xuongphim","khophim","phephim","phimhay","ghienphim"].includes(previewBrand)) {
+  var afnResolved = window.AFN_RESOLVE_SITE ? window.AFN_RESOLVE_SITE() : null;   // Shared Core
+  var afnPreview = afnResolved ? afnResolved.preview : window.location.hostname.endsWith(".pages.dev");
+  if (afnPreview && (window.SITES||[]).some(function (s) { return s.id === previewBrand; })) {
     accountURL.searchParams.set("site", previewBrand);
   }
   accountMenu.querySelector("#afn-menu-profile").href = accountURL.href;
   const memberURL = new URL("./member.html", window.location.href);
-  if (window.location.hostname.endsWith(".pages.dev")) {
-    memberURL.searchParams.set("site",previewBrand||"xuongphim");
-  }
   const hostBrand = window.location.hostname.replace(/^www\./,"");
-  const activeBrand = window.location.hostname.endsWith(".pages.dev")
+  const activeBrand = afnResolved ? afnResolved.site : (afnPreview
     ? (window.SITES||[]).find(s=>s.id===(previewBrand||"xuongphim"))
-    : (window.SITES||[]).find(s=>s.domain===hostBrand);
+    : (window.SITES||[]).find(s=>s.domain===hostBrand));
+  if (afnPreview) {
+    memberURL.searchParams.set("site",activeBrand?activeBrand.id:(previewBrand||"xuongphim"));
+  }
   const siteId = activeBrand?.id;
-  const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId);
+  const isXuongPilot = (window.AFN_LEVEL3_CONFIG?.enabledSites||["xuongphim"]).includes(siteId)
+    && (!window.AFN_SITE_FEATURE || window.AFN_SITE_FEATURE("memberHub", activeBrand));
   const memberLink = accountMenu.querySelector("#afn-menu-member");
   memberLink.href = memberURL.href;
   memberLink.classList.toggle("afn-auth-hidden",!isXuongPilot);
@@ -82,6 +85,8 @@
         '<input id="afn-email" type="email" name="email" autocomplete="email" required></div>',
         '<div class="afn-field afn-password-wrap"><label for="afn-password">Mật khẩu</label>',
         '<input id="afn-password" type="password" name="password" minlength="8" autocomplete="current-password" required></div>',
+        '<p class="afn-auth-hint afn-signup-notice afn-auth-hidden" id="afn-signup-notice">Email và tên hiển thị của bạn được xử lý theo <a href="/chinh-sach.html#rieng-tu" target="_blank" rel="noopener">Chính sách riêng tư</a> (bản dự thảo). Khi trò chuyện, hãy tuân thủ <a href="/chinh-sach.html#cong-dong" target="_blank" rel="noopener">Quy tắc cộng đồng</a>.</p>',
+        '<div class="afn-captcha afn-auth-hidden" id="afn-captcha" aria-label="Xác minh chống robot"></div>',
         '<button class="afn-auth-primary" id="afn-submit" type="submit">Đăng nhập</button>',
       '</form>',
       '<button type="button" class="afn-auth-google" id="afn-google">Tiếp tục với Google</button>',
@@ -131,6 +136,42 @@
   var currentUser = null;
   var postResetSuccess = false;
   var passwordUpdatePending = false;
+  // Level 4.6 — chính sách mật khẩu (đồng bộ với Supabase "Password requirements").
+  var policy = cfg.passwordPolicy || { minLength: 10, letterAndDigit: true };
+  var POLICY_TEXT = "Mật khẩu cần ít nhất " + (policy.minLength || 10) + " ký tự" + (policy.letterAndDigit ? ", gồm cả chữ và số." : ".");
+  function passwordProblem(pw) {
+    if (String(pw).length < (policy.minLength || 10)) return POLICY_TEXT;
+    if (policy.letterAndDigit && !(/[A-Za-z\u00C0-\u1EF9]/.test(pw) && /\d/.test(pw))) return POLICY_TEXT;
+    return "";
+  }
+  // Level 4.6 — Cloudflare Turnstile (chỉ khi có site key công khai). Token dùng một lần → reset sau mỗi lần gửi.
+  var captchaBox = dialog.querySelector("#afn-captcha"), captchaKey = String(cfg.turnstileSiteKey || "").trim();
+  var captchaToken = "", captchaWidget = null, captchaLoading = null;
+  function captchaNeeded() { return !!captchaKey && ["login", "signup", "recover"].includes(mode); }
+  function loadCaptcha() {
+    if (!captchaKey) return Promise.resolve(null);
+    if (window.turnstile) return Promise.resolve(window.turnstile);
+    if (captchaLoading) return captchaLoading;
+    captchaLoading = new Promise(function (resolve) {
+      var s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.async = true; s.onload = function () { resolve(window.turnstile || null); }; s.onerror = function () { resolve(null); };
+      document.head.appendChild(s);
+    });
+    return captchaLoading;
+  }
+  async function showCaptcha() {
+    captchaBox.classList.toggle("afn-auth-hidden", !captchaNeeded());
+    if (!captchaNeeded()) return;
+    var ts = await loadCaptcha();
+    if (!ts) { message("Không tải được bước xác minh chống robot. Kiểm tra kết nối rồi mở lại.", true); return; }
+    if (captchaWidget === null) {
+      captchaWidget = ts.render(captchaBox, { sitekey: captchaKey, language: "vi", theme: "auto", action: "auth",
+        callback: function (t) { captchaToken = t; }, "expired-callback": function () { captchaToken = ""; },
+        "error-callback": function () { captchaToken = ""; } });
+    }
+  }
+  function resetCaptcha() { captchaToken = ""; if (captchaWidget !== null && window.turnstile) { try { window.turnstile.reset(captchaWidget); } catch (e) {} } }
   // Recovery links can create a valid session before PASSWORD_RECOVERY is dispatched.
   // Keep the reset-password form above the normal account view until the user finishes.
   var recovering = new URL(window.location.href).searchParams.get("auth") === "recovery";
@@ -154,6 +195,58 @@
     msg.dataset.kind = isError ? "error" : "info";
     msg.classList.toggle("afn-auth-hidden", !text);
   }
+  // Level 4.6 — bước 2 của đăng nhập (TOTP) cho tài khoản ĐÃ bật 2FA. Supabase đang bật "Limit duration of AAL1 sessions":
+  // phiên chưa nhập mã sẽ bị kết thúc sau 15 phút → nhắc nhập mã ngay sau khi đăng nhập / khi mở trang với phiên 1 lớp.
+  // Mã 6 số chỉ đi thẳng tới Supabase Auth; không lưu, không ghi log.
+  var mfaAsked = false, mfaPending = null;
+  function mfaStepUp(force) {
+    if (mfaPending) return mfaPending;                       // không mở 2 hộp thoại cùng lúc
+    mfaPending = mfaStepUpRun(force).finally(function () { mfaPending = null; });
+    return mfaPending;
+  }
+  async function mfaStepUpRun(force) {
+    if (!client || !client.auth || !client.auth.mfa) return true;
+    var lvl = null;
+    try { lvl = (await client.auth.mfa.getAuthenticatorAssuranceLevel()).data; } catch (e) { return true; }
+    if (!lvl || lvl.nextLevel !== "aal2" || lvl.currentLevel === "aal2") return true;
+    if (mfaAsked && !force) return false;
+    mfaAsked = true;
+    var factors = [];
+    try { factors = ((await client.auth.mfa.listFactors()).data.totp || []).filter(function (f) { return f.status === "verified"; }); } catch (e) {}
+    if (!factors.length) return false;
+    return new Promise(function (resolve) {
+      var d = document.createElement("dialog"); d.className = "afn-auth-dialog afn-mfa-dialog"; d.setAttribute("aria-label", "Xác thực 2 lớp");
+      d.innerHTML = '<div class="afn-auth-panel"><div class="afn-auth-header"><h2>Xác thực 2 lớp</h2></div>' +
+        '<p class="afn-auth-hint">Tài khoản này đã bật xác thực 2 lớp. Mở ứng dụng xác thực (điện thoại chính hoặc thiết bị dự phòng) và nhập mã 6 số của AI Film Network.</p>' +
+        '<form class="afn-auth-form" novalidate>' +
+        (factors.length > 1 ? '<div class="afn-field"><label for="afn-mfa-factor">Thiết bị xác thực</label><select id="afn-mfa-factor"></select></div>' : '') +
+        '<div class="afn-field"><label for="afn-mfa-code">Mã xác thực</label>' +
+        '<input id="afn-mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]{6,7}" required></div>' +
+        '<button class="afn-auth-primary" id="afn-mfa-submit" type="submit">Xác nhận</button></form>' +
+        '<button type="button" class="afn-auth-link" id="afn-mfa-later">Để sau</button>' +
+        '<p class="afn-auth-message afn-auth-hidden" id="afn-mfa-msg" role="status" aria-live="polite"></p>' +
+        '<p class="afn-auth-hint">Chưa nhập mã: phiên đăng nhập sẽ tự kết thúc sau khoảng 15 phút (cài đặt bảo mật của hệ thống).</p></div>';
+      document.body.appendChild(d);
+      var input = d.querySelector("#afn-mfa-code"), out = d.querySelector("#afn-mfa-msg"), btn = d.querySelector("#afn-mfa-submit"), pick = d.querySelector("#afn-mfa-factor");
+      if (pick) factors.forEach(function (f, i) { var o = document.createElement("option"); o.value = f.id; o.textContent = f.friendly_name || ("Thiết bị " + (i + 1)); pick.appendChild(o); });
+      function say(t) { out.textContent = t; out.dataset.kind = "error"; out.classList.remove("afn-auth-hidden"); }
+      function done(ok) { d.close(); d.remove(); resolve(ok); }
+      d.querySelector("form").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var code = input.value.replace(/\s+/g, "");
+        if (!/^\d{6}$/.test(code)) { say("Mã gồm đúng 6 chữ số."); return; }
+        btn.disabled = true;
+        var r = await client.auth.mfa.challengeAndVerify({ factorId: pick ? pick.value : factors[0].id, code: code });
+        btn.disabled = false; input.value = "";
+        if (r.error) { say("Mã chưa đúng hoặc đã hết hạn. Hãy nhập mã mới đang hiển thị trong ứng dụng."); return; }
+        done(true);
+      });
+      d.querySelector("#afn-mfa-later").addEventListener("click", function () { done(false); });
+      d.addEventListener("cancel", function (e) { e.preventDefault(); done(false); });
+      if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "");
+      input.focus();
+    });
+  }
   function setBusy(v) {
     busy = v;
     Array.prototype.forEach.call(dialog.querySelectorAll("button, input"), function (el) { el.disabled = v; });
@@ -168,6 +261,8 @@
       b.setAttribute("aria-selected", String(b.dataset.mode === mode));
     });
     nameWrap.classList.toggle("afn-auth-hidden", mode !== "signup");
+    var notice = dialog.querySelector("#afn-signup-notice");
+    if (notice) notice.classList.toggle("afn-auth-hidden", mode !== "signup");
     emailWrap.classList.toggle("afn-auth-hidden", mode === "update");
     passwordWrap.classList.toggle("afn-auth-hidden", mode === "recover");
     passEl.autocomplete = mode === "login" ? "current-password" : "new-password";
@@ -180,6 +275,7 @@
       ({login:"Đăng nhập",signup:"Đăng ký",recover:"Quên mật khẩu",update:"Đặt lại mật khẩu"})[mode];
     form.classList.remove("afn-auth-hidden");
     successPanel.classList.add("afn-auth-hidden");
+    showCaptcha();
   }
   function showResetSuccess() {
     if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
@@ -195,9 +291,10 @@
   async function refreshUser() {
     if (!client) return;
     try {
-      var result = await client.auth.getUser();
-      currentUser = result.data && result.data.user;
+      currentUser = (window.AFN && window.AFN.getUser && window.AFN.client() === client)
+        ? await window.AFN.getUser(true) : (await client.auth.getUser()).data.user;
       if (currentUser) {
+        if (!mfaAsked) setTimeout(function () { mfaStepUp(false); }, 0);   // mở trang với phiên 1 lớp của tài khoản đã bật 2FA
         trigger.textContent = "Tài khoản";
         trigger.setAttribute("aria-haspopup", "menu");
         trigger.setAttribute("aria-controls", "afn-account-menu");
@@ -215,8 +312,15 @@
         closeAccountMenu();
         if (recovering) {
           // A recovery URL without an established session must not display a working reset form.
+          // Show it (it used to stay hidden, so the visitor just landed on the home page): offer a new link.
+          recovering = false;
+          if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
+          setMode("recover");
+          message(linkProblem || "Liên kết khôi phục chưa được xác thực hoặc đã hết hạn. Nhập email để nhận liên kết mới.", true);
+        } else if (linkProblem) {
+          if (!dialog.open && typeof dialog.showModal === "function") dialog.showModal();
           setMode("login");
-          message("Liên kết khôi phục chưa được xác thực hoặc đã hết hạn. Hãy yêu cầu liên kết mới.", true);
+          message(linkProblem, true);
         } else setMode("login");
       }
     } catch (e) {
@@ -321,7 +425,8 @@
     if (/invalid login credentials/i.test(raw)) return "Không thể đăng nhập bằng email và mật khẩu này. Hãy kiểm tra lại hoặc chọn Quên mật khẩu? để đặt mật khẩu mới.";
     if (/email address not authorized/i.test(raw)) return "Dịch vụ email thử nghiệm chưa được cấp quyền gửi tới địa chỉ này. Quản trị viên cần cấu hình SMTP.";
     if (/user already registered/i.test(raw)) return "Địa chỉ email này đã có tài khoản. Hãy đăng nhập hoặc sử dụng Quên mật khẩu.";
-    if (/password/i.test(raw) && /weak|short/i.test(raw)) return "Mật khẩu chưa đáp ứng yêu cầu bảo mật. Hãy dùng ít nhất 8 ký tự.";
+    if (/password/i.test(raw) && /weak|short|characters|should contain/i.test(raw)) return "Mật khẩu chưa đáp ứng yêu cầu bảo mật. " + POLICY_TEXT;
+    if (/captcha/i.test(raw)) return "Bước xác minh chống robot chưa hợp lệ hoặc đã hết hạn. Hãy xác minh lại rồi thử lại.";
     return "Không thể hoàn thành thao tác. Vui lòng kiểm tra thông tin hoặc thử lại.";
   }
   form.addEventListener("submit", async function (event) {
@@ -333,18 +438,20 @@
     if (mode === "signup" && (displayName.length < 2 || displayName.length > 60)) {
       message("Tên hiển thị cần từ 2 đến 60 ký tự.", true); return;
     }
-    if (["signup","update"].includes(mode) && password.length < 8) {
-      message("Mật khẩu phải có ít nhất 8 ký tự.", true); return;
+    if (["signup","update"].includes(mode) && passwordProblem(password)) {
+      message(passwordProblem(password), true); return;
     }
+    if (captchaNeeded() && !captchaToken) { message("Vui lòng hoàn tất bước xác minh chống robot.", true); showCaptcha(); return; }
+    var captcha = captchaNeeded() ? { captchaToken: captchaToken } : {};
     setBusy(true);
     try {
       var result;
-      if (mode === "login") result = await client.auth.signInWithPassword({email:email,password:password});
+      if (mode === "login") result = await client.auth.signInWithPassword({email:email,password:password,options:captcha});
       else if (mode === "signup") result = await client.auth.signUp({
         email:email,password:password,
-        options:{emailRedirectTo:callbackURL("confirm"),data:{display_name:displayName}}
+        options:Object.assign({emailRedirectTo:callbackURL("confirm"),data:{display_name:displayName}}, captcha)
       });
-      else if (mode === "recover") result = await client.auth.resetPasswordForEmail(email,{redirectTo:callbackURL("recovery")});
+      else if (mode === "recover") result = await client.auth.resetPasswordForEmail(email,Object.assign({redirectTo:callbackURL("recovery")}, captcha));
       else if (mode === "update") {
         passwordUpdatePending = true;
         result = await client.auth.updateUser({password:password});
@@ -352,7 +459,8 @@
       if (result.error) throw result.error;
       resetPasswords();
       if (mode === "recover") message("Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.", false);
-      else if (mode === "signup" && !result.data.session) message("Kiểm tra email để xác minh tài khoản trước khi đăng nhập.", false);
+      // Supabase trả thành công giả cho email đã đăng ký (chống dò tài khoản) và KHÔNG gửi thư → báo trung lập cả hai khả năng.
+      else if (mode === "signup" && !result.data.session) message("Nếu email này chưa có tài khoản, thư xác minh sẽ đến trong vài phút (xem cả mục Spam). Nếu email đã được đăng ký, hãy chọn Đăng nhập hoặc Quên mật khẩu.", false);
       else if (mode === "update") {
         postResetSuccess = true;
         recovering = false;
@@ -365,7 +473,11 @@
       }
       else if (mode === "login") {
         await refreshUser();
-        if (dialog.open) dialog.close();
+        if (dialog.open && !(result.data && result.data.weak_password)) dialog.close();
+        await mfaStepUp(true);
+        // Mật khẩu cũ chưa đạt chuẩn mới: vẫn cho đăng nhập (không khóa tài khoản), chỉ nhắc đổi.
+        if (result.data && result.data.weak_password) message("Đăng nhập thành công. Mật khẩu hiện tại chưa đạt chuẩn mới (" + POLICY_TEXT.replace(/^Mật khẩu cần /, "").replace(/\.$/, "") + "). Hãy đổi trong Tài khoản của tôi.", false);
+        else if (dialog.open) dialog.close();
       } else {
         await refreshUser();
         message("Đăng nhập thành công.", false);
@@ -373,8 +485,42 @@
     } catch (e) {
       passwordUpdatePending = false;
       message(friendlyAuthError(e, mode), true);
-    } finally { setBusy(false); }
+    } finally { setBusy(false); if (captchaNeeded()) resetCaptcha(); }
   });
+
+  // Liên kết trong email (xác minh / đặt lại mật khẩu):
+  //  • ?token_hash=…&type=… (mẫu email khuyến nghị) → verifyOtp, dùng được ở BẤT KỲ trình duyệt nào;
+  //  • ?code=… (PKCE mặc định) chỉ đổi được phiên ở đúng trình duyệt đã yêu cầu email;
+  //  • ?error=…&error_code=otp_expired (hoặc trong #hash) → liên kết hết hạn / đã dùng: báo rõ thay vì im lặng.
+  var linkProblem = "";
+  async function prepareEmailLink() {
+    var url = new URL(location.href), hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    var kind = url.searchParams.get("auth");
+    if (kind !== "recovery" && kind !== "confirm") return;
+    var err = url.searchParams.get("error_code") || hash.get("error_code") || url.searchParams.get("error") || hash.get("error");
+    var th = url.searchParams.get("token_hash"), type = url.searchParams.get("type");
+    if (err) {
+      linkProblem = (kind === "recovery" ? "Liên kết đặt lại mật khẩu" : "Liên kết xác minh email") +
+        " đã hết hạn hoặc đã được sử dụng (mỗi liên kết chỉ dùng được 1 lần). " +
+        (kind === "recovery" ? "Nhập email để nhận liên kết mới." : "Nếu tài khoản đã được xác minh, bạn có thể đăng nhập ngay.");
+    } else if (th && /^[A-Za-z0-9_-]{10,200}$/.test(th) && ["recovery", "email", "signup"].indexOf(type) !== -1) {
+      try {
+        var r = await client.auth.verifyOtp({ token_hash: th, type: type === "signup" ? "email" : type });
+        if (r.error) throw r.error;
+        if (kind === "recovery") recovering = true;
+      } catch (e) {
+        linkProblem = "Liên kết đã hết hạn hoặc đã được sử dụng. " + (kind === "recovery" ? "Nhập email để nhận liên kết mới." : "Hãy đăng nhập hoặc yêu cầu email mới.");
+      }
+    } else if (url.searchParams.get("code")) {
+      var sess = await client.auth.getSession().catch(function () { return { data: {} }; });
+      if (!(sess.data && sess.data.session)) {
+        linkProblem = "Liên kết này cần mở trong cùng trình duyệt đã dùng để " +
+          (kind === "recovery" ? "yêu cầu đặt lại mật khẩu. Hãy yêu cầu liên kết mới ngay trên trình duyệt này." : "đăng ký. Tài khoản có thể đã được xác minh — hãy thử đăng nhập.");
+      }
+    }
+    ["error", "error_code", "error_description", "token_hash", "type", "code"].forEach(function (k) { url.searchParams.delete(k); });
+    if (err || th || url.searchParams.get("code") === null) window.history.replaceState(window.history.state, "", url.pathname + url.search);
+  }
 
   if (client) {
     client.auth.onAuthStateChange(function (event) {
@@ -385,7 +531,7 @@
         queueMicrotask(function () { refreshUser(); });
       }
     });
-    refreshUser().then(function () {
+    prepareEmailLink().then(refreshUser).then(function () {
       var url = new URL(location.href);
       if (url.searchParams.get("auth") === "callback" || url.searchParams.get("auth") === "confirm") {
         url.searchParams.delete("auth");
