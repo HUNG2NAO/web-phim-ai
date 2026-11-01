@@ -136,3 +136,11 @@ echo "Functional: $total passed"
 [ "$fail" = 0 ] || exit 1
 # Khôi phục 2FA của chủ mạng khi mất thiết bị (trích nguyên văn khối A/B của db/staging/94_mfa_break_glass.sql)
 tests/sql/owner_mfa_recovery.sh | tail -1
+# Level 4.7 — nền đa ngôn ngữ (chỉ thêm): áp 2 lần (idempotent), kiểm thử, gỡ bằng 93_rollback rồi áp lại
+for i in 1 2; do $P -d $DB -f db/level4_7_media_languages.sql >/dev/null 2>&1 || { echo "APPLY 4.7 FAILED"; $P -d $DB -f db/level4_7_media_languages.sql; exit 1; }; done
+{ $P -d $DB -f tests/sql/level4_7_tests.sql 2>&1 || true; } | grep -E "PASS|FAIL|ERROR" | sed 's/^.*NOTICE:  //' > /tmp/afn_sql_47.txt || true
+grep -q "FAIL\|ERROR" /tmp/afn_sql_47.txt && { cat /tmp/afn_sql_47.txt | grep "FAIL\|ERROR"; echo "LEVEL 4.7 TESTS FAILED"; exit 1; }
+$P -d $DB -f db/staging/93_rollback_level4_7.sql >/dev/null && [ "$($P -d $DB -t -A -c "select count(*) from pg_tables where tablename in ('episode_media','episode_subtitles')")" = 0 ] \
+  && [ "$($P -d $DB -t -A -c "select count(*) from public.episode_sources")" = 8 ] || { echo "ROLLBACK 4.7 FAILED"; exit 1; }
+$P -d $DB -f db/level4_7_media_languages.sql >/dev/null 2>&1 || { echo "RE-APPLY 4.7 FAILED"; exit 1; }
+echo "LEVEL 4.7: $(grep -c PASS /tmp/afn_sql_47.txt) passed, rollback + re-apply OK"
