@@ -13,6 +13,154 @@ Ngoài ra còn vài hạng mục giao diện chưa làm (xem mục 18).
 
 ---
 
+## Cập nhật 01/11/2026 14:30 — Level 4.6: MFA quản trị, chính sách mật khẩu, Turnstile, quyền đợt 2, đo năng lực trên gói hiện tại
+
+Quyết định của chủ hệ thống áp dụng cho vòng này:
+- Chưa nâng gói Pro.
+- Đo tải chỉ trên môi trường cô lập.
+- Không phát sinh chi phí.
+- Không bật bắt buộc MFA cho tài khoản thật trước khi xác minh phương án khôi phục.
+
+Không thay đổi Production, DNS, `main`. Không đụng project Supabase khác của tài khoản.
+
+**Trạng thái:** mã nguồn DEV và kiểm thử đã xong. **Migration `level4_6_staff_mfa` CHƯA áp lên Staging, đang chờ phê duyệt** (2 lần gửi trước hết hạn vì chưa có người bấm xác nhận; đã kiểm tra lại: không có gì được áp).
+
+### 1. Rà soát lại quyền TRUNCATE/sequence trên mọi vai trò (Staging, chỉ đọc)
+| Vai trò | Hiện trạng sau 4.5 | Xử lý ở 4.6 |
+|---|---|---|
+| `anon`, `authenticated` (bảng public/private) | 0 quyền TRUNCATE/TRIGGER/REFERENCES | Giữ nguyên; thêm hàm giám sát `private.dangerous_grants()` (kỳ vọng 0 dòng) |
+| `anon`, `authenticated` (3 sequence identity) | Có quyền `USAGE/SELECT/UPDATE`, tức gọi được `setval` | **Thu hồi**. Cột identity không cần quyền này; mọi ghi đều đi qua RPC |
+| `service_role` (khóa máy chủ, ứng dụng không dùng) | TRUNCATE trên 28 bảng | **Thu hồi TRUNCATE** (giữ quyền khác) |
+| Quyền mặc định của `postgres` cho bảng/hàm/sequence tạo về sau | Cấp sequence và EXECUTE hàm cho `anon` | **Thu hồi**. Hàm mới phải được cấp quyền tường minh |
+| Quyền mặc định của `supabase_admin` | Cấp ALL cho role API | **Không sửa được** (cần quyền superuser của Supabase). Bảng của dự án đều do `postgres` tạo; `dangerous_grants()` sẽ phát hiện nếu có bảng do `supabase_admin` tạo |
+
+- Mọi quyền thu hồi được ghi vào `private.grant_hardening_log2`, để script gỡ cấp lại đúng như cũ.
+- Migration 4.3/4.4/4.5 lưu trên Staging khớp với repo. Chỉ khác ở dòng chú thích và `begin/commit`, vì Supabase tự bọc giao dịch.
+
+### 2. MFA (TOTP) cho nhân sự — không khóa tài khoản nào
+- **Mức xác thực (AAL):** đọc từ claim `aal` trong JWT do Supabase Auth ký (`auth.jwt() ->> 'aal'`). Thiếu claim thì coi là `aal1`, tức là mặc định an toàn. JWT bị sửa sẽ bị từ chối (401).
+- **Quy tắc `private.mfa_ok()`:** đạt khi phiên là AAL2, **hoặc** khi nhân sự chưa đăng ký factor và chủ mạng chưa bật "bắt buộc".
+  - Nhân sự đã bật 2FA thì luôn phải nhập mã 6 số mới dùng được quyền quản trị.
+- **Áp ở 3 lớp:**
+  1. Năm hàm `private.is_*`, dùng cho mọi RPC quản trị.
+  2. Ba RPC có kiểm tra quyền viết sẵn trong thân hàm. Thân hàm được sinh từ bản hiện hành bằng `tools/gen/gen_level4_6.py`, không gõ tay.
+  3. 27 policy **RESTRICTIVE** `mfa_gate_*` (tất cả `to authenticated`, đều qua `public.afn_staff_gate()`), áp cho cả REST lẫn Realtime.
+  - Thành viên thường qua cổng ngay vì không phải nhân sự. Bản ghi của chính người dùng luôn thấy được.
+- **Xóa tài khoản thật** (`admin_execute_account_deletion`, `p_dry_run=false`) luôn cần AAL2.
+- **Bật "bắt buộc 2FA"** (`admin_set_staff_mfa_required`): chỉ chủ mạng làm được, phải đang ở AAL2 **và** tự mình đã có factor, nên không thể tự khóa mình.
+- **Studio → thẻ Bảo mật:**
+  - Bật 2FA bằng mã QR hoặc khóa nhập tay. Nhập sai mã sẽ bị từ chối.
+  - Nhập mã trước khi tải dữ liệu quản trị.
+  - Banner "Quyền quản trị đang tạm khóa" khi cần nhập mã.
+  - Chủ mạng xem bảng tình trạng 2FA của nhân sự và bật/tắt "bắt buộc".
+- **Tác động lên tài khoản chủ Hungcreator** (đọc trên Staging: owner + admin 5 site, **0 factor**, 4 phiên AAL1, đăng nhập email):
+  - Sau khi áp 4.6: **không thay đổi gì**. Đăng nhập và mọi quyền quản trị vẫn như cũ, vì chưa có factor và chưa bắt buộc.
+  - Thay đổi duy nhất: **xóa tài khoản thật** cần AAL2, tức là phải bật 2FA trước khi xóa. Xem trước (dry run) vẫn làm được.
+  - Nếu sau này chủ bật 2FA rồi mất thiết bị: vẫn **đăng nhập được** (mật khẩu), chỉ tạm mất quyền quản trị. Khôi phục bằng script `db/staging/94_mfa_break_glass.sql`, chạy trong Supabase SQL Editor bằng tài khoản Supabase của chủ (khác tài khoản website).
+
+### 3. Kiểm thử các tình huống anh yêu cầu
+Chạy qua **REST thật** (PostgREST 12.2.3 + PostgreSQL có 4.6 + JWT ký như Supabase; `tests/http/mfa_scenarios.py`): **40/40 đạt**, chạy lại lần hai vẫn 40/40.
+
+| Tình huống | Kết quả |
+|---|---|
+| Admin chưa bật MFA (như Hungcreator) | RPC quản trị, xem bản nháp, đóng/mở chat: như cũ |
+| Admin đã bật MFA, phiên AAL1 | RPC quản trị bị từ chối, bản nháp bị ẩn. **Vẫn** đọc ví và điểm danh (quyền thành viên) |
+| Admin đã bật MFA, phiên AAL2 | Đủ quyền. AAL2 không mở rộng phạm vi (admin Xưởng Phim vẫn không quản Kho Phim) |
+| Thành viên thường | Không có quyền quản trị; xem 20 phim đã phát hành; không thấy bản nháp |
+| Moderator chưa bật MFA | Hàng đợi kiểm duyệt chạy; vẫn không khóa chat được (chỉ admin, như trước) |
+| Phiên hết hạn / JWT bị sửa thành AAL2 | 401 ngay ở PostgREST, không rơi về quyền khách |
+| Mất thiết bị MFA | Chỉ tạm mất quyền quản trị. Gỡ factor bằng SQL thì có lại quyền ở AAL1; ví và lịch sử còn nguyên |
+| Bắt buộc 2FA | Chủ chưa có factor thì không bật được. Moderator thiếu factor mất quyền kiểm duyệt nhưng **vẫn đăng nhập**. Script khôi phục khẩn cấp (đã chạy thử) tắt được chế độ bắt buộc và gỡ factor, có ghi nhật ký |
+| Hồi quy sau thu hồi sequence/TRUNCATE | Điểm danh, mở khóa (trừ đúng 10 điểm), ví khớp sổ cái 100%, gửi/đọc chat đều chạy. `setval` không gọi được qua API. `dangerous_grants()` = 0 |
+
+- **Cộng thêm:**
+  - SQL functional **253** (+39 cho mục 10).
+  - Concurrency/rollback **23**, gồm chuỗi gỡ 95 → 96 → 97 → 98 → 99 và áp lại tới 4.6.
+  - E2E **101/101** (+5: đăng ký/nhập mã 2FA, bắt buộc 2FA, mật khẩu, Turnstile); contract **11/11**; site-config **11/11**.
+  - Shared Core 5/5.
+- **Rollback không phá hủy dữ liệu** (`db/staging/95_rollback_level4_6.sql`):
+  - Khôi phục nguyên văn các hàm cũ, xóa 27 policy và các hàm mới, cấp lại quyền theo nhật ký.
+  - Chỉ xóa 2 bảng cấu hình trong `private`. **Không đụng dữ liệu người dùng và factor 2FA.**
+  - Đã thử trên CSDL có dữ liệu: dấu vân tay dữ liệu trước gỡ = sau gỡ = sau áp lại; API và 40 kịch bản vẫn đạt.
+
+### 4. Chính sách mật khẩu và Turnstile (DEV/Preview)
+- **Mật khẩu:**
+  - Đăng ký và đổi mật khẩu: ít nhất 10 ký tự, có cả chữ và số (`passwordPolicy` trong `auth-config.js`).
+  - Mật khẩu cũ yếu hơn **vẫn đăng nhập được** (không khóa tài khoản); người dùng chỉ được nhắc đổi khi Supabase báo `weak_password`.
+  - **Việc của chủ hệ thống** (Dashboard, gói Free làm được): Authentication → Providers → Email → Minimum password length = 10 và Password requirements = "Letters and digits". Cài đặt này không khóa tài khoản hiện có.
+- **Cloudflare Turnstile:**
+  - Đã có sẵn trong form đăng nhập, đăng ký và quên mật khẩu, nhưng **đang tắt** (`turnstileSiteKey` trống).
+  - Token dùng một lần, gửi qua `options.captchaToken`. CSP đã cho phép `challenges.cloudflare.com`. Chính sách riêng tư (bản dự thảo) đã ghi Turnstile ở dạng "chỉ khi được bật".
+  - **Không bật CAPTCHA trên Staging lúc này**, vì RC1/RC3 dùng chung Staging nhưng chưa có widget, nên đăng nhập ở đó sẽ hỏng.
+  - Thứ tự khi bật:
+    1. Tạo widget Turnstile (miễn phí) cho các tên miền và hostname Preview.
+    2. Đưa site key vào `auth-config.js`, triển khai.
+    3. Nhập secret key trong Supabase Auth → Bot and Abuse Protection (chủ hệ thống tự nhập, không qua chat).
+
+### 5. Năng lực theo bằng chứng đo (gói Free hiện tại)
+- **Môi trường đo:** cô lập. `tools/loadtest/nano-env.sh` đặt PostgreSQL 16 + PostgREST chung một cgroup, RAM 512 MB, CPU 1 nhân hoặc 0,5 nhân, cấu hình theo bảng Nano của Supabase.
+- **Dữ liệu và kịch bản:** 1.000 thành viên giả lập. k6 (`k6-nano-local.js`, `run-nano-steps.sh`): mỗi lượt tải trang gồm 9 lời gọi REST/RPC, cộng 10 lượt ghi/giây (điểm danh, chat).
+- Không chạm Staging/Production, không tốn chi phí.
+
+| CPU (RAM 512 MB) | Trang/giây đạt (p95) | Bão hòa | Quá tải |
+|---|---|---|---|
+| 1 nhân | 120 (179 ms); 110 (10 ms) | 135 (p95 2,1 s) | 150: **PostgREST bị hủy vì hết RAM** (OOM) |
+| 0,5 nhân (sát CPU dùng chung của Nano) | 55 (64 ms); 33 (9 ms) | 65 (p95 5,7 s) | 75: PostgREST bị hủy vì hết RAM |
+
+1.000 người online × 2 trang/phút = 33 trang/giây.
+
+| Tầng | Số người hỗ trợ được trên Free (theo bằng chứng) | Ghi chú |
+|---|---|---|
+| CSDL + REST | khoảng **1.600** online (0,5 nhân) đến khoảng **3.600** (1 nhân) | Quá tải thì **sập** (OOM) chứ không chỉ chậm, nên cần cache và giới hạn |
+| Realtime | **200 kết nối đồng thời** (giới hạn cứng của Free) | Khoảng 660 người online nếu 30% mở chat |
+| Egress | **5 GB/tháng** | Mô hình trang hiện tại khoảng **83 KB/lượt** (riêng danh sách tập `select *` là 72 KB), tức khoảng 63.000 lượt tải trang/tháng. Với 1.000 người online thì hết hạn mức sau khoảng **30 phút** cao điểm. **Đây là nút thắt thật** |
+| Auth | Chưa đo (không mô phỏng được GoTrue cục bộ) | Khoảng 3 lời gọi `/auth/v1/user` mỗi trang, chạy chung CPU với CSDL |
+
+**Kết luận năng lực:** gói Free chịu được tải tính toán của 1.000 người online. Nhưng **không** đủ cho Realtime khi hơn 200 người chat, và **không** đủ egress cho lưu lượng 1.000 người.
+
+**Việc nên làm trước, miễn phí:**
+1. Sinh danh mục phim/tập mỗi site thành JSON tĩnh trên Cloudflare Pages (băng thông không tính vào Supabase).
+2. Chỉ chọn các cột cần dùng (danh sách tập giảm từ 72 KB còn 31 KB).
+3. Chỉ tải tập của phim đang mở.
+4. Dùng `getSession` cho phần hiển thị.
+5. Tự ngắt Realtime khi tab bị ẩn.
+
+Ước tính các việc trên giảm khoảng 85–90% egress. Chưa triển khai: đây là thay đổi toàn hệ thống, cần một vòng riêng.
+
+**Chi phí đề xuất (chưa phát sinh):**
+- Khi chat công khai cần hơn 200 kết nối, hoặc egress vượt 5 GB: lên **Pro (khoảng 25 USD/tháng)**. Gói này gồm 250 GB egress, 500 kết nối Realtime, backup tự động và Leaked Password Protection.
+- Egress vượt hạn mức tính 0,09 USD/GB (không cache) và 0,03 USD/GB (có cache).
+- Ước tính: sau tối ưu, cao điểm 2 giờ/ngày nằm trong 250 GB (khoảng 25 USD/tháng). Không tối ưu thì khoảng 600 GB/tháng (thêm khoảng 30 USD).
+
+### 6. Backup trước 4.6 và quy trình backup mới
+- **Bản `afn_supabase_backup_20261101_1331_pre46.zip`** (thư mục `backups\supabase` trên PC):
+  - Tạo vì dữ liệu QA đã đổi sau bản 12:51.
+  - Thử khôi phục vào CSDL cô lập: **khớp 31/31**. Đọc lại từ PC trùng từng byte.
+  - Script khôi phục đã bổ sung bảng `chat_settings`.
+- **Rủi ro đã ghi nhận:** mật khẩu giải nén của các bản `.zip` (12:51, 13:31) đã xuất hiện trong cuộc trò chuyện, nên **coi là không còn an toàn**. Ngoài ra, nội dung bản xuất logic (email của 6 tài khoản QA/chủ, tin chat QA) đã đi qua kết quả truy vấn trong phiên làm việc này.
+- **Quy trình mới, không có mật khẩu nào qua chat/log** (chọn một trong hai):
+  - **A. Chạy trên PC** (`tools/backup-supabase.ps1`, đã có): `pg_dump` bằng mật khẩu CSDL gõ ẩn; 7-Zip AES-256 với mật khẩu anh tự gõ tại máy. Chỉ gửi cho Claude `row_counts.txt` và `SHA256SUMS.txt` để đối chiếu.
+  - **B. Khóa công khai `age`**, cho bản do Claude tạo:
+    1. Anh chạy `age-keygen` trên PC. Khóa bí mật không rời máy.
+    2. Đặt **khóa công khai** `age1…` vào `backups\supabase\recipient.txt`.
+    3. Claude mã hóa bằng `tools/backup-encrypt-age.sh`. Bản rõ bị xóa; script từ chối nếu dán nhầm khóa bí mật.
+    4. Anh kiểm tra bằng `tools/verify-backup-age.ps1`. Bản rõ tạm bị xóa ngay sau khi đối chiếu SHA-256.
+    - Đã chạy thử trọn vòng với một khóa dùng thử.
+  - Sau khi bản mới đã kiểm tra đạt, anh có thể tự xóa hoặc thay hai tệp `.zip` cũ.
+
+### Kết luận vòng 4.6
+| Hạng mục | Trạng thái |
+|---|---|
+| **MIGRATION 4.6 (Staging)** | **CHỜ PHÊ DUYỆT**: preflight đạt (mục 1–3); chưa áp |
+| **MFA quản trị** | **READY (DEV)**: không khóa tài khoản; chưa bật bắt buộc |
+| **Chính sách mật khẩu** | **READY (DEV)**: cần chủ hệ thống chỉnh Dashboard Supabase |
+| **Turnstile** | **READY, ĐANG TẮT**: cần site key và secret (miễn phí) |
+| **TRUNCATE / sequence** | **PASS cục bộ + REST**: áp lên Staging cùng migration 4.6 |
+| **1.000 USER CAPACITY (Free)** | **CPU/REST: đủ** (khoảng 1.600+). **Realtime và egress: chưa đủ**, cần tối ưu miễn phí trước, sau đó Pro khi mở chat công khai |
+| **PRODUCTION** | **ON HOLD** |
+
+---
+
 ## Cập nhật 01/11/2026 14:00 — Level 4.4/4.5: công tắc chat phía máy chủ, tăng cứng quyền, năng lực 1.000 người online
 
 Không thay đổi Production, DNS, `main`. Không đồng bộ 4 website Production. Không xóa dữ liệu QA hay người dùng thật.

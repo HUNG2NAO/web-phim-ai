@@ -31,6 +31,10 @@ begin
     from jsonb_to_recordset(b->'auth_users') as x(id uuid, email text, email_confirmed_at timestamptz, raw_user_meta_data jsonb, created_at timestamptz)
     on conflict (id) do nothing;
   delete from public.reward_rules;  -- migration tạo sẵn 1 dòng mặc định; thay bằng bản sao lưu
+  if to_regclass('public.chat_settings') is not null and b ? 'chat_settings' then   -- Level 4.4: 6 dòng mặc định
+    delete from public.chat_settings;
+    tables := array_append(tables, 'chat_settings');
+  end if;
   foreach t in array tables loop
     execute format('insert into public.%I overriding system value select * from jsonb_populate_recordset(null::public.%I, $1)', t, t)
       using b->t;
