@@ -1,0 +1,10 @@
+{
+  "site": "phimhay",
+  "channel": "preview",
+  "version": "4.6.1",
+  "core_commit": "9767c1e",
+  "core_sha256": "ffc04e30ec708f2bee7f67b430c06f0dd7ea363ad08b72464d6b36b86a16c23f",
+  "promoted_at": "2026-11-01T13:11:43Z",
+  "preview_url": "https://site-phimhay.web-phim-ai-5sites.pages.dev/",
+  "note": "Bản ghi phát hành riêng của website phimhay. Nhánh site/phimhay = Shared Core (9767c1e) + tệp này; chỉ thăng cấp core cho site này khi hồi quy 5 site đạt."
+}
