@@ -453,17 +453,21 @@
           return { data: { currentLevel: user.aal || "aal1", nextLevel: hasFactor(user.id) ? "aal2" : "aal1" }, error: null };
         },
         listFactors: async function () {
-          var all = user ? factorsOf(user.id).map(function (f) { return { id: f.id, factor_type: "totp", status: f.status, friendly_name: f.friendly_name }; }) : [];
+          var all = user ? factorsOf(user.id).map(function (f) { return { id: f.id, factor_type: "totp", status: f.status, friendly_name: f.friendly_name, created_at: f.created_at || "2026-11-01T10:00:00Z" }; }) : [];
           return { data: { all: all, totp: all.filter(function (f) { return f.status === "verified"; }), phone: [] }, error: null };
         },
         enroll: async function (x) {
           if (!user) return err("not_authenticated");
-          var f = { id: uuid(), user_id: user.id, status: "unverified", friendly_name: x.friendlyName }; list("mfa_factors").push(f); save();
+          // Như GoTrue: đã có factor xác minh → phải AAL2 mới thêm được; tên thiết bị không được trùng.
+          if (hasFactor(user.id) && user.aal !== "aal2") return { data: null, error: { message: "AAL2 required to enroll a new factor", code: "insufficient_aal" } };
+          if (factorsOf(user.id).some(function (y) { return y.friendly_name === x.friendlyName; })) return { data: null, error: { message: "A factor with the friendly name \"" + x.friendlyName + "\" for this user already exists", code: "mfa_factor_name_conflict" } };
+          var f = { id: uuid(), user_id: user.id, status: "unverified", friendly_name: x.friendlyName, created_at: new Date().toISOString() }; list("mfa_factors").push(f); save();
           return { data: { id: f.id, type: "totp", totp: { qr_code: "data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>", secret: "JBSWY3DPEHPK3PXP", uri: "otpauth://totp/x" } }, error: null };
         },
         challengeAndVerify: async function (x) {
           var f = list("mfa_factors").find(function (y) { return y.id === x.factorId && user && y.user_id === user.id; });
           if (!f) return err("factor_not_found");
+          window.__AFN_MOCK.calls.push({ mfaVerify: x.factorId });
           if (x.code !== "123456") return { data: null, error: { message: "Invalid TOTP code entered", code: "mfa_verification_failed" } };
           f.status = "verified"; user.aal = "aal2"; save(); notify("MFA_CHALLENGE_VERIFIED");
           return { data: {}, error: null };

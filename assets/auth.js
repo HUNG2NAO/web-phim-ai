@@ -210,21 +210,24 @@
     if (!lvl || lvl.nextLevel !== "aal2" || lvl.currentLevel === "aal2") return true;
     if (mfaAsked && !force) return false;
     mfaAsked = true;
-    var factor = null;
-    try { factor = ((await client.auth.mfa.listFactors()).data.totp || []).find(function (f) { return f.status === "verified"; }); } catch (e) {}
-    if (!factor) return false;
+    var factors = [];
+    try { factors = ((await client.auth.mfa.listFactors()).data.totp || []).filter(function (f) { return f.status === "verified"; }); } catch (e) {}
+    if (!factors.length) return false;
     return new Promise(function (resolve) {
       var d = document.createElement("dialog"); d.className = "afn-auth-dialog afn-mfa-dialog"; d.setAttribute("aria-label", "Xác thực 2 lớp");
       d.innerHTML = '<div class="afn-auth-panel"><div class="afn-auth-header"><h2>Xác thực 2 lớp</h2></div>' +
-        '<p class="afn-auth-hint">Tài khoản này đã bật xác thực 2 lớp. Mở ứng dụng xác thực trên điện thoại và nhập mã 6 số của AI Film Network.</p>' +
-        '<form class="afn-auth-form" novalidate><div class="afn-field"><label for="afn-mfa-code">Mã xác thực</label>' +
+        '<p class="afn-auth-hint">Tài khoản này đã bật xác thực 2 lớp. Mở ứng dụng xác thực (điện thoại chính hoặc thiết bị dự phòng) và nhập mã 6 số của AI Film Network.</p>' +
+        '<form class="afn-auth-form" novalidate>' +
+        (factors.length > 1 ? '<div class="afn-field"><label for="afn-mfa-factor">Thiết bị xác thực</label><select id="afn-mfa-factor"></select></div>' : '') +
+        '<div class="afn-field"><label for="afn-mfa-code">Mã xác thực</label>' +
         '<input id="afn-mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]{6,7}" required></div>' +
         '<button class="afn-auth-primary" id="afn-mfa-submit" type="submit">Xác nhận</button></form>' +
         '<button type="button" class="afn-auth-link" id="afn-mfa-later">Để sau</button>' +
         '<p class="afn-auth-message afn-auth-hidden" id="afn-mfa-msg" role="status" aria-live="polite"></p>' +
         '<p class="afn-auth-hint">Chưa nhập mã: phiên đăng nhập sẽ tự kết thúc sau khoảng 15 phút (cài đặt bảo mật của hệ thống).</p></div>';
       document.body.appendChild(d);
-      var input = d.querySelector("#afn-mfa-code"), out = d.querySelector("#afn-mfa-msg"), btn = d.querySelector("#afn-mfa-submit");
+      var input = d.querySelector("#afn-mfa-code"), out = d.querySelector("#afn-mfa-msg"), btn = d.querySelector("#afn-mfa-submit"), pick = d.querySelector("#afn-mfa-factor");
+      if (pick) factors.forEach(function (f, i) { var o = document.createElement("option"); o.value = f.id; o.textContent = f.friendly_name || ("Thiết bị " + (i + 1)); pick.appendChild(o); });
       function say(t) { out.textContent = t; out.dataset.kind = "error"; out.classList.remove("afn-auth-hidden"); }
       function done(ok) { d.close(); d.remove(); resolve(ok); }
       d.querySelector("form").addEventListener("submit", async function (e) {
@@ -232,7 +235,7 @@
         var code = input.value.replace(/\s+/g, "");
         if (!/^\d{6}$/.test(code)) { say("Mã gồm đúng 6 chữ số."); return; }
         btn.disabled = true;
-        var r = await client.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code });
+        var r = await client.auth.mfa.challengeAndVerify({ factorId: pick ? pick.value : factors[0].id, code: code });
         btn.disabled = false; input.value = "";
         if (r.error) { say("Mã chưa đúng hoặc đã hết hạn. Hãy nhập mã mới đang hiển thị trong ứng dụng."); return; }
         done(true);

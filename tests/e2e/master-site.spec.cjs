@@ -1284,6 +1284,110 @@ test.describe("Level 4.6 — xác thực 2 lớp nhân sự, chính sách mật 
     expect(issues).toEqual([]);
   });
 
+  // ---- Thiết bị dự phòng (nhiều factor TOTP)
+  const F1 = { id: "f-main", user_id: "OWNER", status: "verified", friendly_name: "AFN Studio 2026-11-01" };
+  const own = (f) => ({ ...f, user_id: OWNER.id });
+  test("thêm thiết bị dự phòng: chỉ ở AAL2, factor chính giữ nguyên, sai mã bị từ chối, chỉ báo thành công khi factor mới verified", async ({ page }) => {
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal2" }, extra: { mfa_factors: [own(F1)] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="security"]').click();
+    await expect(page.locator("#mfa-count")).toHaveText("1");
+    await expect(page.locator(".mfa-revoke")).toHaveCount(0);                              // 1 thiết bị: không có nút thu hồi
+    await page.evaluate(() => { window.prompt = () => "iPad dự phòng"; });
+    await page.locator("#mfa-add-backup").click();
+    await expect(page.locator("#mfa-qr")).toBeVisible();
+    await code(page, "000000");
+    await expect(page.locator("dialog.mfa-dialog .mfa-error")).toContainText("Mã chưa đúng");
+    await code(page, "123456");
+    await expect(page.locator("#studio-status")).toContainText('Đã thêm thiết bị dự phòng "iPad dự phòng" (đã xác minh)');
+    await expect(page.locator("#mfa-count")).toHaveText("2");
+    const f = (await mock(page)).mfa_factors;
+    expect(f.find(x => x.id === "f-main").status).toBe("verified");                       // factor chính không đổi
+    expect(f.filter(x => x.status === "verified").map(x => x.friendly_name).sort()).toEqual(["AFN Studio 2026-11-01", "iPad dự phòng"]);
+    await expect(page.locator(".mfa-revoke")).toHaveCount(2);
+    await expect(page.locator("#mfa-unenroll")).toHaveCount(0);                            // ≥2 thiết bị: không còn nút "tắt toàn bộ"
+    expect(issues).toEqual([]);
+  });
+
+  test("thiết bị dự phòng: tên trùng tự đổi; hủy giữa chừng không để lại factor, factor chính giữ nguyên", async ({ page }) => {
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal2" }, extra: { mfa_factors: [own(F1)] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="security"]').click();
+    await page.evaluate(() => { window.prompt = () => "AFN Studio 2026-11-01"; });
+    await page.locator("#mfa-add-backup").click();
+    await expect(page.locator("dialog.mfa-dialog")).toBeVisible();
+    await page.locator("#mfa-skip").click();                                               // hủy
+    await expect(page.locator(".mfa-enroll-box")).toContainText("thiết bị hiện tại giữ nguyên");
+    let f = (await mock(page)).mfa_factors;
+    expect(f.length).toBe(1); expect(f[0].id).toBe("f-main");
+    await page.locator("#mfa-add-backup").click();
+    await code(page, "123456");
+    f = (await mock(page)).mfa_factors;
+    expect(f.map(x => x.friendly_name).sort()).toEqual(["AFN Studio 2026-11-01", "AFN Studio 2026-11-01 (2)"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("phiên AAL1 có 2 thiết bị: chọn thiết bị dự phòng để nhập mã → mở quyền quản trị; không có nút thêm/thu hồi trước khi nhập mã", async ({ page }) => {
+    const F2 = own({ id: "f-backup", status: "verified", friendly_name: "iPad dự phòng" });
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal1" }, extra: { mfa_factors: [own(F1), F2] } });
+    await page.goto("/admin.html?site=xuongphim");
+    const d = page.locator("dialog.mfa-dialog");
+    await expect(d).toBeVisible();
+    await expect(d.locator("#mfa-factor option")).toHaveCount(2);
+    const enrollErr = await page.evaluate(async () => (await window.supabase.createClient().auth.mfa.enroll({ factorType: "totp", friendlyName: "lén" })).error.code);
+    expect(enrollErr).toBe("insufficient_aal");                                             // AAL1: không thêm thiết bị được
+    await d.locator("#mfa-factor").selectOption("f-backup");
+    await d.locator("#mfa-code").fill("123456");
+    await d.locator("#mfa-submit").click();
+    await expect(page.locator("#ops-overview .ops-card")).toHaveCount(13);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.mfaVerify).map(c => c.mfaVerify))).toEqual(["f-backup"]);
+    expect(issues).toEqual([]);
+  });
+
+  test("thu hồi thiết bị: hủy ở bước xác nhận không đổi gì; xác nhận bằng mã từ thiết bị GIỮ LẠI → chỉ thiết bị bị thu hồi biến mất", async ({ page }) => {
+    const F2 = own({ id: "f-backup", status: "verified", friendly_name: "iPad dự phòng" });
+    const issues = await setup(page, { user: { ...OWNER, aal: "aal2" }, extra: { mfa_factors: [own(F1), F2] } });
+    await page.goto("/admin.html?site=xuongphim");
+    await page.locator('[data-studio-tab="security"]').click();
+    await page.evaluate(() => { window.confirm = () => false; });
+    await page.locator('#mfa-devices tr[data-factor="f-main"] .mfa-revoke').click();
+    expect((await mock(page)).mfa_factors.length).toBe(2);                                  // hủy → không đổi
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.locator('#mfa-devices tr[data-factor="f-main"] .mfa-revoke').click();
+    const d = page.locator("dialog.mfa-dialog");
+    await expect(d).toContainText("thiết bị bạn GIỮ LẠI");
+    await expect(d.locator("#mfa-factor")).toHaveCount(0);                                  // chỉ được dùng thiết bị còn lại
+    await d.locator("#mfa-skip").click();                                                   // hủy ở bước nhập mã
+    expect((await mock(page)).mfa_factors.length).toBe(2);
+    await page.locator('#mfa-devices tr[data-factor="f-main"] .mfa-revoke').click();
+    await code(page, "123456");
+    await expect(page.locator("#studio-status")).toContainText('Đã thu hồi "AFN Studio 2026-11-01". Còn 1 thiết bị');
+    const f = (await mock(page)).mfa_factors;
+    expect(f.map(x => x.id)).toEqual(["f-backup"]);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.mfaVerify).map(c => c.mfaVerify))).toEqual(["f-backup"]);
+    await expect(page.locator(".mfa-revoke")).toHaveCount(0);                               // thiết bị cuối: không thu hồi ở đây
+    expect(issues).toEqual([]);
+  });
+
+  test("đăng nhập trang công khai với 2 thiết bị: chọn được thiết bị dự phòng", async ({ page }) => {
+    const F2 = own({ id: "f-backup", status: "verified", friendly_name: "iPad dự phòng" });
+    const issues = await setup(page, { loginAs: { ...OWNER }, extra: { mfa_factors: [own(F1), F2] } });
+    await page.goto("/?site=xuongphim");
+    await page.locator(".afn-account-btn").click();
+    const dlg = page.locator(".afn-auth-dialog").first();
+    await dlg.locator("#afn-email").fill("owner@example.test");
+    await dlg.locator("#afn-password").fill("matkhau12345");
+    await dlg.locator("button[type=submit]").first().click();
+    const m = page.locator("dialog.afn-mfa-dialog");
+    await expect(m.locator("#afn-mfa-factor option")).toHaveText(["AFN Studio 2026-11-01", "iPad dự phòng"]);
+    await m.locator("#afn-mfa-factor").selectOption("f-backup");
+    await m.locator("#afn-mfa-code").fill("123456");
+    await m.locator("#afn-mfa-submit").click();
+    await expect(m).toHaveCount(0);
+    expect(await page.evaluate(() => window.__AFN_MOCK.calls.filter(c => c.mfaVerify).map(c => c.mfaVerify))).toEqual(["f-backup"]);
+    expect(issues).toEqual([]);
+  });
+
   test("mật khẩu mới: ít nhất 10 ký tự gồm chữ và số (đăng ký); mật khẩu cũ yếu vẫn đăng nhập được, chỉ được nhắc đổi", async ({ page }) => {
     const issues = await setup(page, { loginAs: VIEWER, weakPassword: true });
     await page.goto("/?site=xuongphim");
